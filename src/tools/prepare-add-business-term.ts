@@ -1,3 +1,5 @@
+import { ok, okPretty } from '../utils/tool-result.js';
+import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
 
@@ -39,9 +41,14 @@ export const prepareAddBusinessTermTool = {
     },
     required: ['instance_name', 'name'],
   },
+  outputSchema: {
+    type: 'object',
+    description: 'Structured result payload. Fields vary by tool; see inline JSON for details.',
+    additionalProperties: true,
+  },
 };
 
-export async function executePrepareAddBusinessTerm(args: any): Promise<string> {
+export async function executePrepareAddBusinessTerm(args: any): Promise<ToolResult> {
   const { instance_name, name, domain_id, domain_name } = args;
 
   try {
@@ -68,7 +75,7 @@ export async function executePrepareAddBusinessTerm(args: any): Promise<string> 
       if (domainMatches.length === 0) {
         result.status = 'incomplete';
         result.instructions = `No domain found matching "${domain_name}". Use get_domains to list available domains.`;
-        return JSON.stringify(result, null, 2);
+        return okPretty(result);
       }
       if (domainMatches.length === 1) {
         resolvedDomainId = domainMatches[0].id;
@@ -81,7 +88,7 @@ export async function executePrepareAddBusinessTerm(args: any): Promise<string> 
           name: d.name,
           community: d.community?.name,
         }));
-        return JSON.stringify(result, null, 2);
+        return okPretty(result);
       }
     } else if (resolvedDomainId) {
       try {
@@ -90,12 +97,12 @@ export async function executePrepareAddBusinessTerm(args: any): Promise<string> 
       } catch {
         result.status = 'incomplete';
         result.instructions = `Domain with id "${resolvedDomainId}" was not found.`;
-        return JSON.stringify(result, null, 2);
+        return okPretty(result);
       }
     } else {
       result.status = 'incomplete';
       result.instructions = 'Provide domain_id or domain_name to proceed.';
-      return JSON.stringify(result, null, 2);
+      return okPretty(result);
     }
 
     // --- Resolve the Business Term asset type ID ---
@@ -135,7 +142,7 @@ export async function executePrepareAddBusinessTerm(args: any): Promise<string> 
         url: client.assetUrl(a.id),
       }));
       result.resolved = { domainId: resolvedDomainId, domainName: resolvedDomainName };
-      return JSON.stringify(result, null, 2);
+      return okPretty(result);
     }
 
     // --- Hydrate attribute schema ---
@@ -166,10 +173,10 @@ export async function executePrepareAddBusinessTerm(args: any): Promise<string> 
       result.attributeSchema = attributeSchema;
     }
 
-    return JSON.stringify(result, null, 2);
+    return okPretty(result);
 
   } catch (error) {
-    return JSON.stringify({
+    return ok({
       error: true,
       message: (error as Error).message,
       instance: instance_name,

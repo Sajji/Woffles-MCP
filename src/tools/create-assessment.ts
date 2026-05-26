@@ -1,3 +1,5 @@
+import { ok, okPretty } from '../utils/tool-result.js';
+import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
 
@@ -63,9 +65,14 @@ export const createAssessmentTool = {
     },
     required: ['instance_name', 'template_id'],
   },
+  outputSchema: {
+    type: 'object',
+    description: 'Structured result payload. Fields vary by tool; see inline JSON for details.',
+    additionalProperties: true,
+  },
 };
 
-export async function executeCreateAssessment(args: any): Promise<string> {
+export async function executeCreateAssessment(args: any): Promise<ToolResult> {
   const {
     instance_name,
     template_id,
@@ -98,7 +105,7 @@ export async function executeCreateAssessment(args: any): Promise<string> {
       try {
         body.assignees = JSON.parse(assignees);
       } catch {
-        return JSON.stringify({
+        return ok({
           error: true,
           message: 'Invalid JSON in assignees field. Expected format: [{"type":"USER","id":"uuid"}]',
           instance: instance_name,
@@ -110,7 +117,7 @@ export async function executeCreateAssessment(args: any): Promise<string> {
       try {
         body.content = JSON.parse(content);
       } catch {
-        return JSON.stringify({
+        return ok({
           error: true,
           message: 'Invalid JSON in content field. Expected format: [{"id":"questionId","answer":{"type":"BOOLEAN","value":true}}]',
           instance: instance_name,
@@ -124,13 +131,13 @@ export async function executeCreateAssessment(args: any): Promise<string> {
       body
     );
 
-    return JSON.stringify({
+    return ok({
       instance: instance_name,
       created: true,
       ...response,
     });
   } catch (error) {
-    return JSON.stringify({
+    return ok({
       error: true,
       message: (error as Error).message,
       instance: instance_name,

@@ -1,3 +1,5 @@
+import { ok, okPretty } from '../utils/tool-result.js';
+import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
 
@@ -49,9 +51,14 @@ export const listAssessmentTemplatesTool = {
     },
     required: ['instance_name'],
   },
+  outputSchema: {
+    type: 'object',
+    description: 'Structured result payload. Fields vary by tool; see inline JSON for details.',
+    additionalProperties: true,
+  },
 };
 
-export async function executeListAssessmentTemplates(args: any): Promise<string> {
+export async function executeListAssessmentTemplates(args: any): Promise<ToolResult> {
   const {
     instance_name,
     name,
@@ -77,13 +84,13 @@ export async function executeListAssessmentTemplates(args: any): Promise<string>
     const endpoint = `${ASSESSMENTS_BASE}/templates?${params.toString()}`;
     const response = await client.restCall<any>(endpoint);
 
-    return JSON.stringify({
+    return ok({
       instance: instance_name,
       filters: { name, status, asset_type_id, latest_version_only },
       ...response,
     });
   } catch (error) {
-    return JSON.stringify({
+    return ok({
       error: true,
       message: (error as Error).message,
       instance: instance_name,

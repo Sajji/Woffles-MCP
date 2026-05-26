@@ -1,5 +1,6 @@
 import { getInstance } from '../config.js';
 import { CollibraClient, enrichResponseUrls } from '../utils/collibra-client.js';
+import type { ToolResult } from '../types.js';
 
 export const getAssetByIdTool = {
   name: 'get_asset_by_id',
@@ -35,6 +36,27 @@ export const getAssetByIdTool = {
       },
     },
     required: ['instance_name', 'asset_id'],
+  },
+  outputSchema: {
+    type: 'object',
+    properties: {
+      instance: { type: 'string' },
+      assetId: { type: 'string' },
+      assetUrl: { type: 'string' },
+      asset: {
+        type: 'object',
+        description: 'The asset along with its attributes and (paginated) relations.',
+        additionalProperties: true,
+      },
+      responsibilities: {
+        type: 'object',
+        description: 'Direct + (optionally) inherited responsibilities, with name-resolved owners.',
+        additionalProperties: true,
+      },
+      error: { type: 'boolean' },
+      message: { type: 'string' },
+    },
+    required: ['instance', 'assetId'],
   },
 };
 
@@ -93,7 +115,7 @@ function buildAssetDetailsQuery(
   `;
 }
 
-export async function executeGetAssetById(args: any): Promise<string> {
+export async function executeGetAssetById(args: any): Promise<ToolResult> {
   const {
     instance_name,
     asset_id,
@@ -119,12 +141,13 @@ export async function executeGetAssetById(args: any): Promise<string> {
     const asset = gqlResponse.data.assets[0];
 
     if (!asset) {
-      return JSON.stringify({
-        error: true,
-        message: `Asset with ID "${asset_id}" not found.`,
+      const structured = {
         instance: instance_name,
         assetId: asset_id,
-      });
+        error: true,
+        message: `Asset with ID "${asset_id}" not found.`,
+      };
+      return { text: JSON.stringify(structured), structured };
     }
 
     // Process responsibilities — resolve user/group names
@@ -212,7 +235,7 @@ export async function executeGetAssetById(args: any): Promise<string> {
     const lastOutgoingId = outgoing.length > 0 ? outgoing[outgoing.length - 1].id : null;
     const lastIncomingId = incoming.length > 0 ? incoming[incoming.length - 1].id : null;
 
-    return JSON.stringify(enrichResponseUrls(instance.baseUrl, {
+    const structured = enrichResponseUrls(instance.baseUrl, {
       instance: instance_name,
       assetId: asset_id,
       assetUrl: client.assetUrl(asset_id),
@@ -256,14 +279,16 @@ export async function executeGetAssetById(args: any): Promise<string> {
           fromDomain: inheritedByDomain,
         } : null,
       },
-    }));
+    });
+    return { text: JSON.stringify(structured), structured };
 
   } catch (error) {
-    return JSON.stringify({
-      error: true,
-      message: (error as Error).message,
+    const structured = {
       instance: instance_name,
       assetId: asset_id,
-    });
+      error: true,
+      message: (error as Error).message,
+    };
+    return { text: JSON.stringify(structured), structured };
   }
 }

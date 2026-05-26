@@ -1,3 +1,5 @@
+import { ok, okPretty } from '../utils/tool-result.js';
+import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
 
@@ -23,9 +25,14 @@ export const getLineageTransformationTool = {
     },
     required: ['instance_name', 'transformation_id'],
   },
+  outputSchema: {
+    type: 'object',
+    description: 'Structured result payload. Fields vary by tool; see inline JSON for details.',
+    additionalProperties: true,
+  },
 };
 
-export async function executeGetLineageTransformation(args: any): Promise<string> {
+export async function executeGetLineageTransformation(args: any): Promise<ToolResult> {
   const { instance_name, transformation_id } = args;
 
   try {
@@ -35,14 +42,14 @@ export async function executeGetLineageTransformation(args: any): Promise<string
     const endpoint = `${LINEAGE_BASE}/transformations/${encodeURIComponent(transformation_id)}`;
     const response = await client.restCall<any>(endpoint);
 
-    return JSON.stringify({
+    return okPretty({
       instance: instance_name,
       transformationId: transformation_id,
       ...response,
-    }, null, 2);
+    });
 
   } catch (error) {
-    return JSON.stringify({
+    return ok({
       error: true,
       message: (error as Error).message,
       instance: instance_name,

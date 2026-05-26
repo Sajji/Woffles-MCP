@@ -1,3 +1,5 @@
+import { ok, okPretty } from '../utils/tool-result.js';
+import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
 
@@ -50,9 +52,14 @@ export const createAssetTool = {
     },
     required: ['instance_name', 'name', 'asset_type_id', 'domain_id'],
   },
+  outputSchema: {
+    type: 'object',
+    description: 'Structured result payload. Fields vary by tool; see inline JSON for details.',
+    additionalProperties: true,
+  },
 };
 
-export async function executeCreateAsset(args: any): Promise<string> {
+export async function executeCreateAsset(args: any): Promise<ToolResult> {
   const { instance_name, name, asset_type_id, domain_id, display_name, status_id, attributes } = args;
 
   try {
@@ -118,10 +125,10 @@ export async function executeCreateAsset(args: any): Promise<string> {
         'Asset was created successfully but some attributes could not be set. See attributeErrors for details.';
     }
 
-    return JSON.stringify(output, null, 2);
+    return okPretty(output);
 
   } catch (error) {
-    return JSON.stringify({
+    return ok({
       error: true,
       message: (error as Error).message,
       instance: instance_name,

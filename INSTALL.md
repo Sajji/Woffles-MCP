@@ -94,7 +94,7 @@ Add the following (replace paths with your actual absolute paths):
 }
 ```
 
-Restart Claude Desktop. You should see all 35 Collibra tools available (26 read-only tools when `"readOnly": true`; all 35 when `"readOnly": false`).
+Restart Claude Desktop. You should see the Collibra tools available — **35 read-only tools** when `"readOnly": true`, or all **52 tools** when `"readOnly": false`.
 
 ### VS Code (GitHub Copilot)
 

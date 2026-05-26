@@ -48,9 +48,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   try {
     const result = await executeTool(name, args || {});
     const warning = getWarning();
-    const text = warning ? `${result}\n\n---\n${getWarningIcon()} ${warning}` : result;
+    const text = warning ? `${result.text}\n\n---\n${getWarningIcon()} ${warning}` : result.text;
 
-    return {
+    const response: any = {
       content: [
         {
           type: 'text',
@@ -58,6 +58,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         },
       ],
     };
+
+    // Emit MCP structuredContent when the tool produced a structured payload.
+    if (result.structured !== undefined) {
+      response.structuredContent = result.structured;
+    }
+
+    return response;
   } catch (error) {
     return {
       content: [

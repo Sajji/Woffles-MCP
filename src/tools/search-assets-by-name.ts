@@ -1,5 +1,6 @@
 import { getInstance } from '../config.js';
 import { CollibraClient, enrichResponseUrls } from '../utils/collibra-client.js';
+import type { ToolResult } from '../types.js';
 
 export const searchAssetsByNameTool = {
   name: 'search_assets_by_name',
@@ -72,6 +73,38 @@ export const searchAssetsByNameTool = {
     },
     required: ['instance_name', 'search_term'],
   },
+  outputSchema: {
+    type: 'object',
+    properties: {
+      instance: { type: 'string' },
+      searchTerm: { type: 'string' },
+      keywords: { type: 'string', description: 'The wildcard-wrapped keyword string sent to Collibra.' },
+      filters: {
+        description: 'Filter set applied to the search, or the string "none".',
+        oneOf: [
+          { type: 'string', enum: ['none'] },
+          {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                field: { type: 'string' },
+                values: { type: 'array', items: { type: 'string' } },
+              },
+              required: ['field', 'values'],
+            },
+          },
+        ],
+      },
+      total: { type: 'number', description: 'Total matching resources reported by Collibra.' },
+      returned: { type: 'number', description: 'Number of results returned on this page.' },
+      offset: { type: 'number' },
+      results: { type: 'array', items: { type: 'object', additionalProperties: true } },
+      error: { type: 'boolean' },
+      message: { type: 'string' },
+    },
+    required: ['instance'],
+  },
 };
 
 interface SearchFilter {
@@ -79,7 +112,7 @@ interface SearchFilter {
   values: string[];
 }
 
-export async function executeSearchAssetsByName(args: any): Promise<string> {
+export async function executeSearchAssetsByName(args: any): Promise<ToolResult> {
   const {
     instance_name,
     search_term,
@@ -144,7 +177,7 @@ export async function executeSearchAssetsByName(args: any): Promise<string> {
       searchBody,
     );
 
-    return JSON.stringify(enrichResponseUrls(instance.baseUrl, {
+    const structured = enrichResponseUrls(instance.baseUrl, {
       instance: instance_name,
       searchTerm: search_term,
       keywords,
@@ -153,14 +186,16 @@ export async function executeSearchAssetsByName(args: any): Promise<string> {
       returned: response.results?.length || 0,
       offset,
       results: response.results || [],
-    }));
+    });
+    return { text: JSON.stringify(structured), structured };
 
   } catch (error) {
-    return JSON.stringify({
-      error: true,
-      message: (error as Error).message,
+    const structured = {
       instance: instance_name,
       searchTerm: search_term,
-    });
+      error: true,
+      message: (error as Error).message,
+    };
+    return { text: JSON.stringify(structured), structured };
   }
 }

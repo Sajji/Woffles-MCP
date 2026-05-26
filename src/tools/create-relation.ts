@@ -1,3 +1,5 @@
+import { ok, okPretty } from '../utils/tool-result.js';
+import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
 
@@ -34,9 +36,14 @@ export const createRelationTool = {
     },
     required: ['instance_name', 'source_asset_id', 'target_asset_id', 'relation_type_id'],
   },
+  outputSchema: {
+    type: 'object',
+    description: 'Structured result payload. Fields vary by tool; see inline JSON for details.',
+    additionalProperties: true,
+  },
 };
 
-export async function executeCreateRelation(args: any): Promise<string> {
+export async function executeCreateRelation(args: any): Promise<ToolResult> {
   const { instance_name, source_asset_id, target_asset_id, relation_type_id } = args;
 
   try {
@@ -58,7 +65,7 @@ export async function executeCreateRelation(args: any): Promise<string> {
     );
 
     if (match) {
-      return JSON.stringify({
+      return okPretty({
         action: 'existing',
         relation: {
           id: match.id,
@@ -67,7 +74,7 @@ export async function executeCreateRelation(args: any): Promise<string> {
           target: { id: match.target?.id, name: match.target?.fullName ?? match.target?.name },
         },
         message: 'Relation already exists — no changes made.',
-      }, null, 2);
+      });
     }
 
     // ── Create ────────────────────────────────────────────────────────
@@ -79,7 +86,7 @@ export async function executeCreateRelation(args: any): Promise<string> {
 
     const created = await client.restCallWithBody<any>('/rest/2.0/relations', 'POST', body);
 
-    return JSON.stringify({
+    return okPretty({
       action: 'created',
       relation: {
         id: created.id,
@@ -87,10 +94,10 @@ export async function executeCreateRelation(args: any): Promise<string> {
         source: { id: created.source?.id, name: created.source?.fullName ?? created.source?.name },
         target: { id: created.target?.id, name: created.target?.fullName ?? created.target?.name },
       },
-    }, null, 2);
+    });
 
   } catch (error) {
-    return JSON.stringify({
+    return ok({
       error: true,
       message: (error as Error).message,
       instance: instance_name,

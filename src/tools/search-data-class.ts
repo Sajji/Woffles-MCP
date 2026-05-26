@@ -1,3 +1,5 @@
+import { ok, okPretty } from '../utils/tool-result.js';
+import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
 
@@ -39,9 +41,14 @@ export const searchDataClassTool = {
     },
     required: ['instance_name'],
   },
+  outputSchema: {
+    type: 'object',
+    description: 'Structured result payload. Fields vary by tool; see inline JSON for details.',
+    additionalProperties: true,
+  },
 };
 
-export async function executeSearchDataClass(args: any): Promise<string> {
+export async function executeSearchDataClass(args: any): Promise<ToolResult> {
   const { instance_name, name, description, contains_rules, limit = 50, offset = 0 } = args;
 
   try {
@@ -58,7 +65,7 @@ export async function executeSearchDataClass(args: any): Promise<string> {
     const endpoint = `/rest/classification/v1/dataClasses?${params.toString()}`;
     const response = await client.restCall<any>(endpoint);
 
-    return JSON.stringify({
+    return okPretty({
       instance: instance_name,
       filters: {
         name: name || null,
@@ -81,10 +88,10 @@ export async function executeSearchDataClass(args: any): Promise<string> {
         hasRules: Array.isArray(dc.rules) && dc.rules.length > 0,
         examples: dc.examples,
       })),
-    }, null, 2);
+    });
 
   } catch (error) {
-    return JSON.stringify({
+    return ok({
       error: true,
       message: (error as Error).message,
       instance: instance_name,

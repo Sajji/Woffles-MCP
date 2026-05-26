@@ -1,3 +1,5 @@
+import { ok, okPretty } from '../utils/tool-result.js';
+import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
 
@@ -42,9 +44,14 @@ export const prepareCreateAssetTool = {
     },
     required: ['instance_name', 'asset_name'],
   },
+  outputSchema: {
+    type: 'object',
+    description: 'Structured result payload. Fields vary by tool; see inline JSON for details.',
+    additionalProperties: true,
+  },
 };
 
-export async function executePrepareCreateAsset(args: any): Promise<string> {
+export async function executePrepareCreateAsset(args: any): Promise<ToolResult> {
   const { instance_name, asset_name, asset_type_id, asset_type_name, domain_id, domain_name } = args;
 
   try {
@@ -71,7 +78,7 @@ export async function executePrepareCreateAsset(args: any): Promise<string> {
       if (matches.length === 0) {
         result.status = 'incomplete';
         result.instructions = `No asset type found matching "${asset_type_name}". Use get_asset_types to list available types.`;
-        return JSON.stringify(result, null, 2);
+        return okPretty(result);
       }
       if (matches.length === 1) {
         resolvedTypeId = matches[0].id;
@@ -80,7 +87,7 @@ export async function executePrepareCreateAsset(args: any): Promise<string> {
         result.status = 'needs_clarification';
         result.instructions = `Multiple asset types match "${asset_type_name}". Specify one of the options below as asset_type_id.`;
         result.assetTypeOptions = matches.map((t: any) => ({ id: t.id, name: t.name, publicId: t.publicId }));
-        return JSON.stringify(result, null, 2);
+        return okPretty(result);
       }
     } else if (resolvedTypeId) {
       try {
@@ -89,7 +96,7 @@ export async function executePrepareCreateAsset(args: any): Promise<string> {
       } catch {
         result.status = 'incomplete';
         result.instructions = `Asset type with id "${resolvedTypeId}" was not found.`;
-        return JSON.stringify(result, null, 2);
+        return okPretty(result);
       }
     }
 
@@ -105,7 +112,7 @@ export async function executePrepareCreateAsset(args: any): Promise<string> {
       if (domainMatches.length === 0) {
         result.status = 'incomplete';
         result.instructions = `No domain found matching "${domain_name}". Use get_domains to list available domains.`;
-        return JSON.stringify(result, null, 2);
+        return okPretty(result);
       }
       if (domainMatches.length === 1) {
         resolvedDomainId = domainMatches[0].id;
@@ -118,7 +125,7 @@ export async function executePrepareCreateAsset(args: any): Promise<string> {
           name: d.name,
           community: d.community?.name,
         }));
-        return JSON.stringify(result, null, 2);
+        return okPretty(result);
       }
     } else if (resolvedDomainId) {
       try {
@@ -127,7 +134,7 @@ export async function executePrepareCreateAsset(args: any): Promise<string> {
       } catch {
         result.status = 'incomplete';
         result.instructions = `Domain with id "${resolvedDomainId}" was not found.`;
-        return JSON.stringify(result, null, 2);
+        return okPretty(result);
       }
     }
 
@@ -135,17 +142,17 @@ export async function executePrepareCreateAsset(args: any): Promise<string> {
     if (!resolvedTypeId && !resolvedDomainId) {
       result.status = 'incomplete';
       result.instructions = 'Provide asset_type_id (or asset_type_name) and domain_id (or domain_name) to proceed.';
-      return JSON.stringify(result, null, 2);
+      return okPretty(result);
     }
     if (!resolvedTypeId) {
       result.status = 'incomplete';
       result.instructions = 'Provide asset_type_id or asset_type_name to proceed.';
-      return JSON.stringify(result, null, 2);
+      return okPretty(result);
     }
     if (!resolvedDomainId) {
       result.status = 'incomplete';
       result.instructions = 'Provide domain_id or domain_name to proceed.';
-      return JSON.stringify(result, null, 2);
+      return okPretty(result);
     }
 
     // --- Duplicate check ---
@@ -162,7 +169,7 @@ export async function executePrepareCreateAsset(args: any): Promise<string> {
         url: client.assetUrl(a.id),
       }));
       result.resolved = { assetTypeId: resolvedTypeId, assetTypeName: resolvedTypeName, domainId: resolvedDomainId, domainName: resolvedDomainName };
-      return JSON.stringify(result, null, 2);
+      return okPretty(result);
     }
 
     // --- All good ---
@@ -175,10 +182,10 @@ export async function executePrepareCreateAsset(args: any): Promise<string> {
       domainName: resolvedDomainName,
     };
 
-    return JSON.stringify(result, null, 2);
+    return okPretty(result);
 
   } catch (error) {
-    return JSON.stringify({
+    return ok({
       error: true,
       message: (error as Error).message,
       instance: instance_name,

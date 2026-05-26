@@ -1,5 +1,21 @@
 # Changelog
 
+## 8.1.0 — Structured Tool Output (MCP `structuredContent` + `outputSchema`)
+
+### Added
+- Every tool now declares an `outputSchema` and returns MCP **`structuredContent`** alongside the existing human-readable text payload. Structured-aware clients can parse responses directly without re-parsing the text block; text-only clients continue to work exactly as before.
+- New `ToolResult` type (`src/types.ts`) and `ok` / `okPretty` helpers (`src/utils/tool-result.ts`) standardize how tools return both shapes.
+- 5 reference tools (`get_asset_types`, `query_assets`, `search_assets_by_name`, `get_asset_by_id`, `update_asset_description`) ship rich, hand-authored output schemas describing their exact response shape. The remaining 47 tools ship a permissive schema (`type: object, additionalProperties: true`) that can be tightened incrementally.
+
+### Changed
+- `executeTool` (`src/tools/index.ts`) now returns `ToolResult` and normalizes legacy string returns.
+- Server (`src/index.ts`) attaches `response.structuredContent` whenever a tool provides one, while keeping the existing `content[0].text` (including the configurable safety warning footer) intact.
+
+### Notes
+- Fully backward-compatible. No tool inputs changed, no behavior changed for clients that only consume `content[0].text`.
+
+---
+
 ## 8.0.0 — Operating Model Management & API Catalog
 
 ### Added

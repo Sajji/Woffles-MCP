@@ -1,3 +1,5 @@
+import { ok, okPretty } from '../utils/tool-result.js';
+import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
 
@@ -25,9 +27,14 @@ export const addDataClassificationMatchTool = {
     },
     required: ['instance_name', 'asset_id', 'classification_id'],
   },
+  outputSchema: {
+    type: 'object',
+    description: 'Structured result payload. Fields vary by tool; see inline JSON for details.',
+    additionalProperties: true,
+  },
 };
 
-export async function executeAddDataClassificationMatch(args: any): Promise<string> {
+export async function executeAddDataClassificationMatch(args: any): Promise<ToolResult> {
   const { instance_name, asset_id, classification_id } = args;
 
   try {
@@ -40,7 +47,7 @@ export async function executeAddDataClassificationMatch(args: any): Promise<stri
       { assetId: asset_id, classificationId: classification_id },
     );
 
-    return JSON.stringify({
+    return okPretty({
       success: true,
       instance: instance_name,
       match: {
@@ -52,10 +59,10 @@ export async function executeAddDataClassificationMatch(args: any): Promise<stri
         createdBy: match.createdBy,
         createdOn: match.createdOn,
       },
-    }, null, 2);
+    });
 
   } catch (error) {
-    return JSON.stringify({
+    return ok({
       error: true,
       message: (error as Error).message,
       instance: instance_name,

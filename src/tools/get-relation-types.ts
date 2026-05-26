@@ -1,3 +1,5 @@
+import { ok, okPretty } from '../utils/tool-result.js';
+import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
 
@@ -33,9 +35,14 @@ export const getRelationTypesTool = {
     },
     required: ['instance_name'],
   },
+  outputSchema: {
+    type: 'object',
+    description: 'Structured result payload. Fields vary by tool; see inline JSON for details.',
+    additionalProperties: true,
+  },
 };
 
-export async function executeGetRelationTypes(args: any): Promise<string> {
+export async function executeGetRelationTypes(args: any): Promise<ToolResult> {
   const { instance_name, source_type_name, target_type_name, role } = args;
 
   try {
@@ -97,7 +104,7 @@ export async function executeGetRelationTypes(args: any): Promise<string> {
       coRole: r.coRole,
     }));
 
-    return JSON.stringify({
+    return ok({
       instance: instance_name,
       filters: {
         sourceTypeName: source_type_name || 'All',
@@ -110,7 +117,7 @@ export async function executeGetRelationTypes(args: any): Promise<string> {
     });
 
   } catch (error) {
-    return JSON.stringify({
+    return ok({
       error: true,
       message: (error as Error).message,
       instance: instance_name,

@@ -7,6 +7,18 @@ export interface CollibraInstance {
   insecure?: boolean;
 }
 
+/**
+ * Standard return shape for tool executors that opt in to structured output.
+ * Tools may still return a plain string for backward compatibility — the
+ * dispatcher will treat that as `{ text: <string> }`.
+ */
+export interface ToolResult {
+  /** Human-readable text content (typically JSON.stringify of `structured`). */
+  text: string;
+  /** Parseable object emitted via MCP `structuredContent`. */
+  structured?: unknown;
+}
+
 export interface CollibraConfig {
   instances: CollibraInstance[];
   readOnly?: boolean;

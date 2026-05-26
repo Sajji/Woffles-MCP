@@ -1,3 +1,5 @@
+import { ok, okPretty } from '../utils/tool-result.js';
+import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 
 export const pushDataContractManifestTool = {
@@ -40,6 +42,11 @@ export const pushDataContractManifestTool = {
     },
     required: ['instance_name', 'manifest'],
   },
+  outputSchema: {
+    type: 'object',
+    description: 'Structured result payload. Fields vary by tool; see inline JSON for details.',
+    additionalProperties: true,
+  },
 };
 
 /**
@@ -77,7 +84,7 @@ function buildMultipartBody(
   };
 }
 
-export async function executePushDataContractManifest(args: any): Promise<string> {
+export async function executePushDataContractManifest(args: any): Promise<ToolResult> {
   const { instance_name, manifest, manifest_id, version, force = false, active = true } = args;
 
   try {
@@ -110,16 +117,16 @@ export async function executePushDataContractManifest(args: any): Promise<string
 
     const responseBody = await response.json() as any;
 
-    return JSON.stringify({
+    return okPretty({
       success: true,
       instance: instance_name,
       id: responseBody.id,
       domainId: responseBody.domainId,
       manifestId: responseBody.manifestId,
-    }, null, 2);
+    });
 
   } catch (error) {
-    return JSON.stringify({
+    return ok({
       error: true,
       message: (error as Error).message,
       instance: instance_name,

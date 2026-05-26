@@ -1,3 +1,5 @@
+import { ok, okPretty } from '../utils/tool-result.js';
+import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
 
@@ -38,9 +40,14 @@ export const createDomainTool = {
     },
     required: ['instance_name', 'name', 'community_id', 'type_id'],
   },
+  outputSchema: {
+    type: 'object',
+    description: 'Structured result payload. Fields vary by tool; see inline JSON for details.',
+    additionalProperties: true,
+  },
 };
 
-export async function executeCreateDomain(args: any): Promise<string> {
+export async function executeCreateDomain(args: any): Promise<ToolResult> {
   const { instance_name, name, community_id, type_id, description } = args;
 
   try {
@@ -59,7 +66,7 @@ export async function executeCreateDomain(args: any): Promise<string> {
     const match = (existing.results || []).find((d: any) => d.name === name);
 
     if (match) {
-      return JSON.stringify({
+      return okPretty({
         action: 'existing',
         domain: {
           id: match.id,
@@ -69,7 +76,7 @@ export async function executeCreateDomain(args: any): Promise<string> {
           type: match.type ? { id: match.type.id, name: match.type.name } : null,
         },
         message: `Domain "${name}" already exists in community "${match.community?.name}" — no changes made.`,
-      }, null, 2);
+      });
     }
 
     // ── Create ────────────────────────────────────────────────────────
@@ -78,7 +85,7 @@ export async function executeCreateDomain(args: any): Promise<string> {
 
     const created = await client.restCallWithBody<any>('/rest/2.0/domains', 'POST', body);
 
-    return JSON.stringify({
+    return okPretty({
       action: 'created',
       domain: {
         id: created.id,
@@ -87,10 +94,10 @@ export async function executeCreateDomain(args: any): Promise<string> {
         community: created.community ? { id: created.community.id, name: created.community.name } : null,
         type: created.type ? { id: created.type.id, name: created.type.name } : null,
       },
-    }, null, 2);
+    });
 
   } catch (error) {
-    return JSON.stringify({
+    return ok({
       error: true,
       message: (error as Error).message,
       instance: instance_name,

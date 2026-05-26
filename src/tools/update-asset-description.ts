@@ -1,5 +1,6 @@
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
+import type { ToolResult } from '../types.js';
 
 // Well-known Collibra attribute type ID for "Description"
 const DESCRIPTION_TYPE_ID = '00000000-0000-0000-0000-000000003114';
@@ -34,9 +35,34 @@ export const updateAssetDescriptionTool = {
     },
     required: ['instance_name', 'asset_id', 'new_description'],
   },
+  outputSchema: {
+    type: 'object',
+    properties: {
+      mode: {
+        type: 'string',
+        enum: ['PREVIEW — no changes made', 'APPLIED'],
+        description: 'Whether this response previewed the change or applied it.',
+      },
+      asset: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          name: { type: 'string' },
+          url: { type: 'string' },
+        },
+      },
+      currentDescription: { type: 'string', description: 'Present in preview mode.' },
+      proposedDescription: { type: 'string', description: 'Present in preview mode.' },
+      previousDescription: { type: 'string', description: 'Present after apply.' },
+      newDescription: { type: 'string', description: 'Present after apply.' },
+      attributeId: { type: 'string', description: 'Collibra attribute UUID written/updated.' },
+      instructions: { type: 'string' },
+      error: { type: 'string' },
+    },
+  },
 };
 
-export async function executeUpdateAssetDescription(args: any): Promise<string> {
+export async function executeUpdateAssetDescription(args: any): Promise<ToolResult> {
   const { instance_name, asset_id, new_description, confirm = false } = args;
 
   try {
@@ -69,7 +95,7 @@ export async function executeUpdateAssetDescription(args: any): Promise<string> 
         proposedDescription: new_description,
         instructions: 'To apply this change, call this tool again with confirm=true.',
       };
-      return JSON.stringify(preview, null, 2);
+      return { text: JSON.stringify(preview, null, 2), structured: preview };
     }
 
     // Confirm mode — apply the change
@@ -107,10 +133,11 @@ export async function executeUpdateAssetDescription(args: any): Promise<string> 
       attributeId: result.id || existingAttr?.id,
     };
 
-    return JSON.stringify(output, null, 2);
+    return { text: JSON.stringify(output, null, 2), structured: output };
   } catch (error) {
-    return JSON.stringify({
+    const structured = {
       error: `Failed to update asset description: ${(error as Error).message}`,
-    });
+    };
+    return { text: JSON.stringify(structured), structured };
   }
 }

@@ -1,3 +1,5 @@
+import { ok, okPretty } from '../utils/tool-result.js';
+import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 
 export const pullDataContractManifestTool = {
@@ -20,9 +22,14 @@ export const pullDataContractManifestTool = {
     },
     required: ['instance_name', 'data_contract_id'],
   },
+  outputSchema: {
+    type: 'object',
+    description: 'Structured result payload. Fields vary by tool; see inline JSON for details.',
+    additionalProperties: true,
+  },
 };
 
-export async function executePullDataContractManifest(args: any): Promise<string> {
+export async function executePullDataContractManifest(args: any): Promise<ToolResult> {
   const { instance_name, data_contract_id } = args;
 
   try {
@@ -47,14 +54,14 @@ export async function executePullDataContractManifest(args: any): Promise<string
 
     const manifestContent = await response.text();
 
-    return JSON.stringify({
+    return okPretty({
       instance: instance_name,
       dataContractId: data_contract_id,
       manifest: manifestContent,
-    }, null, 2);
+    });
 
   } catch (error) {
-    return JSON.stringify({
+    return ok({
       error: true,
       message: (error as Error).message,
       instance: instance_name,

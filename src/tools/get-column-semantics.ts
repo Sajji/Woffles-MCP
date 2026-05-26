@@ -1,3 +1,5 @@
+import { ok, okPretty } from '../utils/tool-result.js';
+import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
 
@@ -29,6 +31,11 @@ export const getColumnSemanticsTool = {
     },
     required: ['instance_name', 'column_asset_id'],
   },
+  outputSchema: {
+    type: 'object',
+    description: 'Structured result payload. Fields vary by tool; see inline JSON for details.',
+    additionalProperties: true,
+  },
 };
 
 async function fetchRelations(
@@ -48,7 +55,7 @@ async function fetchRelations(
   }
 }
 
-export async function executeGetColumnSemantics(args: any): Promise<string> {
+export async function executeGetColumnSemantics(args: any): Promise<ToolResult> {
   const { instance_name, column_asset_id } = args;
 
   try {
@@ -86,7 +93,7 @@ export async function executeGetColumnSemantics(args: any): Promise<string> {
     const dataAttributes = Array.from(dataAttrMap.values());
 
     if (dataAttributes.length === 0) {
-      return JSON.stringify({
+      return ok({
         instance: instance_name,
         columnId: column_asset_id,
         columnUrl: client.assetUrl(column_asset_id),
@@ -136,16 +143,16 @@ export async function executeGetColumnSemantics(args: any): Promise<string> {
       ? { id: tableRelations[0].target.id, name: tableRelations[0].target.name, url: client.assetUrl(tableRelations[0].target.id) }
       : null;
 
-    return JSON.stringify({
+    return okPretty({
       instance: instance_name,
       columnId: column_asset_id,
       columnUrl: client.assetUrl(column_asset_id),
       parentTable: table,
       dataAttributes: enrichedDAs,
-    }, null, 2);
+    });
 
   } catch (error) {
-    return JSON.stringify({
+    return ok({
       error: true,
       message: (error as Error).message,
       instance: instance_name,

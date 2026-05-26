@@ -1,6 +1,6 @@
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
-import type { AssetTypesResponse } from '../types.js';
+import type { AssetTypesResponse, ToolResult } from '../types.js';
 
 export const getAssetTypesTool = {
   name: 'get_asset_types',
@@ -20,33 +20,51 @@ export const getAssetTypesTool = {
     },
     required: ['instance_name'],
   },
+  outputSchema: {
+    type: 'object',
+    properties: {
+      instance: { type: 'string', description: 'The Collibra instance name that was queried.' },
+      total: { type: 'number', description: 'Total number of asset types reported by Collibra.' },
+      assetTypes: {
+        type: 'array',
+        description: 'Asset types returned by Collibra, trimmed to the fields needed for selection.',
+        items: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', description: 'Asset type UUID.' },
+            name: { type: 'string', description: 'Asset type display name.' },
+          },
+          required: ['id', 'name'],
+        },
+      },
+      error: { type: 'boolean', description: 'Present and true when the call failed.' },
+      message: { type: 'string', description: 'Error message when error=true.' },
+    },
+    required: ['instance'],
+  },
 };
 
-export async function executeGetAssetTypes(args: any): Promise<string> {
+export async function executeGetAssetTypes(args: any): Promise<ToolResult> {
   const { instance_name } = args;
 
   try {
-    // Get the instance configuration
     const instance = getInstance(instance_name);
-
-    // Create a client for this instance
     const client = new CollibraClient(instance);
-
-    // Make the REST API call
     const response = await client.restCall<AssetTypesResponse>('/rest/2.0/assetTypes');
 
-    // Return formatted response — only id and name needed for type selection workflow
-    return JSON.stringify({
+    const structured = {
       instance: instance_name,
       total: response.total,
       assetTypes: response.results.map((t) => ({ id: t.id, name: t.name })),
-    });
+    };
+    return { text: JSON.stringify(structured), structured };
 
   } catch (error) {
-    return JSON.stringify({
+    const structured = {
+      instance: instance_name,
       error: true,
       message: (error as Error).message,
-      instance: instance_name,
-    });
+    };
+    return { text: JSON.stringify(structured), structured };
   }
 }

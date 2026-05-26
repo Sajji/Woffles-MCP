@@ -1,3 +1,5 @@
+import { ok, okPretty } from '../utils/tool-result.js';
+import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
 
@@ -28,9 +30,14 @@ export const removeDataClassificationMatchTool = {
     },
     required: ['instance_name', 'classification_match_id'],
   },
+  outputSchema: {
+    type: 'object',
+    description: 'Structured result payload. Fields vary by tool; see inline JSON for details.',
+    additionalProperties: true,
+  },
 };
 
-export async function executeRemoveDataClassificationMatch(args: any): Promise<string> {
+export async function executeRemoveDataClassificationMatch(args: any): Promise<ToolResult> {
   const { instance_name, classification_match_id, confirm = false } = args;
 
   try {
@@ -53,13 +60,13 @@ export async function executeRemoveDataClassificationMatch(args: any): Promise<s
     }
 
     if (!confirm) {
-      return JSON.stringify({
+      return okPretty({
         mode: 'PREVIEW — no changes made',
         instance: instance_name,
         classificationMatchId: classification_match_id,
         matchDetails: matchDetails || '(details not available — the match will be deleted if it exists)',
         instructions: 'To delete this classification match, call this tool again with confirm=true.',
-      }, null, 2);
+      });
     }
 
     // DELETE the match
@@ -79,15 +86,15 @@ export async function executeRemoveDataClassificationMatch(args: any): Promise<s
       throw new Error(`DELETE failed: ${response.status} ${response.statusText}${errorBody ? ` - ${errorBody}` : ''}`);
     }
 
-    return JSON.stringify({
+    return okPretty({
       mode: 'DELETED',
       instance: instance_name,
       classificationMatchId: classification_match_id,
       success: true,
-    }, null, 2);
+    });
 
   } catch (error) {
-    return JSON.stringify({
+    return ok({
       error: true,
       message: (error as Error).message,
       instance: instance_name,

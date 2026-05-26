@@ -1,4 +1,5 @@
 import { isReadOnly } from '../config.js';
+import type { ToolResult } from '../types.js';
 import { getAssetTypesTool, executeGetAssetTypes } from './get-asset-types.js';
 import { queryAssetsTool, executeQueryAssets } from './query-assets.js';
 import { searchAssetsByNameTool, executeSearchAssetsByName } from './search-assets-by-name.js';
@@ -132,8 +133,10 @@ export const tools = isReadOnly()
   ? allTools.filter(t => !WRITE_TOOL_NAMES.includes(t.name))
   : allTools;
 
-// Tool executor map
-export const toolExecutors: Record<string, (args: any) => Promise<string>> = {
+// Tool executor map. Executors may return either:
+//   - a plain `string` (legacy: human-readable text only), or
+//   - a `ToolResult` ({ text, structured }) to also emit MCP `structuredContent`.
+export const toolExecutors: Record<string, (args: any) => Promise<string | ToolResult>> = {
   get_asset_types: executeGetAssetTypes,
   query_assets: executeQueryAssets,
   search_assets_by_name: executeSearchAssetsByName,
@@ -188,8 +191,10 @@ export const toolExecutors: Record<string, (args: any) => Promise<string>> = {
   create_relation_type: executeCreateRelationType,
 };
 
-// Helper function to execute a tool by name
-export async function executeTool(toolName: string, args: any): Promise<string> {
+// Helper function to execute a tool by name. Always returns a normalized
+// `ToolResult` regardless of whether the underlying executor returned a
+// string (legacy) or a `ToolResult` (refactored tool).
+export async function executeTool(toolName: string, args: any): Promise<ToolResult> {
   if (isReadOnly() && WRITE_TOOL_NAMES.includes(toolName)) {
     throw new Error(
       `Tool "${toolName}" is disabled: this server is running in read-only mode. ` +
@@ -198,10 +203,11 @@ export async function executeTool(toolName: string, args: any): Promise<string> 
   }
 
   const executor = toolExecutors[toolName];
-  
+
   if (!executor) {
     throw new Error(`Unknown tool: ${toolName}`);
   }
-  
-  return await executor(args);
+
+  const result = await executor(args);
+  return typeof result === 'string' ? { text: result } : result;
 }

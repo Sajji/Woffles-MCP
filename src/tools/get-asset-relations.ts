@@ -1,5 +1,7 @@
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
+import { ok, okPretty } from '../utils/tool-result.js';
+import type { ToolResult } from '../types.js';
 
 export const getAssetRelationsTool = {
   name: 'get_asset_relations',
@@ -33,6 +35,11 @@ export const getAssetRelationsTool = {
       },
     },
     required: ['instance_name', 'asset_id'],
+  },
+  outputSchema: {
+    type: 'object',
+    description: 'Structured result payload. Fields vary by tool; see inline JSON for details.',
+    additionalProperties: true,
   },
 };
 
@@ -92,7 +99,7 @@ function buildRelationsQuery(assetId: string, limit: number, offset: number): st
   `;
 }
 
-export async function executeGetAssetRelations(args: any): Promise<string> {
+export async function executeGetAssetRelations(args: any): Promise<ToolResult> {
   const { instance_name, asset_id, relation_limit = 100, relation_offset = 0 } = args;
 
   try {
@@ -105,7 +112,7 @@ export async function executeGetAssetRelations(args: any): Promise<string> {
     const asset = response.data.assets[0];
 
     if (!asset) {
-      return JSON.stringify({
+      return ok({
         error: true,
         message: `Asset with ID "${asset_id}" not found.`,
         instance: instance_name,
@@ -122,7 +129,7 @@ export async function executeGetAssetRelations(args: any): Promise<string> {
     const outgoing = (asset.outgoingRelations || []).map(enrichRelation);
     const incoming = (asset.incomingRelations || []).map(enrichRelation);
 
-    return JSON.stringify({
+    return ok({
       instance: instance_name,
       assetId: asset_id,
       assetUrl: client.assetUrl(asset_id),
@@ -143,7 +150,7 @@ export async function executeGetAssetRelations(args: any): Promise<string> {
     });
 
   } catch (error) {
-    return JSON.stringify({
+    return ok({
       error: true,
       message: (error as Error).message,
       instance: instance_name,

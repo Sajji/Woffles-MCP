@@ -1,3 +1,5 @@
+import { ok, okPretty } from '../utils/tool-result.js';
+import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
 
@@ -37,9 +39,14 @@ export const updateAssetAttributeTool = {
     },
     required: ['instance_name', 'asset_id', 'attribute_type_id', 'new_value'],
   },
+  outputSchema: {
+    type: 'object',
+    description: 'Structured result payload. Fields vary by tool; see inline JSON for details.',
+    additionalProperties: true,
+  },
 };
 
-export async function executeUpdateAssetAttribute(args: any): Promise<string> {
+export async function executeUpdateAssetAttribute(args: any): Promise<ToolResult> {
   const { instance_name, asset_id, attribute_type_id, new_value, confirm = false } = args;
 
   try {
@@ -88,7 +95,7 @@ export async function executeUpdateAssetAttribute(args: any): Promise<string> {
         proposedValue: new_value,
         instructions: 'To apply this change, call this tool again with confirm=true.',
       };
-      return JSON.stringify(preview, null, 2);
+      return okPretty(preview);
     }
 
     // Confirm mode — apply the change
@@ -130,9 +137,9 @@ export async function executeUpdateAssetAttribute(args: any): Promise<string> {
       attributeId: result.id || existingAttr?.id,
     };
 
-    return JSON.stringify(output, null, 2);
+    return okPretty(output);
   } catch (error) {
-    return JSON.stringify({
+    return ok({
       error: `Failed to update asset attribute: ${(error as Error).message}`,
     });
   }

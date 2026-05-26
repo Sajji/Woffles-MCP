@@ -1,5 +1,7 @@
 import { getInstance } from '../config.js';
 import { CollibraClient, enrichResponseUrls } from '../utils/collibra-client.js';
+import { ok, okPretty } from '../utils/tool-result.js';
+import type { ToolResult } from '../types.js';
 
 export const getAssetResponsibilitiesTool = {
   name: 'get_asset_responsibilities',
@@ -31,9 +33,14 @@ export const getAssetResponsibilitiesTool = {
     },
     required: ['instance_name', 'asset_id'],
   },
+  outputSchema: {
+    type: 'object',
+    description: 'Structured result payload. Fields vary by tool; see inline JSON for details.',
+    additionalProperties: true,
+  },
 };
 
-export async function executeGetAssetResponsibilities(args: any): Promise<string> {
+export async function executeGetAssetResponsibilities(args: any): Promise<ToolResult> {
   const { instance_name, asset_id, include_inherited = true, role_name } = args;
 
   try {
@@ -210,7 +217,7 @@ export async function executeGetAssetResponsibilities(args: any): Promise<string
     });
 
     // Return comprehensive responsibility analysis
-    return JSON.stringify(enrichResponseUrls(instance.baseUrl, {
+    return ok(enrichResponseUrls(instance.baseUrl, {
       instance: instance_name,
       asset: {
         id: asset_id,
@@ -246,7 +253,7 @@ export async function executeGetAssetResponsibilities(args: any): Promise<string
     }));
 
   } catch (error) {
-    return JSON.stringify({
+    return ok({
       error: true,
       message: (error as Error).message,
       instance: instance_name,

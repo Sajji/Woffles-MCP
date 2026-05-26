@@ -1,3 +1,5 @@
+import { ok, okPretty } from '../utils/tool-result.js';
+import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
 
@@ -34,6 +36,11 @@ export const getApiCatalogTool = {
       },
     },
     required: ['instance_name'],
+  },
+  outputSchema: {
+    type: 'object',
+    description: 'Structured result payload. Fields vary by tool; see inline JSON for details.',
+    additionalProperties: true,
   },
 };
 
@@ -172,7 +179,7 @@ function shapeApi(apiAsset: any, includeOperations: boolean, baseUrl: string) {
 }
 
 // ── Tool executor ─────────────────────────────────────────────────────────────
-export async function executeGetApiCatalog(args: any): Promise<string> {
+export async function executeGetApiCatalog(args: any): Promise<ToolResult> {
   const { instance_name, api_name, include_operations = true, limit = 50 } = args;
 
   try {
@@ -191,7 +198,7 @@ export async function executeGetApiCatalog(args: any): Promise<string> {
           sv + v.endpoints.reduce((se: number, e: any) => se + (e.operations?.length ?? 0), 0), 0), 0)
       : null;
 
-    return JSON.stringify({
+    return okPretty({
       instance:          instance_name,
       filter:            api_name ?? null,
       include_operations,
@@ -202,10 +209,10 @@ export async function executeGetApiCatalog(args: any): Promise<string> {
         ...(totalOperations != null ? { operations: totalOperations } : {}),
       },
       apis,
-    }, null, 2);
+    });
 
   } catch (error) {
-    return JSON.stringify({
+    return ok({
       error:    true,
       message:  (error as Error).message,
       instance: instance_name,

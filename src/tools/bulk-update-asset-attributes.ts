@@ -1,3 +1,5 @@
+import { ok, okPretty } from '../utils/tool-result.js';
+import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
 
@@ -49,13 +51,18 @@ export const bulkUpdateAssetAttributesTool = {
     },
     required: ['instance_name', 'attribute_type_id', 'updates'],
   },
+  outputSchema: {
+    type: 'object',
+    description: 'Structured result payload. Fields vary by tool; see inline JSON for details.',
+    additionalProperties: true,
+  },
 };
 
-export async function executeBulkUpdateAssetAttributes(args: any): Promise<string> {
+export async function executeBulkUpdateAssetAttributes(args: any): Promise<ToolResult> {
   const { instance_name, attribute_type_id, updates, confirm = false } = args;
 
   if (!Array.isArray(updates) || updates.length === 0) {
-    return JSON.stringify({ error: 'updates must be a non-empty array of { asset_id, new_value }.' });
+    return ok({ error: 'updates must be a non-empty array of { asset_id, new_value }.' });
   }
 
   try {
@@ -114,7 +121,7 @@ export async function executeBulkUpdateAssetAttributes(args: any): Promise<strin
         })),
         instructions: 'To apply all changes, call this tool again with confirm=true.',
       };
-      return JSON.stringify(preview, null, 2);
+      return okPretty(preview);
     }
 
     // Confirm mode — apply via bulk endpoints
@@ -177,9 +184,9 @@ export async function executeBulkUpdateAssetAttributes(args: any): Promise<strin
       }),
     };
 
-    return JSON.stringify(output, null, 2);
+    return okPretty(output);
   } catch (error) {
-    return JSON.stringify({
+    return ok({
       error: `Failed to bulk update attributes: ${(error as Error).message}`,
     });
   }

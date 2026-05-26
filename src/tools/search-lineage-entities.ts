@@ -1,3 +1,5 @@
+import { ok, okPretty } from '../utils/tool-result.js';
+import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
 
@@ -40,9 +42,14 @@ export const searchLineageEntitiesTool = {
     },
     required: ['instance_name'],
   },
+  outputSchema: {
+    type: 'object',
+    description: 'Structured result payload. Fields vary by tool; see inline JSON for details.',
+    additionalProperties: true,
+  },
 };
 
-export async function executeSearchLineageEntities(args: any): Promise<string> {
+export async function executeSearchLineageEntities(args: any): Promise<ToolResult> {
   const { instance_name, name_contains, entity_type, dgc_asset_id, cursor, limit = 20 } = args;
 
   try {
@@ -60,7 +67,7 @@ export async function executeSearchLineageEntities(args: any): Promise<string> {
     const endpoint = `${LINEAGE_BASE}/entities${queryString ? '?' + queryString : ''}`;
     const response = await client.restCall<any>(endpoint);
 
-    return JSON.stringify({
+    return ok({
       instance: instance_name,
       searchParams: {
         nameContains: name_contains || null,
@@ -71,7 +78,7 @@ export async function executeSearchLineageEntities(args: any): Promise<string> {
     });
 
   } catch (error) {
-    return JSON.stringify({
+    return ok({
       error: true,
       message: (error as Error).message,
       instance: instance_name,

@@ -1,3 +1,5 @@
+import { ok, okPretty } from '../utils/tool-result.js';
+import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
 
@@ -28,6 +30,11 @@ export const getTableSemanticsTool = {
     },
     required: ['instance_name', 'table_asset_id'],
   },
+  outputSchema: {
+    type: 'object',
+    description: 'Structured result payload. Fields vary by tool; see inline JSON for details.',
+    additionalProperties: true,
+  },
 };
 
 async function fetchRelations(
@@ -51,7 +58,7 @@ async function fetchRelations(
   }
 }
 
-export async function executeGetTableSemantics(args: any): Promise<string> {
+export async function executeGetTableSemantics(args: any): Promise<ToolResult> {
   const { instance_name, table_asset_id } = args;
 
   try {
@@ -68,7 +75,7 @@ export async function executeGetTableSemantics(args: any): Promise<string> {
     }));
 
     if (columns.length === 0) {
-      return JSON.stringify({
+      return ok({
         instance: instance_name,
         tableId: table_asset_id,
         tableUrl: client.assetUrl(table_asset_id),
@@ -146,7 +153,7 @@ export async function executeGetTableSemantics(args: any): Promise<string> {
       }),
     );
 
-    return JSON.stringify({
+    return ok({
       instance: instance_name,
       tableId: table_asset_id,
       tableUrl: client.assetUrl(table_asset_id),
@@ -155,7 +162,7 @@ export async function executeGetTableSemantics(args: any): Promise<string> {
     });
 
   } catch (error) {
-    return JSON.stringify({
+    return ok({
       error: true,
       message: (error as Error).message,
       instance: instance_name,

@@ -19,6 +19,7 @@ A [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server for Co
 - **Two-step safety for writes** — all update/create/delete tools preview changes before applying them (when read-only mode is off)
 - **Clickable URLs** — all responses include direct links to assets, domains, and communities in Collibra
 - **AI Use Case assessments** — retrieve assessments linked to any AI Use Case asset by its UUID; read full Q&A content, create new assessments, and submit them
+- **Structured tool output** — every tool ships an MCP `outputSchema` and returns `structuredContent` alongside the human-readable text, so structured-aware clients can parse responses directly without re-parsing JSON out of the text block
 
 ## Available Tools
 
@@ -270,7 +271,8 @@ Set `"readOnly": false` only when you personally need to make changes, then swit
 │   │   └── bulk-update-asset-attributes.ts       # Bulk attribute update
 │   │   # (tool registry index.ts registers all 52 tools)
 │   └── utils/
-│       └── collibra-client.ts            # REST + GraphQL client with URL helpers
+│       ├── collibra-client.ts            # REST + GraphQL client with URL helpers
+│       └── tool-result.ts                # `ok` / `okPretty` helpers for structuredContent
 ├── config.example.json                   # Configuration template
 ├── package.json
 └── tsconfig.json

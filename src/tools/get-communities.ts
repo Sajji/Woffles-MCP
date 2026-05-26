@@ -1,5 +1,7 @@
 import { getInstance } from '../config.js';
 import { CollibraClient, enrichResponseUrls } from '../utils/collibra-client.js';
+import { ok, okPretty } from '../utils/tool-result.js';
+import type { ToolResult } from '../types.js';
 
 export const getCommunitiesTool = {
   name: 'get_communities',
@@ -34,6 +36,11 @@ export const getCommunitiesTool = {
     },
     required: ['instance_name'],
   },
+  outputSchema: {
+    type: 'object',
+    description: 'Structured result payload. Fields vary by tool; see inline JSON for details.',
+    additionalProperties: true,
+  },
 };
 
 interface Community {
@@ -47,7 +54,7 @@ interface Community {
   [key: string]: any;
 }
 
-export async function executeGetCommunities(args: any): Promise<string> {
+export async function executeGetCommunities(args: any): Promise<ToolResult> {
   const { instance_name, parent_id, name, show_hierarchy = true, limit = 1000 } = args;
 
   try {
@@ -140,10 +147,10 @@ export async function executeGetCommunities(args: any): Promise<string> {
       result.communities = communities;
     }
 
-    return JSON.stringify(enrichResponseUrls(instance.baseUrl, result));
+    return ok(enrichResponseUrls(instance.baseUrl, result));
 
   } catch (error) {
-    return JSON.stringify({
+    return ok({
       error: true,
       message: (error as Error).message,
       instance: instance_name,

@@ -36,12 +36,19 @@ Once connected to an MCP client, try these prompts:
 
 ## What's Available
 
-The server exposes 13 tools covering:
+The server exposes **52 tools** covering:
 
-- **Discovery** — asset types, communities, domains
-- **Search** — by name, by GraphQL query, by ID
-- **Governance** — relations, responsibilities (with inheritance + user name resolution)
-- **Metadata** — browse attribute types by name or kind
-- **Updates** — update any attribute (description, boolean flags, etc.) on single or multiple assets with preview/confirm safety
+- **Discovery** — asset types, statuses, communities, domains, domain types, relation types, attribute types, REST API catalog
+- **Search & retrieval** — POST search, GraphQL queries, full asset details
+- **Governance** — relations, responsibilities (with inheritance + full user name resolution)
+- **Semantic traversal** — Table ↔ Column ↔ Data Attribute ↔ Business Term ↔ Measure
+- **Technical lineage** — upstream/downstream entities and transformation SQL/script bodies
+- **Asset & operating-model creation** — assets, business terms, communities, domains, relations, asset types, relation types
+- **Data classification** — search data classes; add/remove/search classification matches
+- **Data contracts** — list, pull, push manifests
+- **Assessments** — list/get/create/update/retake assessments and templates (Collibra Assessments API)
+- **Write operations** — single + bulk attribute / description updates with preview→confirm safety
 
-See [README.md](README.md) for the full tool list or [INSTALL.md](INSTALL.md) for detailed setup and MCP client configuration.
+Set `"readOnly": true` in `config.json` (the default) to hide all 17 write tools from the AI. Set it to `false` to enable them.
+
+See [README.md](README.md) for the full tool list, [docs/TOOLS_REFERENCE.md](docs/TOOLS_REFERENCE.md) for per-parameter details, and [INSTALL.md](INSTALL.md) for MCP-client setup.

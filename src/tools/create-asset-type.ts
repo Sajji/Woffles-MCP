@@ -1,3 +1,5 @@
+import { ok, okPretty } from '../utils/tool-result.js';
+import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
 
@@ -42,9 +44,14 @@ export const createAssetTypeTool = {
     },
     required: ['instance_name', 'name'],
   },
+  outputSchema: {
+    type: 'object',
+    description: 'Structured result payload. Fields vary by tool; see inline JSON for details.',
+    additionalProperties: true,
+  },
 };
 
-export async function executeCreateAssetType(args: any): Promise<string> {
+export async function executeCreateAssetType(args: any): Promise<ToolResult> {
   const { instance_name, name, description, parent_id, color, symbol_type } = args;
 
   try {
@@ -63,7 +70,7 @@ export async function executeCreateAssetType(args: any): Promise<string> {
     const match = (existing.results || []).find((t: any) => t.name === name);
 
     if (match) {
-      return JSON.stringify({
+      return okPretty({
         action: 'existing',
         assetType: {
           id: match.id,
@@ -73,7 +80,7 @@ export async function executeCreateAssetType(args: any): Promise<string> {
           parent: match.parent ? { id: match.parent.id, name: match.parent.name } : null,
         },
         message: `Asset type "${name}" already exists — no changes made.`,
-      }, null, 2);
+      });
     }
 
     // ── Create ────────────────────────────────────────────────────────
@@ -85,7 +92,7 @@ export async function executeCreateAssetType(args: any): Promise<string> {
 
     const created = await client.restCallWithBody<any>('/rest/2.0/assetTypes', 'POST', body);
 
-    return JSON.stringify({
+    return okPretty({
       action: 'created',
       assetType: {
         id: created.id,
@@ -94,10 +101,10 @@ export async function executeCreateAssetType(args: any): Promise<string> {
         publicId: created.publicId || null,
         parent: created.parent ? { id: created.parent.id, name: created.parent.name } : null,
       },
-    }, null, 2);
+    });
 
   } catch (error) {
-    return JSON.stringify({
+    return ok({
       error: true,
       message: (error as Error).message,
       instance: instance_name,

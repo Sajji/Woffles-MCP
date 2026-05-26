@@ -1,5 +1,7 @@
 import { getInstance } from '../config.js';
 import { CollibraClient, enrichResponseUrls } from '../utils/collibra-client.js';
+import { ok, okPretty } from '../utils/tool-result.js';
+import type { ToolResult } from '../types.js';
 
 export const getDomainsTool = {
   name: 'get_domains',
@@ -28,9 +30,14 @@ export const getDomainsTool = {
     },
     required: ['instance_name'],
   },
+  outputSchema: {
+    type: 'object',
+    description: 'Structured result payload. Fields vary by tool; see inline JSON for details.',
+    additionalProperties: true,
+  },
 };
 
-export async function executeGetDomains(args: any): Promise<string> {
+export async function executeGetDomains(args: any): Promise<ToolResult> {
   const { instance_name, community_id, name, limit = 1000 } = args;
 
   try {
@@ -71,7 +78,7 @@ export async function executeGetDomains(args: any): Promise<string> {
     });
 
     // Return formatted response
-    return JSON.stringify(enrichResponseUrls(instance.baseUrl, {
+    return ok(enrichResponseUrls(instance.baseUrl, {
       instance: instance_name,
       filters: {
         communityId: community_id || 'All communities',
@@ -84,7 +91,7 @@ export async function executeGetDomains(args: any): Promise<string> {
     }));
 
   } catch (error) {
-    return JSON.stringify({
+    return ok({
       error: true,
       message: (error as Error).message,
       instance: instance_name,

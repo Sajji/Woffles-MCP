@@ -1,3 +1,5 @@
+import { ok, okPretty } from '../utils/tool-result.js';
+import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
 
@@ -50,9 +52,14 @@ export const addBusinessTermTool = {
     },
     required: ['instance_name', 'name', 'domain_id'],
   },
+  outputSchema: {
+    type: 'object',
+    description: 'Structured result payload. Fields vary by tool; see inline JSON for details.',
+    additionalProperties: true,
+  },
 };
 
-export async function executeAddBusinessTerm(args: any): Promise<string> {
+export async function executeAddBusinessTerm(args: any): Promise<ToolResult> {
   const { instance_name, name, domain_id, definition, attributes } = args;
 
   try {
@@ -70,7 +77,7 @@ export async function executeAddBusinessTerm(args: any): Promise<string> {
     }
 
     if (!businessTermTypeId) {
-      return JSON.stringify({
+      return ok({
         error: true,
         message: `Could not resolve the "${BUSINESS_TERM_TYPE_NAME}" asset type. Use get_asset_types to verify it exists in this instance.`,
         instance: instance_name,
@@ -138,10 +145,10 @@ export async function executeAddBusinessTerm(args: any): Promise<string> {
         'Business term was created successfully but some attributes could not be set. See attributeErrors for details.';
     }
 
-    return JSON.stringify(output, null, 2);
+    return okPretty(output);
 
   } catch (error) {
-    return JSON.stringify({
+    return ok({
       error: true,
       message: (error as Error).message,
       instance: instance_name,

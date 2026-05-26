@@ -1,3 +1,5 @@
+import { ok, okPretty } from '../utils/tool-result.js';
+import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
 
@@ -41,9 +43,14 @@ export const createRelationTypeTool = {
     },
     required: ['instance_name', 'role', 'corole', 'source_asset_type_id', 'target_asset_type_id'],
   },
+  outputSchema: {
+    type: 'object',
+    description: 'Structured result payload. Fields vary by tool; see inline JSON for details.',
+    additionalProperties: true,
+  },
 };
 
-export async function executeCreateRelationType(args: any): Promise<string> {
+export async function executeCreateRelationType(args: any): Promise<ToolResult> {
   const { instance_name, role, corole, source_asset_type_id, target_asset_type_id, description } = args;
 
   try {
@@ -68,7 +75,7 @@ export async function executeCreateRelationType(args: any): Promise<string> {
     );
 
     if (match) {
-      return JSON.stringify({
+      return okPretty({
         action: 'existing',
         relationType: {
           id: match.id,
@@ -78,7 +85,7 @@ export async function executeCreateRelationType(args: any): Promise<string> {
           targetType: match.targetType ? { id: match.targetType.id, name: match.targetType.name } : null,
         },
         message: `Relation type "${role} / ${corole}" already exists — no changes made.`,
-      }, null, 2);
+      });
     }
 
     // ── Create ────────────────────────────────────────────────────────
@@ -92,7 +99,7 @@ export async function executeCreateRelationType(args: any): Promise<string> {
 
     const created = await client.restCallWithBody<any>('/rest/2.0/relationTypes', 'POST', body);
 
-    return JSON.stringify({
+    return okPretty({
       action: 'created',
       relationType: {
         id: created.id,
@@ -101,10 +108,10 @@ export async function executeCreateRelationType(args: any): Promise<string> {
         sourceType: created.sourceType ? { id: created.sourceType.id, name: created.sourceType.name } : null,
         targetType: created.targetType ? { id: created.targetType.id, name: created.targetType.name } : null,
       },
-    }, null, 2);
+    });
 
   } catch (error) {
-    return JSON.stringify({
+    return ok({
       error: true,
       message: (error as Error).message,
       instance: instance_name,

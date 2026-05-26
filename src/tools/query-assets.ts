@@ -1,5 +1,6 @@
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
+import type { ToolResult } from '../types.js';
 
 export const queryAssetsTool = {
   name: 'query_assets',
@@ -55,6 +56,29 @@ export const queryAssetsTool = {
       },
     },
     required: ['instance_name'],
+  },
+  outputSchema: {
+    type: 'object',
+    properties: {
+      instance: { type: 'string' },
+      assetType: { type: 'string', description: 'Asset type filter applied, or "All".' },
+      detailLevel: { type: 'string', enum: ['summary', 'full'] },
+      count: { type: 'number', description: 'Number of assets returned on this page.' },
+      offset: { type: 'number' },
+      has_more: { type: 'boolean', description: 'True if another page is available.' },
+      next_offset: {
+        type: ['number', 'null'],
+        description: 'Offset to pass on the next call when has_more is true.',
+      },
+      assets: {
+        type: 'array',
+        description: 'One page of assets; shape depends on detailLevel.',
+        items: { type: 'object', additionalProperties: true },
+      },
+      error: { type: 'boolean' },
+      message: { type: 'string' },
+    },
+    required: ['instance'],
   },
 };
 
@@ -136,7 +160,7 @@ function buildFullQuery(whereClause: string, limit: number, offset: number): str
   `;
 }
 
-export async function executeQueryAssets(args: any): Promise<string> {
+export async function executeQueryAssets(args: any): Promise<ToolResult> {
   const { instance_name, asset_type_name, detail_level = 'summary', offset = 0 } = args;
   // Smart defaults: summary payloads are tiny per asset so 5000 is safe;
   // full payloads carry all attributes so keep pages small.
@@ -165,7 +189,7 @@ export async function executeQueryAssets(args: any): Promise<string> {
     const has_more = assets.length === limit;
     const next_offset = offset + assets.length;
 
-    return JSON.stringify({
+    const structured = {
       instance: instance_name,
       assetType: asset_type_name || 'All',
       detailLevel: detail_level,
@@ -174,13 +198,15 @@ export async function executeQueryAssets(args: any): Promise<string> {
       has_more,
       next_offset: has_more ? next_offset : null,
       assets,
-    });
+    };
+    return { text: JSON.stringify(structured), structured };
   } catch (error) {
-    return JSON.stringify({
-      error: true,
-      message: (error as Error).message,
+    const structured = {
       instance: instance_name,
       assetType: asset_type_name,
-    });
+      error: true,
+      message: (error as Error).message,
+    };
+    return { text: JSON.stringify(structured), structured };
   }
 }
