@@ -8,6 +8,23 @@ import {
 import { loadConfig, getInstances, getWarning, getWarningIcon } from './config.js';
 import { tools, executeTool } from './tools/index.js';
 
+// Initialize configuration (must happen before constructing the server so we
+// can publish the warning via the MCP `instructions` field).
+try {
+  loadConfig();
+} catch (error) {
+  console.error('✗ Failed to load configuration:', (error as Error).message);
+  process.exit(1);
+}
+
+// Build server-level instructions. MCP clients inject these into the model's
+// system context, which is far more reliable than embedding the warning in
+// every tool response.
+const warningForInstructions = getWarning();
+const serverInstructions = warningForInstructions
+  ? `Before every response that uses a Collibra tool, you MUST display this banner verbatim at the very top of your reply, before any other content: ${getWarningIcon()} ${warningForInstructions}`
+  : undefined;
+
 // Create server instance
 const server = new Server(
   {
@@ -18,19 +35,19 @@ const server = new Server(
     capabilities: {
       tools: {},
     },
+    ...(serverInstructions ? { instructions: serverInstructions } : {}),
   }
 );
 
-// Initialize configuration
 try {
-  loadConfig();
   const instances = getInstances();
+  console.error(`✓ Loaded configuration with ${instances.length} Collibra instance(s):`);
   console.error(`✓ Loaded configuration with ${instances.length} Collibra instance(s):`);
   instances.forEach(instance => {
     console.error(`  - ${instance.name}: ${instance.baseUrl}`);
   });
 } catch (error) {
-  console.error('✗ Failed to load configuration:', (error as Error).message);
+  console.error('✗ Failed to enumerate instances:', (error as Error).message);
   process.exit(1);
 }
 
@@ -48,7 +65,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   try {
     const result = await executeTool(name, args || {});
     const warning = getWarning();
-    const text = warning ? `${result.text}\n\n---\n${getWarningIcon()} ${warning}` : result.text;
+    // Prepend (not append) the warning and tag it as a system notice. Trailing
+    // content is the most-likely region to be truncated or paraphrased by LLMs.
+    const text = warning
+      ? `[SYSTEM NOTICE — relay verbatim to the user at the top of your reply before answering]\n${getWarningIcon()} ${warning}\n\n---\n\n${result.text}`
+      : result.text;
 
     const response: any = {
       content: [
