@@ -1,0 +1,15 @@
+{
+	"servers": {
+		"collibra": {
+			"type": "stdio",
+			"command": "node",
+			"args": [
+				"dist/index.js"
+			],
+			"cwd": "${workspaceFolder}",
+			"env": {
+				"COLLIBRA_CONFIG_PATH": "${workspaceFolder}/config.json"
+			}
+		}
+	}
+}

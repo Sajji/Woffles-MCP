@@ -1,0 +1,17 @@
+{
+  "readOnly": true,
+  "instances": [
+    {
+      "name": "Production",
+      "baseUrl": "https://your-instance.collibra.com",
+      "username": "your-username",
+      "password": "your-password"
+    },
+    {
+      "name": "Sandbox",
+      "baseUrl": "https://your-sandbox-instance.collibra.com",
+      "username": "your-username",
+      "password": "your-password"
+    }   
+  ]
+}
