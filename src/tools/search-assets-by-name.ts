@@ -1,5 +1,6 @@
 import { getInstance } from '../config.js';
 import { CollibraClient, enrichResponseUrls } from '../utils/collibra-client.js';
+import { okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 
 export const searchAssetsByNameTool = {
@@ -186,8 +187,11 @@ export async function executeSearchAssetsByName(args: any): Promise<ToolResult> 
       returned: response.results?.length || 0,
       offset,
       results: response.results || [],
-    });
-    return { text: JSON.stringify(structured), structured };
+    }) as Record<string, unknown>;
+    return okWithNext(structured, [
+      { tool: 'get_asset_by_id', args: { instance_name, asset_id: '<id from results>' }, why: 'Fetch full details for a search hit.' },
+      { tool: 'query_assets', args: { instance_name, asset_type_name: '<type>' }, why: 'Browse all assets of a particular type.' },
+    ]);
 
   } catch (error) {
     const structured = {

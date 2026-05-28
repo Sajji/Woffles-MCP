@@ -1,6 +1,6 @@
 import { getInstance } from '../config.js';
 import { CollibraClient, enrichResponseUrls } from '../utils/collibra-client.js';
-import { ok, okPretty } from '../utils/tool-result.js';
+import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 
 export const getCommunitiesTool = {
@@ -147,7 +147,10 @@ export async function executeGetCommunities(args: any): Promise<ToolResult> {
       result.communities = communities;
     }
 
-    return ok(enrichResponseUrls(instance.baseUrl, result));
+    return okWithNext(enrichResponseUrls(instance.baseUrl, result) as Record<string, unknown>, [
+      { tool: 'get_domains', args: { instance_name, community_id: '<pick from communities>' }, why: 'List domains under a chosen community.' },
+      { tool: 'create_domain', args: { instance_name, name: '<domain name>', community_id: '<pick from communities>', type_id: '<from get_domain_types>' }, why: 'Create a domain inside a community.' },
+    ]);
 
   } catch (error) {
     return ok({

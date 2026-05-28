@@ -1,4 +1,4 @@
-import { ok, okPretty } from '../utils/tool-result.js';
+import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
@@ -65,7 +65,7 @@ export async function executeSearchDataClass(args: any): Promise<ToolResult> {
     const endpoint = `/rest/classification/v1/dataClasses?${params.toString()}`;
     const response = await client.restCall<any>(endpoint);
 
-    return okPretty({
+    return okWithNext({
       instance: instance_name,
       filters: {
         name: name || null,
@@ -88,7 +88,10 @@ export async function executeSearchDataClass(args: any): Promise<ToolResult> {
         hasRules: Array.isArray(dc.rules) && dc.rules.length > 0,
         examples: dc.examples,
       })),
-    });
+    }, [
+      { tool: 'add_data_classification_match', args: { instance_name, asset_id: '<column asset id>', classification_id: '<id from results>' }, why: 'Classify an asset with one of these data classes.' },
+      { tool: 'search_data_classification_match', args: { instance_name, classification_ids: ['<id from results>'] }, why: 'See existing matches for a data class.' },
+    ], true);
 
   } catch (error) {
     return ok({

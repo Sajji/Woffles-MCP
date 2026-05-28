@@ -1,4 +1,4 @@
-import { ok, okPretty } from '../utils/tool-result.js';
+import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
@@ -44,11 +44,13 @@ export async function executeListAssessmentAttachments(args: any): Promise<ToolR
     const endpoint = `${ASSESSMENTS_BASE}/assessments/${encodeURIComponent(assessment_id)}/attachments`;
     const response = await client.restCall<any>(endpoint);
 
-    return ok({
+    return okWithNext({
       instance: instance_name,
       assessment_id,
       attachments: response,
-    });
+    }, [
+      { tool: 'get_assessment', args: { instance_name, assessment_id }, why: 'Fetch the parent assessment record.' },
+    ]);
   } catch (error) {
     return ok({
       error: true,

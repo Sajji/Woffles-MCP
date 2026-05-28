@@ -1,4 +1,4 @@
-import { ok, okPretty } from '../utils/tool-result.js';
+import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
@@ -42,11 +42,15 @@ export async function executeGetLineageEntity(args: any): Promise<ToolResult> {
     const endpoint = `${LINEAGE_BASE}/entities/${encodeURIComponent(entity_id)}`;
     const response = await client.restCall<any>(endpoint);
 
-    return ok({
+    return okWithNext({
       instance: instance_name,
       entityId: entity_id,
       ...response,
-    });
+    }, [
+      { tool: 'get_lineage_downstream', args: { instance_name, entity_id }, why: 'Walk the lineage graph downstream from this entity.' },
+      { tool: 'get_lineage_upstream', args: { instance_name, entity_id }, why: 'Walk the lineage graph upstream from this entity.' },
+      { tool: 'get_asset_by_id', args: { instance_name, asset_id: '<dgcAssetId from response, if present>' }, why: 'Cross over to the catalog asset linked to this lineage entity.' },
+    ]);
 
   } catch (error) {
     return ok({

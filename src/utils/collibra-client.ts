@@ -49,9 +49,11 @@ export class CollibraClient {
   }
 
   /**
-   * Make a REST API call with a request body (POST, PATCH, PUT)
+   * Make a REST API call with a request body (POST, PATCH, PUT, DELETE).
+   * DELETE with a body is required by Collibra's `/.../bulk` endpoints which
+   * accept an array of UUIDs to remove in a single round trip.
    */
-  async restCallWithBody<T>(endpoint: string, method: 'POST' | 'PATCH' | 'PUT', body: any): Promise<T> {
+  async restCallWithBody<T>(endpoint: string, method: 'POST' | 'PATCH' | 'PUT' | 'DELETE', body: any): Promise<T> {
     const url = `${this.instance.baseUrl}${endpoint}`;
 
     try {

@@ -1,4 +1,4 @@
-import { ok, okPretty } from '../utils/tool-result.js';
+import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
@@ -9,7 +9,9 @@ export const createAssetTool = {
     'Create a new asset in Collibra with optional attribute values. ' +
     'Use prepare_create_asset first to resolve the assetTypeId and domainId and check for duplicates. ' +
     'Optionally supply a map of attribute type UUID → value to set attributes at creation time. ' +
-    'Use get_attribute_types to find attribute type UUIDs.',
+    'Use get_attribute_types to find attribute type UUIDs. ' +
+    'For creating 2 or more assets at once, prefer bulk_create_assets — it uses /assets/bulk and /attributes/bulk for far fewer round trips. ' +
+    'Call plan_write_operation if unsure which tool to use.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -82,26 +84,27 @@ export async function executeCreateAsset(args: any): Promise<ToolResult> {
     const assetResp = await client.restCallWithBody<any>('/rest/2.0/assets', 'POST', assetBody);
     const assetId: string = assetResp.id;
 
-    // Create attributes if provided
+    // Create attributes (if any) via a single bulk POST instead of N round trips
     const createdAttributes: any[] = [];
     const attributeErrors: any[] = [];
 
     if (attributes && typeof attributes === 'object') {
       const attrEntries = Object.entries(attributes as Record<string, string>);
-      await Promise.all(
-        attrEntries.map(async ([typeId, value]) => {
-          try {
-            const attrResp = await client.restCallWithBody<any>('/rest/2.0/attributes', 'POST', {
-              assetId,
-              typeId,
-              value,
-            });
-            createdAttributes.push({ typeId, value, attributeId: attrResp.id });
-          } catch (attrErr) {
-            attributeErrors.push({ typeId, value, error: (attrErr as Error).message });
+      if (attrEntries.length > 0) {
+        const bulkBody = attrEntries.map(([typeId, value]) => ({ assetId, typeId, value }));
+        try {
+          const bulkResp = await client.restCallWithBody<any[]>('/rest/2.0/attributes/bulk', 'POST', bulkBody);
+          (bulkResp || []).forEach((attrResp: any, idx: number) => {
+            const [typeId, value] = attrEntries[idx];
+            createdAttributes.push({ typeId, value, attributeId: attrResp?.id });
+          });
+        } catch (bulkErr) {
+          // If the bulk call fails outright, surface the error per requested attribute
+          for (const [typeId, value] of attrEntries) {
+            attributeErrors.push({ typeId, value, error: (bulkErr as Error).message });
           }
-        }),
-      );
+        }
+      }
     }
 
     const output: any = {
@@ -125,7 +128,11 @@ export async function executeCreateAsset(args: any): Promise<ToolResult> {
         'Asset was created successfully but some attributes could not be set. See attributeErrors for details.';
     }
 
-    return okPretty(output);
+    return okWithNext(output, [
+      { tool: 'get_asset_by_id', args: { instance_name, asset_id: assetId }, why: 'Verify the newly created asset.' },
+      { tool: 'update_asset_attribute', args: { instance_name, asset_id: assetId, attribute_type_id: '<from get_attribute_types>', value: '<value>' }, why: 'Add or update attributes on the new asset.' },
+      { tool: 'add_business_term', args: { instance_name, asset_id: assetId, business_term_id: '<from search_assets_by_name>' }, why: 'Link a business term to the new asset.' },
+    ], true);
 
   } catch (error) {
     return ok({

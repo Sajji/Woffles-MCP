@@ -1,4 +1,4 @@
-import { ok, okPretty } from '../utils/tool-result.js';
+import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
@@ -92,7 +92,7 @@ export async function executeCreateAssetType(args: any): Promise<ToolResult> {
 
     const created = await client.restCallWithBody<any>('/rest/2.0/assetTypes', 'POST', body);
 
-    return okPretty({
+    return okWithNext({
       action: 'created',
       assetType: {
         id: created.id,
@@ -101,7 +101,11 @@ export async function executeCreateAssetType(args: any): Promise<ToolResult> {
         publicId: created.publicId || null,
         parent: created.parent ? { id: created.parent.id, name: created.parent.name } : null,
       },
-    });
+    }, [
+      { tool: 'refresh_operating_model', args: { instance_name, force: true }, why: 'Refresh the cached model so the new asset type is discoverable.' },
+      { tool: 'describe_asset_type', args: { instance_name, asset_type_id: created.id }, why: 'Inspect assignable attributes/relations once assignments are configured.' },
+      { tool: 'create_relation_type', args: { instance_name, role: '<role>', corole: '<corole>', source_asset_type_id: created.id, target_asset_type_id: '<target type id>' }, why: 'Connect this type into the graph by adding relation types.' },
+    ], true);
 
   } catch (error) {
     return ok({

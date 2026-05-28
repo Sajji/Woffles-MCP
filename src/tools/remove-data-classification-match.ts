@@ -1,4 +1,4 @@
-import { ok, okPretty } from '../utils/tool-result.js';
+import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
@@ -86,12 +86,14 @@ export async function executeRemoveDataClassificationMatch(args: any): Promise<T
       throw new Error(`DELETE failed: ${response.status} ${response.statusText}${errorBody ? ` - ${errorBody}` : ''}`);
     }
 
-    return okPretty({
+    return okWithNext({
       mode: 'DELETED',
       instance: instance_name,
       classificationMatchId: classification_match_id,
       success: true,
-    });
+    }, [
+      { tool: 'search_data_classification_match', args: { instance_name }, why: 'Verify the match is gone.' },
+    ], true);
 
   } catch (error) {
     return ok({

@@ -52,6 +52,19 @@ import { createDomainTool, executeCreateDomain } from './create-domain.js';
 import { createRelationTool, executeCreateRelation } from './create-relation.js';
 import { createAssetTypeTool, executeCreateAssetType } from './create-asset-type.js';
 import { createRelationTypeTool, executeCreateRelationType } from './create-relation-type.js';
+import { refreshOperatingModelTool, executeRefreshOperatingModel } from './refresh-operating-model.js';
+import { getOperatingModelSummaryTool, executeGetOperatingModelSummary } from './get-operating-model-summary.js';
+import { describeAssetTypeTool, executeDescribeAssetType } from './describe-asset-type.js';
+import { describeDomainTypeTool, executeDescribeDomainType } from './describe-domain-type.js';
+import { resolveModelTermTool, executeResolveModelTerm } from './resolve-model-term.js';
+import { planAssetCreationTool, executePlanAssetCreation } from './plan-asset-creation.js';
+import { findTraversalPathTool, executeFindTraversalPath } from './find-traversal-path.js';
+import { validateAgainstModelTool, executeValidateAgainstModel } from './validate-against-model.js';
+import { bulkCreateAssetsTool, executeBulkCreateAssets } from './bulk-create-assets.js';
+import { bulkCreateRelationsTool, executeBulkCreateRelations } from './bulk-create-relations.js';
+import { bulkDeleteAssetsTool, executeBulkDeleteAssets, bulkDeleteRelationsTool, executeBulkDeleteRelations } from './bulk-delete.js';
+import { editAssetTool, executeEditAsset } from './edit-asset.js';
+import { planWriteOperationTool, executePlanWriteOperation } from './plan-write-operation.js';
 
 // Write tools that are disabled when readOnly mode is enabled
 const WRITE_TOOL_NAMES = [
@@ -60,6 +73,7 @@ const WRITE_TOOL_NAMES = [
   'update_asset_attribute',
   'bulk_update_asset_attributes',
   'create_asset',
+  'bulk_create_assets',
   'add_business_term',
   'add_data_classification_match',
   'remove_data_classification_match',
@@ -70,8 +84,12 @@ const WRITE_TOOL_NAMES = [
   'create_community',
   'create_domain',
   'create_relation',
+  'bulk_create_relations',
   'create_asset_type',
   'create_relation_type',
+  'bulk_delete_assets',
+  'bulk_delete_relations',
+  'edit_asset',
 ];
 
 const allTools = [
@@ -127,6 +145,20 @@ const allTools = [
   createRelationTool,
   createAssetTypeTool,
   createRelationTypeTool,
+  refreshOperatingModelTool,
+  getOperatingModelSummaryTool,
+  describeAssetTypeTool,
+  describeDomainTypeTool,
+  resolveModelTermTool,
+  planAssetCreationTool,
+  findTraversalPathTool,
+  validateAgainstModelTool,
+  bulkCreateAssetsTool,
+  bulkCreateRelationsTool,
+  bulkDeleteAssetsTool,
+  bulkDeleteRelationsTool,
+  editAssetTool,
+  planWriteOperationTool,
 ];
 
 export const tools = isReadOnly()
@@ -189,6 +221,20 @@ export const toolExecutors: Record<string, (args: any) => Promise<string | ToolR
   create_relation: executeCreateRelation,
   create_asset_type: executeCreateAssetType,
   create_relation_type: executeCreateRelationType,
+  refresh_operating_model: executeRefreshOperatingModel,
+  get_operating_model_summary: executeGetOperatingModelSummary,
+  describe_asset_type: executeDescribeAssetType,
+  describe_domain_type: executeDescribeDomainType,
+  resolve_model_term: executeResolveModelTerm,
+  plan_asset_creation: executePlanAssetCreation,
+  find_traversal_path: executeFindTraversalPath,
+  validate_against_model: executeValidateAgainstModel,
+  bulk_create_assets: executeBulkCreateAssets,
+  bulk_create_relations: executeBulkCreateRelations,
+  bulk_delete_assets: executeBulkDeleteAssets,
+  bulk_delete_relations: executeBulkDeleteRelations,
+  edit_asset: executeEditAsset,
+  plan_write_operation: executePlanWriteOperation,
 };
 
 // Helper function to execute a tool by name. Always returns a normalized

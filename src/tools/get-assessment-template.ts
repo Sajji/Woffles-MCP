@@ -1,4 +1,4 @@
-import { ok, okPretty } from '../utils/tool-result.js';
+import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
@@ -45,10 +45,13 @@ export async function executeGetAssessmentTemplate(args: any): Promise<ToolResul
     const endpoint = `${ASSESSMENTS_BASE}/templates/${encodeURIComponent(template_id)}`;
     const response = await client.restCall<any>(endpoint);
 
-    return ok({
+    return okWithNext({
       instance: instance_name,
       ...response,
-    });
+    }, [
+      { tool: 'list_assessments', args: { instance_name, template_id }, why: 'See existing assessments built from this template.' },
+      { tool: 'create_assessment', args: { instance_name, template_id, name: '<assessment name>' }, why: 'Start a new assessment using this template.' },
+    ]);
   } catch (error) {
     return ok({
       error: true,

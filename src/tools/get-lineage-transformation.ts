@@ -1,4 +1,4 @@
-import { ok, okPretty } from '../utils/tool-result.js';
+import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
@@ -42,11 +42,13 @@ export async function executeGetLineageTransformation(args: any): Promise<ToolRe
     const endpoint = `${LINEAGE_BASE}/transformations/${encodeURIComponent(transformation_id)}`;
     const response = await client.restCall<any>(endpoint);
 
-    return okPretty({
+    return okWithNext({
       instance: instance_name,
       transformationId: transformation_id,
       ...response,
-    });
+    }, [
+      { tool: 'get_lineage_entity', args: { instance_name, entity_id: '<source or target entity id>' }, why: 'Inspect the source/target entities of this transformation.' },
+    ], true);
 
   } catch (error) {
     return ok({

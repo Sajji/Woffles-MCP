@@ -1,4 +1,4 @@
-import { ok, okPretty } from '../utils/tool-result.js';
+import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
@@ -47,7 +47,7 @@ export async function executeAddDataClassificationMatch(args: any): Promise<Tool
       { assetId: asset_id, classificationId: classification_id },
     );
 
-    return okPretty({
+    return okWithNext({
       success: true,
       instance: instance_name,
       match: {
@@ -59,7 +59,10 @@ export async function executeAddDataClassificationMatch(args: any): Promise<Tool
         createdBy: match.createdBy,
         createdOn: match.createdOn,
       },
-    });
+    }, [
+      { tool: 'search_data_classification_match', args: { instance_name, asset_ids: [asset_id] }, why: 'Verify the new match exists for this asset.' },
+      { tool: 'remove_data_classification_match', args: { instance_name, classification_match_id: match.id }, why: 'Reverse the action if it was a mistake.' },
+    ], true);
 
   } catch (error) {
     return ok({

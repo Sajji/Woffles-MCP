@@ -1,4 +1,4 @@
-import { ok, okPretty } from '../utils/tool-result.js';
+import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
@@ -99,7 +99,7 @@ export async function executeCreateRelationType(args: any): Promise<ToolResult> 
 
     const created = await client.restCallWithBody<any>('/rest/2.0/relationTypes', 'POST', body);
 
-    return okPretty({
+    return okWithNext({
       action: 'created',
       relationType: {
         id: created.id,
@@ -108,7 +108,11 @@ export async function executeCreateRelationType(args: any): Promise<ToolResult> 
         sourceType: created.sourceType ? { id: created.sourceType.id, name: created.sourceType.name } : null,
         targetType: created.targetType ? { id: created.targetType.id, name: created.targetType.name } : null,
       },
-    });
+    }, [
+      { tool: 'refresh_operating_model', args: { instance_name, force: true }, why: 'Refresh cached model so the new relation type is discoverable.' },
+      { tool: 'find_traversal_path', args: { instance_name, source_asset_type_name: created.sourceType?.name, target_asset_type_name: created.targetType?.name }, why: 'Confirm the new edge is in the traversal graph.' },
+      { tool: 'create_relation', args: { instance_name, source_asset_id: '<source asset id>', target_asset_id: '<target asset id>', relation_type_id: created.id }, why: 'Create actual relations using the new type.' },
+    ], true);
 
   } catch (error) {
     return ok({

@@ -1,4 +1,4 @@
-import { ok, okPretty } from '../utils/tool-result.js';
+import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
@@ -67,7 +67,7 @@ export async function executeSearchLineageEntities(args: any): Promise<ToolResul
     const endpoint = `${LINEAGE_BASE}/entities${queryString ? '?' + queryString : ''}`;
     const response = await client.restCall<any>(endpoint);
 
-    return ok({
+    return okWithNext({
       instance: instance_name,
       searchParams: {
         nameContains: name_contains || null,
@@ -75,7 +75,11 @@ export async function executeSearchLineageEntities(args: any): Promise<ToolResul
         dgcAssetId: dgc_asset_id || null,
       },
       ...response,
-    });
+    }, [
+      { tool: 'get_lineage_entity', args: { instance_name, entity_id: '<id from results>' }, why: 'Inspect a matching entity in detail.' },
+      { tool: 'get_lineage_downstream', args: { instance_name, entity_id: '<id from results>' }, why: 'Walk downstream from a match.' },
+      { tool: 'get_lineage_upstream', args: { instance_name, entity_id: '<id from results>' }, why: 'Walk upstream from a match.' },
+    ]);
 
   } catch (error) {
     return ok({

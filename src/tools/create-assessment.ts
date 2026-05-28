@@ -1,4 +1,4 @@
-import { ok, okPretty } from '../utils/tool-result.js';
+import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
@@ -131,11 +131,14 @@ export async function executeCreateAssessment(args: any): Promise<ToolResult> {
       body
     );
 
-    return ok({
+    return okWithNext({
       instance: instance_name,
       created: true,
       ...response,
-    });
+    }, [
+      { tool: 'get_assessment', args: { instance_name, assessment_id: '<id from response>' }, why: 'Verify the newly created assessment.' },
+      { tool: 'update_assessment', args: { instance_name, assessment_id: '<id from response>', content: '[{"id":"questionId","answer":{...}}]' }, why: 'Submit answers to questions.' },
+    ]);
   } catch (error) {
     return ok({
       error: true,

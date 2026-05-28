@@ -1,4 +1,4 @@
-import { ok, okPretty } from '../utils/tool-result.js';
+import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
@@ -198,7 +198,7 @@ export async function executeGetApiCatalog(args: any): Promise<ToolResult> {
           sv + v.endpoints.reduce((se: number, e: any) => se + (e.operations?.length ?? 0), 0), 0), 0)
       : null;
 
-    return okPretty({
+    return okWithNext({
       instance:          instance_name,
       filter:            api_name ?? null,
       include_operations,
@@ -209,7 +209,10 @@ export async function executeGetApiCatalog(args: any): Promise<ToolResult> {
         ...(totalOperations != null ? { operations: totalOperations } : {}),
       },
       apis,
-    });
+    }, [
+      { tool: 'get_asset_by_id', args: { instance_name, asset_id: '<API or endpoint asset id from apis>' }, why: 'Drill into a specific API/endpoint asset.' },
+      { tool: 'query_assets', args: { instance_name, asset_type_name: 'API' }, why: 'Browse all API assets generically.' },
+    ], true);
 
   } catch (error) {
     return ok({

@@ -1,5 +1,42 @@
 # Changelog
 
+## 9.0.0 — Operating Model Intelligence, Bulk Operations & Compound Edit
+
+### Added
+
+#### Operating Model Intelligence (Read-Only)
+- **`refresh_operating_model`** — crawl a Collibra instance and persist a portable snapshot (asset types, domain types, attribute types, relation types, statuses) to a local cache; cached once per session (configurable via `max_age_hours`); pass `force=true` to re-crawl immediately; returns counts and a snapshot hash for verification
+- **`get_operating_model_summary`** — return a compact, AI-friendly digest of the cached operating model: top-level asset type families by size, attribute-type kind distribution, status names, domain types, and relation type count; ideal for cheap context priming at the start of a conversation
+- **`describe_asset_type`** — full description of a specific asset type from the cache: parent/sub types, assignable attribute types (with kind and description), assignable relation types (with direction and the other type), and eligible statuses; resolve by name or UUID
+- **`describe_domain_type`** — describe a domain type from the cache including a heuristic list of asset types whose name family overlaps with it; useful for picking the right domain when creating assets
+- **`resolve_model_term`** — fuzzy-resolve a free-text term against all elements in the cached model (asset types, domain types, attribute types, relation types, statuses); returns ranked candidates with UUIDs per category; customer-agnostic
+- **`plan_asset_creation`** — pure-logic planning tool: resolves an asset type and target domain by name or UUID, lists assignable attribute types, recommends an initial status, and emits a `nextAction` pointing at `prepare_create_asset` / `create_asset` with resolved UUIDs; makes no API calls when reading from cache
+- **`find_traversal_path`** — given a source and target asset type (by name or UUID), returns the shortest sequence of relation types that connects them in the cached model; each step shows direction, role label, and relation type UUID; use this to plan efficient graph traversals without guessing relation chains
+- **`validate_against_model`** *(read-only)* — pre-flight a proposed write (asset, relation, or attribute) against the cached model and return violations before any API call is made; validates type existence, status IDs, attribute type IDs, and relation source/target type compatibility
+
+#### Bulk Operations (Write)
+- **`bulk_create_assets`** *(write)* — create multiple assets in a single `POST /rest/2.0/assets/bulk` + optional `POST /rest/2.0/attributes/bulk` call; supports mixed asset types and domains in one batch; two-step preview/confirm; detects existing `(domain_id, name)` pairs and skips them by default (`skip_existing=true`)
+- **`bulk_create_relations`** *(write)* — create multiple typed relations in a single `POST /rest/2.0/relations/bulk` call; idempotent (existing `(source, target, type)` triples are detected in preview and skipped on apply); two-step preview/confirm
+- **`bulk_delete_assets`** *(write)* — permanently delete multiple assets in a single `DELETE /rest/2.0/assets/bulk` call; DESTRUCTIVE (attributes, relations, attachments, and comments are all removed); two-step preview shows asset name, type, domain, and URL before applying
+- **`bulk_delete_relations`** *(write)* — permanently delete multiple relations in a single `DELETE /rest/2.0/relations/bulk` call; two-step preview shows source asset, target asset, and relation type before applying
+
+#### Compound Edit (Write)
+- **`edit_asset`** *(write)* — apply a list of typed edits to a single asset in one tool call; supported ops: `update_attribute`, `add_attribute`, `remove_attribute`, `update_property` (name/displayName/statusId), `add_relation`, `remove_relation`; attribute changes batched via `/attributes/bulk`, relation changes batched via `/relations/bulk`; two-step preview shows current vs. proposed values for every op; replaces what would otherwise require many singleton calls
+
+#### Write Advisor (Read-Only)
+- **`plan_write_operation`** — pure-logic decision helper: given the kind of work and the number of items, returns the recommended tool (single vs. bulk vs. `edit_asset`) with rationale; makes no API calls; call this before write work when in doubt about which tool to use
+
+### Changed
+- Tool count increased from 52 to **66**; write tool count increased from 17 to **22**
+- `WRITE_TOOL_NAMES` guard in `src/tools/index.ts` updated to cover all five new write tools (`bulk_create_assets`, `bulk_create_relations`, `bulk_delete_assets`, `bulk_delete_relations`, `edit_asset`)
+- Read-only tool count (when `"readOnly": true`) increased from 35 to **44**
+
+### Notes
+- All model-intelligence tools require `refresh_operating_model` to have been run first for the target instance; they read from the local cache and make no live API calls (except `describe_asset_type`, which fetches per-type assignment data on-demand from the live instance)
+- `bulk_delete_assets` and `bulk_delete_relations` are write tools hidden in read-only mode; they require explicit `confirm=true` and are intentionally placed behind the two-step safety pattern
+
+---
+
 ## 8.1.0 — Structured Tool Output (MCP `structuredContent` + `outputSchema`)
 
 ### Added

@@ -1,4 +1,4 @@
-import { ok, okPretty } from '../utils/tool-result.js';
+import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
@@ -48,7 +48,7 @@ export async function executeGetDomainTypes(args: any): Promise<ToolResult> {
 
     const response = await client.restCall<any>(`/rest/2.0/domainTypes?${params.toString()}`);
 
-    return okPretty({
+    return okWithNext({
       instance: instance_name,
       total: response.total ?? (response.results || []).length,
       domainTypes: (response.results || []).map((t: any) => ({
@@ -57,7 +57,10 @@ export async function executeGetDomainTypes(args: any): Promise<ToolResult> {
         description: t.description || undefined,
         publicId: t.publicId || undefined,
       })),
-    });
+    }, [
+      { tool: 'describe_domain_type', args: { instance_name, name: '<pick from domainTypes>' }, why: 'See likely asset types for this domain type.' },
+      { tool: 'create_domain', args: { instance_name, name: '<domain name>', community_id: '<community uuid>', type_id: '<pick from domainTypes>' }, why: 'Create a domain of this type once a community is chosen.' },
+    ], true);
 
   } catch (error) {
     return ok({

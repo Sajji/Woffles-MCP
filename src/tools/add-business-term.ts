@@ -1,4 +1,4 @@
-import { ok, okPretty } from '../utils/tool-result.js';
+import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
@@ -11,7 +11,9 @@ export const addBusinessTermTool = {
   description:
     'Create a Business Term asset in Collibra with an optional definition and additional attributes. ' +
     'Use prepare_add_business_term first to resolve the domainId and check for duplicates. ' +
-    'Use get_attribute_types to find attribute type UUIDs for additional attributes.',
+    'Use get_attribute_types to find attribute type UUIDs for additional attributes. ' +
+    'For creating 2 or more business terms at once, prefer bulk_create_assets with the Business Term asset type and the Definition attribute type id (00000000-0000-0000-0000-000000000202). ' +
+    'Call plan_write_operation if unsure which tool to use.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -95,32 +97,38 @@ export async function executeAddBusinessTerm(args: any): Promise<ToolResult> {
     const createdAttributes: any[] = [];
     const attributeErrors: any[] = [];
 
-    // Add definition attribute if provided
+    // Build a single bulk POST body covering the definition (if provided) and any extra attributes
+    const bulkEntries: { typeId: string; value: string; label?: string }[] = [];
     if (definition) {
-      try {
-        const attrResp = await client.restCallWithBody<any>('/rest/2.0/attributes', 'POST', {
-          assetId,
-          typeId: DEFINITION_ATTR_TYPE_ID,
-          value: definition,
-        });
-        createdAttributes.push({ typeId: DEFINITION_ATTR_TYPE_ID, name: 'Definition', value: definition, attributeId: attrResp.id });
-      } catch (attrErr) {
-        attributeErrors.push({ typeId: DEFINITION_ATTR_TYPE_ID, name: 'Definition', error: (attrErr as Error).message });
+      bulkEntries.push({ typeId: DEFINITION_ATTR_TYPE_ID, value: definition, label: 'Definition' });
+    }
+    if (Array.isArray(attributes)) {
+      for (const attr of attributes) {
+        bulkEntries.push({ typeId: attr.type_id, value: attr.value });
       }
     }
 
-    // Add additional attributes if provided
-    if (Array.isArray(attributes)) {
-      for (const attr of attributes) {
-        try {
-          const attrResp = await client.restCallWithBody<any>('/rest/2.0/attributes', 'POST', {
-            assetId,
-            typeId: attr.type_id,
-            value: attr.value,
+    if (bulkEntries.length > 0) {
+      const bulkBody = bulkEntries.map((e) => ({ assetId, typeId: e.typeId, value: e.value }));
+      try {
+        const bulkResp = await client.restCallWithBody<any[]>('/rest/2.0/attributes/bulk', 'POST', bulkBody);
+        (bulkResp || []).forEach((attrResp: any, idx: number) => {
+          const e = bulkEntries[idx];
+          createdAttributes.push({
+            typeId: e.typeId,
+            ...(e.label ? { name: e.label } : {}),
+            value: e.value,
+            attributeId: attrResp?.id,
           });
-          createdAttributes.push({ typeId: attr.type_id, value: attr.value, attributeId: attrResp.id });
-        } catch (attrErr) {
-          attributeErrors.push({ typeId: attr.type_id, value: attr.value, error: (attrErr as Error).message });
+        });
+      } catch (bulkErr) {
+        for (const e of bulkEntries) {
+          attributeErrors.push({
+            typeId: e.typeId,
+            ...(e.label ? { name: e.label } : {}),
+            value: e.value,
+            error: (bulkErr as Error).message,
+          });
         }
       }
     }
@@ -145,7 +153,10 @@ export async function executeAddBusinessTerm(args: any): Promise<ToolResult> {
         'Business term was created successfully but some attributes could not be set. See attributeErrors for details.';
     }
 
-    return okPretty(output);
+    return okWithNext(output, [
+      { tool: 'get_asset_by_id', args: { instance_name, asset_id: assetId }, why: 'Verify the newly created business term.' },
+      { tool: 'get_asset_relations', args: { instance_name, asset_id: assetId }, why: 'See what the term is related to.' },
+    ], true);
 
   } catch (error) {
     return ok({

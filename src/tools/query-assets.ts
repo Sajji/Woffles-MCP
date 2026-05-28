@@ -1,5 +1,6 @@
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
+import { okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 
 export const queryAssetsTool = {
@@ -199,7 +200,11 @@ export async function executeQueryAssets(args: any): Promise<ToolResult> {
       next_offset: has_more ? next_offset : null,
       assets,
     };
-    return { text: JSON.stringify(structured), structured };
+    return okWithNext(structured, [
+      { tool: 'get_asset_by_id', args: { instance_name, asset_id: '<id from assets>' }, why: 'Drill into a specific asset.' },
+      { tool: 'bulk_update_asset_descriptions', args: { instance_name, updates: [{ asset_id: '<id>', description: '<text>' }] }, why: 'Batch-update descriptions across results.' },
+      { tool: 'bulk_update_asset_attributes', args: { instance_name, updates: [{ asset_id: '<id>', attribute_type_id: '<from get_attribute_types>', value: '<value>' }] }, why: 'Batch-update attributes across results.' },
+    ]);
   } catch (error) {
     const structured = {
       instance: instance_name,

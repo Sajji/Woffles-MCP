@@ -1,5 +1,6 @@
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
+import { okWithNext } from '../utils/tool-result.js';
 import type { AssetTypesResponse, ToolResult } from '../types.js';
 
 export const getAssetTypesTool = {
@@ -57,7 +58,11 @@ export async function executeGetAssetTypes(args: any): Promise<ToolResult> {
       total: response.total,
       assetTypes: response.results.map((t) => ({ id: t.id, name: t.name })),
     };
-    return { text: JSON.stringify(structured), structured };
+    return okWithNext(structured, [
+      { tool: 'describe_asset_type', args: { instance_name, name: '<pick from assetTypes>' }, why: 'See assignable attributes, relations, and eligible statuses for an asset type.' },
+      { tool: 'plan_asset_creation', args: { instance_name, asset_name: '<name>', asset_type_name: '<pick from assetTypes>', domain_name: '<domain>' }, why: 'Plan a creation that conforms to the operating model.' },
+      { tool: 'refresh_operating_model', args: { instance_name }, why: 'Cache the full model so subsequent model-aware tools work offline.' },
+    ]);
 
   } catch (error) {
     const structured = {

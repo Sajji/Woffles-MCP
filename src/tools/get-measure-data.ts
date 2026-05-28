@@ -1,4 +1,4 @@
-import { ok, okPretty } from '../utils/tool-result.js';
+import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
@@ -141,12 +141,15 @@ export async function executeGetMeasureData(args: any): Promise<ToolResult> {
       }),
     );
 
-    return okPretty({
+    return okWithNext({
       instance: instance_name,
       measureId: measure_asset_id,
       measureUrl: client.assetUrl(measure_asset_id),
       dataAttributes: enrichedDAs,
-    });
+    }, [
+      { tool: 'get_asset_by_id', args: { instance_name, asset_id: measure_asset_id }, why: 'Get full measure asset detail.' },
+      { tool: 'get_column_semantics', args: { instance_name, column_asset_id: '<column id from dataAttributes.columns>' }, why: 'Drill into a linked column.' },
+    ], true);
 
   } catch (error) {
     return ok({

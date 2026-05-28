@@ -1,4 +1,4 @@
-import { ok, okPretty } from '../utils/tool-result.js';
+import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
@@ -46,7 +46,7 @@ export async function executeGetAssetStatuses(args: any): Promise<ToolResult> {
 
     const response = await client.restCall<any>(`/rest/2.0/statuses?${params.toString()}`);
 
-    return okPretty({
+    return okWithNext({
       instance: instance_name,
       total: response.total ?? (response.results || []).length,
       statuses: (response.results || []).map((s: any) => ({
@@ -55,7 +55,10 @@ export async function executeGetAssetStatuses(args: any): Promise<ToolResult> {
         publicId: s.publicId || undefined,
         description: s.description || undefined,
       })),
-    });
+    }, [
+      { tool: 'plan_asset_creation', args: { instance_name, asset_name: '<name>', asset_type_name: '<type>', preferred_status_name: '<pick from statuses>' }, why: 'Plan an asset creation with the chosen initial status.' },
+      { tool: 'validate_against_model', args: { instance_name, proposal_type: 'asset', asset_type_id: '<asset type uuid>', status_id: '<pick from statuses>' }, why: 'Schema-validate before create_asset.' },
+    ], true);
 
   } catch (error) {
     return ok({

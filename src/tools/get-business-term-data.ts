@@ -1,4 +1,4 @@
-import { ok, okPretty } from '../utils/tool-result.js';
+import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
@@ -157,13 +157,17 @@ export async function executeGetBusinessTermData(args: any): Promise<ToolResult>
       }),
     );
 
-    return ok({
+    return okWithNext({
       instance: instance_name,
       termId: term_asset_id,
       termUrl: client.assetUrl(term_asset_id),
       totalDataAttributes: enrichedDAs.length,
       dataAttributes: enrichedDAs,
-    });
+    }, [
+      { tool: 'get_asset_by_id', args: { instance_name, asset_id: term_asset_id }, why: 'Get full term detail including attributes and direct relations.' },
+      { tool: 'get_asset_relations', args: { instance_name, asset_id: term_asset_id }, why: 'See all relations from this business term.' },
+      { tool: 'get_column_semantics', args: { instance_name, column_asset_id: '<column id from dataAttributes>' }, why: 'Drill into a specific column linked to this term.' },
+    ]);
 
   } catch (error) {
     return ok({

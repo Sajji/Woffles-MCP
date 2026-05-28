@@ -1,4 +1,4 @@
-import { ok, okPretty } from '../utils/tool-result.js';
+import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
@@ -153,13 +153,17 @@ export async function executeGetTableSemantics(args: any): Promise<ToolResult> {
       }),
     );
 
-    return ok({
+    return okWithNext({
       instance: instance_name,
       tableId: table_asset_id,
       tableUrl: client.assetUrl(table_asset_id),
       totalColumns: columnDetails.length,
       columns: columnDetails,
-    });
+    }, [
+      { tool: 'get_asset_by_id', args: { instance_name, asset_id: table_asset_id }, why: 'Get full table asset detail.' },
+      { tool: 'get_column_semantics', args: { instance_name, column_asset_id: '<column id from columns>' }, why: 'Drill into a specific column.' },
+      { tool: 'get_lineage_downstream', args: { instance_name, entity_id: '<dgc entity id>' }, why: 'Trace downstream lineage from this table.' },
+    ]);
 
   } catch (error) {
     return ok({

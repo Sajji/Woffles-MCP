@@ -1,4 +1,4 @@
-import { ok, okPretty } from '../utils/tool-result.js';
+import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
@@ -143,13 +143,17 @@ export async function executeGetColumnSemantics(args: any): Promise<ToolResult> 
       ? { id: tableRelations[0].target.id, name: tableRelations[0].target.name, url: client.assetUrl(tableRelations[0].target.id) }
       : null;
 
-    return okPretty({
+    return okWithNext({
       instance: instance_name,
       columnId: column_asset_id,
       columnUrl: client.assetUrl(column_asset_id),
       parentTable: table,
       dataAttributes: enrichedDAs,
-    });
+    }, [
+      { tool: 'get_asset_by_id', args: { instance_name, asset_id: column_asset_id }, why: 'Get full column asset detail.' },
+      { tool: 'get_table_semantics', args: { instance_name, table_asset_id: '<parentTable.id>' }, why: 'See semantics for the whole parent table.' },
+      { tool: 'get_business_term_data', args: { instance_name, term_asset_id: '<businessTerm id from dataAttributes>' }, why: 'Drill into a linked business term.' },
+    ], true);
 
   } catch (error) {
     return ok({

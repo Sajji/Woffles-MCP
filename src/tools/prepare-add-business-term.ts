@@ -1,4 +1,4 @@
-import { ok, okPretty } from '../utils/tool-result.js';
+import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
@@ -173,7 +173,10 @@ export async function executePrepareAddBusinessTerm(args: any): Promise<ToolResu
       result.attributeSchema = attributeSchema;
     }
 
-    return okPretty(result);
+    return okWithNext(result, [
+      { tool: 'add_business_term', args: { instance_name, domain_id: resolvedDomainId, name: '<term name>', definition: '<optional>' }, why: 'Execute the create now that the domain is resolved.' },
+      { tool: 'validate_against_model', args: { instance_name, proposal_type: 'attribute', attribute_type_id: DEFINITION_ATTR_TYPE_ID }, why: 'Schema-check the Definition attribute before writing.' },
+    ], true);
 
   } catch (error) {
     return ok({

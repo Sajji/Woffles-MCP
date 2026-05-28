@@ -4,7 +4,7 @@ A [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server for Co
 
 ## Features
 
-- **52 tools** covering discovery, governance, semantic traversal, lineage, asset creation, operating model management, API catalog traversal, data classification, data contracts, assessments, and write operations
+- **66 tools** covering discovery, governance, semantic traversal, lineage, asset creation, operating model management, operating model intelligence, API catalog traversal, data classification, data contracts, assessments, bulk operations, and write operations
 - **Multi-instance** support — connect to production, dev, and UAT simultaneously
 - **REST + GraphQL** — uses whichever Collibra API is best for each operation
 - **Full user name resolution** — responsibilities show real names and emails, not UUIDs
@@ -12,6 +12,9 @@ A [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server for Co
 - **Semantic traversal** — trace Table → Column → Data Attribute → Business Term and back, or start from a Column or Measure directly
 - **Technical lineage** — upstream/downstream data flow analysis with transformation SQL/script retrieval
 - **Asset & term creation** — two-step `prepare` + `create` workflow for any asset type or business term
+- **Operating model intelligence** — cache the full operating model once (`refresh_operating_model`), then use `describe_asset_type`, `find_traversal_path`, `validate_against_model`, and `plan_asset_creation` for customer-agnostic guidance without extra API calls
+- **Bulk operations** — `bulk_create_assets`, `bulk_create_relations`, `bulk_delete_assets`, `bulk_delete_relations` replace N singleton calls with 1–2 API round trips; all with preview/confirm safety
+- **Compound asset editing** — `edit_asset` applies a list of typed ops (attribute updates, property changes, relation add/remove) to a single asset in one tool call
 - **Data classification** — search data classes, add/remove classification matches on assets
 - **Data contracts** — list, pull, and push data contract manifests
 - **Assessments** — list, retrieve, create, update, and retake assessments; browse templates and attachments (integrates with the Collibra Assessments REST API at `/rest/assessments/v2`)
@@ -126,6 +129,32 @@ A [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server for Co
 | `update_assessment` | Update status, answers, owner, assignees, or visibility of an assessment *(write)* |
 | `retake_assessment` | Start a new revision of a submitted assessment *(write)* |
 
+### Operating Model Intelligence
+
+Cache the operating model once and use these tools for customer-agnostic guidance without extra API calls.
+
+| Tool | Description |
+|------|-------------|
+| `refresh_operating_model` | Crawl + cache asset types, domain types, attribute types, relation types, and statuses |
+| `get_operating_model_summary` | Compact digest of the cached model — asset type families, attribute kind distribution, status names |
+| `describe_asset_type` | Full description of an asset type: sub-types, assignable attributes, relation types, eligible statuses |
+| `describe_domain_type` | Describe a domain type and its overlapping asset type families |
+| `resolve_model_term` | Fuzzy-resolve a free-text term against all model elements; returns ranked candidates with UUIDs |
+| `plan_asset_creation` | Plan an asset creation: resolves type + domain, lists assignable attributes, emits a `nextAction` |
+| `find_traversal_path` | Find the shortest relation-type path between two asset types in the cached model |
+| `validate_against_model` | Pre-flight a proposed write against the cached model; returns violations before any API call |
+| `plan_write_operation` | Decision helper — returns the recommended tool (single/bulk/edit_asset) given the kind and count of writes |
+
+### Bulk Operations
+
+| Tool | Description |
+|------|-------------|
+| `bulk_create_assets` | Create multiple assets in one call — mixed types and domains supported *(write)* |
+| `bulk_create_relations` | Create multiple typed relations in one call — idempotent *(write)* |
+| `bulk_delete_assets` | Delete multiple assets permanently (preview → confirm) *(write)* |
+| `bulk_delete_relations` | Delete multiple relations permanently (preview → confirm) *(write)* |
+| `edit_asset` | Apply multiple typed edits to one asset in one call: attribute ops, property changes, relation ops *(write)* |
+
 ### Write Operations
 
 | Tool | Description |
@@ -135,10 +164,12 @@ A [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server for Co
 | `update_asset_attribute` | Update any attribute on an asset by type ID (preview → confirm) |
 | `bulk_update_asset_attributes` | Update any attribute across multiple assets at once |
 | `create_asset` | Create any Collibra asset with optional attribute values |
+| `bulk_create_assets` | Create multiple assets in one bulk call |
 | `add_business_term` | Create a Business Term with optional definition and attributes |
 | `create_community` | Create or find a community / sub-community (idempotent) |
 | `create_domain` | Create or find a domain inside a community (idempotent) |
 | `create_relation` | Create a typed relationship between two assets (idempotent) |
+| `bulk_create_relations` | Create multiple typed relations in one bulk call |
 | `create_asset_type` | Create an asset type in the operating model (idempotent) |
 | `create_relation_type` | Create a relation type in the operating model (idempotent) |
 | `add_data_classification_match` | Associate a data class with an asset |
@@ -147,6 +178,9 @@ A [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server for Co
 | `create_assessment` | Create a new assessment linked to an asset or template |
 | `update_assessment` | Update status, answers, owner, assignees, or visibility |
 | `retake_assessment` | Start a new revision of a submitted assessment |
+| `edit_asset` | Multi-op edit on a single asset (attribute updates, property changes, relation ops) |
+| `bulk_delete_assets` | Delete multiple assets permanently (preview → confirm) |
+| `bulk_delete_relations` | Delete multiple relations permanently (preview → confirm) |
 
 > All write tools use a **preview/confirm** pattern — call with `confirm=false` (default) to see what will change, then `confirm=true` to apply.
 
@@ -194,7 +228,7 @@ You can add multiple instances and reference them by name when calling any tool.
 | Value | behavior |
 |-------|-----------|
 | `true` (default) | Write tools are **hidden from the AI** — they do not appear in the tool list and cannot be called |
-| `false` | All 52 tools are available, including the 17 write tools |
+| `false` | All 66 tools are available, including the 22 write tools |
 
 Set `"readOnly": false` only when you personally need to make changes, then switch back to `true` when done.
 
@@ -206,7 +240,7 @@ Set `"readOnly": false` only when you personally need to make changes, then swit
 |-------|-------------|
 | [INSTALL.md](INSTALL.md) | Full installation and MCP client configuration |
 | [docs/CLAUDE_DESKTOP_SETUP.md](docs/CLAUDE_DESKTOP_SETUP.md) | Claude Desktop integration step-by-step |
-| [docs/TOOLS_REFERENCE.md](docs/TOOLS_REFERENCE.md) | Detailed parameter reference for all 52 tools |
+| [docs/TOOLS_REFERENCE.md](docs/TOOLS_REFERENCE.md) | Detailed parameter reference for all 66 tools |
 
 ## Project Structure
 
@@ -216,7 +250,7 @@ Set `"readOnly": false` only when you personally need to make changes, then swit
 │   ├── config.ts                         # Configuration loader
 │   ├── types.ts                          # TypeScript type definitions
 │   ├── tools/
-│   │   ├── index.ts                              # Tool registry (52 tools)
+│   │   ├── index.ts                              # Tool registry (66 tools)
 │   │   ├── get-asset-types.ts                    # Asset type definitions
 │   │   ├── get-communities.ts                    # Community hierarchy
 │   │   ├── get-domains.ts                        # Domain listing
@@ -268,10 +302,24 @@ Set `"readOnly": false` only when you personally need to make changes, then swit
 │   │   ├── update-asset-description.ts           # Single description update
 │   │   ├── bulk-update-asset-descriptions.ts     # Bulk description update
 │   │   ├── update-asset-attribute.ts             # Single attribute update
-│   │   └── bulk-update-asset-attributes.ts       # Bulk attribute update
-│   │   # (tool registry index.ts registers all 52 tools)
+│   │   ├── bulk-update-asset-attributes.ts       # Bulk attribute update
+│   │   ├── refresh-operating-model.ts            # Crawl + cache operating model snapshot
+│   │   ├── get-operating-model-summary.ts        # Compact operating model digest
+│   │   ├── describe-asset-type.ts                # Full asset type description from cache
+│   │   ├── describe-domain-type.ts               # Domain type description from cache
+│   │   ├── resolve-model-term.ts                 # Fuzzy-resolve term to model elements
+│   │   ├── plan-asset-creation.ts                # Plan asset creation (no API calls)
+│   │   ├── find-traversal-path.ts                # Shortest relation path between asset types
+│   │   ├── validate-against-model.ts             # Pre-flight write validation
+│   │   ├── plan-write-operation.ts               # Write advisor — pick single/bulk/edit_asset
+│   │   ├── bulk-create-assets.ts                 # Bulk asset creation (write)
+│   │   ├── bulk-create-relations.ts              # Bulk relation creation (write)
+│   │   ├── bulk-delete.ts                        # Bulk asset + relation delete (write)
+│   │   └── edit-asset.ts                         # Multi-op compound edit (write)
+│   │   # (tool registry index.ts registers all 66 tools)
 │   └── utils/
 │       ├── collibra-client.ts            # REST + GraphQL client with URL helpers
+│       ├── operating-model-cache.ts      # Local operating model snapshot store
 │       └── tool-result.ts                # `ok` / `okPretty` helpers for structuredContent
 ├── config.example.json                   # Configuration template
 ├── package.json

@@ -1,4 +1,4 @@
-import { ok, okPretty } from '../utils/tool-result.js';
+import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
@@ -68,7 +68,7 @@ export async function executeGetAttributeTypes(args: any): Promise<ToolResult> {
 
     const response = await client.restCall<any>(`/rest/2.0/attributeTypes?${params.toString()}`);
 
-    return okPretty({
+    return okWithNext({
       instance: instance_name,
       total: response.total,
       attributeTypes: (response.results || []).map((t: any) => ({
@@ -79,7 +79,10 @@ export async function executeGetAttributeTypes(args: any): Promise<ToolResult> {
         statisticsEnabled: t.statisticsEnabled,
         isInteger: t.isInteger,
       })),
-    });
+    }, [
+      { tool: 'validate_against_model', args: { instance_name, proposal_type: 'attribute', attribute_type_id: '<pick from attributeTypes>' }, why: 'Schema-validate an attribute write before calling update_asset_attribute.' },
+      { tool: 'update_asset_attribute', args: { instance_name, asset_id: '<asset>', attribute_type_id: '<pick from attributeTypes>', value: '<value>' }, why: 'Write the attribute once you have the UUID.' },
+    ], true);
 
   } catch (error) {
     return ok({

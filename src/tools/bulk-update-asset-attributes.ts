@@ -1,4 +1,4 @@
-import { ok, okPretty } from '../utils/tool-result.js';
+import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
@@ -184,7 +184,10 @@ export async function executeBulkUpdateAssetAttributes(args: any): Promise<ToolR
       }),
     };
 
-    return okPretty(output);
+    return okWithNext(output, [
+      { tool: 'get_asset_by_id', args: { instance_name, asset_id: '<any updated assetId from details>' }, why: 'Spot-check an updated asset.' },
+      { tool: 'query_assets', args: { instance_name, asset_type_name: '<type>' }, why: 'Re-query the affected asset type to verify state.' },
+    ], true);
   } catch (error) {
     return ok({
       error: `Failed to bulk update attributes: ${(error as Error).message}`,

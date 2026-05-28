@@ -1,6 +1,6 @@
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
-import { ok, okPretty } from '../utils/tool-result.js';
+import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 
 export const getAssetRelationsTool = {
@@ -129,7 +129,7 @@ export async function executeGetAssetRelations(args: any): Promise<ToolResult> {
     const outgoing = (asset.outgoingRelations || []).map(enrichRelation);
     const incoming = (asset.incomingRelations || []).map(enrichRelation);
 
-    return ok({
+    return okWithNext({
       instance: instance_name,
       assetId: asset_id,
       assetUrl: client.assetUrl(asset_id),
@@ -147,7 +147,10 @@ export async function executeGetAssetRelations(args: any): Promise<ToolResult> {
         outgoing,
         incoming,
       },
-    });
+    }, [
+      { tool: 'get_asset_by_id', args: { instance_name, asset_id: '<id from relations.outgoing or .incoming>' }, why: 'Drill into a related asset.' },
+      { tool: 'find_traversal_path', args: { instance_name, source_asset_type_name: '<this asset type>', target_asset_type_name: '<desired type>' }, why: 'Plan multi-hop navigation using the operating model graph.' },
+    ]);
 
   } catch (error) {
     return ok({

@@ -1,4 +1,4 @@
-import { ok, okPretty } from '../utils/tool-result.js';
+import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 
@@ -117,13 +117,16 @@ export async function executePushDataContractManifest(args: any): Promise<ToolRe
 
     const responseBody = await response.json() as any;
 
-    return okPretty({
+    return okWithNext({
       success: true,
       instance: instance_name,
       id: responseBody.id,
       domainId: responseBody.domainId,
       manifestId: responseBody.manifestId,
-    });
+    }, [
+      { tool: 'pull_data_contract_manifest', args: { instance_name, data_contract_id: '<id from response>' }, why: 'Verify the pushed manifest content.' },
+      { tool: 'list_data_contract', args: { instance_name, manifest_id: '<manifestId from response>' }, why: 'See contracts associated with this manifest.' },
+    ], true);
 
   } catch (error) {
     return ok({

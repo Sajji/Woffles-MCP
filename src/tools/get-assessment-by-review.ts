@@ -1,4 +1,4 @@
-import { ok, okPretty } from '../utils/tool-result.js';
+import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
@@ -43,12 +43,15 @@ export async function executeGetAssessmentByReview(args: any): Promise<ToolResul
     const endpoint = `${ASSESSMENTS_BASE}/assessments/by/assessmentReview/${encodeURIComponent(assessment_review_id)}`;
     const response = await client.restCall<any>(endpoint);
 
-    return ok({
+    return okWithNext({
       instance: instance_name,
       lookedUpBy: 'assessmentReviewId',
       assessmentReviewId: assessment_review_id,
       ...response,
-    });
+    }, [
+      { tool: 'get_assessment', args: { instance_name, assessment_id: '<id from response>' }, why: 'Fetch the assessment by its own id for canonical detail.' },
+      { tool: 'update_assessment', args: { instance_name, assessment_id: '<id from response>', status: '<new status>' }, why: 'Edit the assessment.' },
+    ]);
   } catch (error) {
     return ok({
       error: true,

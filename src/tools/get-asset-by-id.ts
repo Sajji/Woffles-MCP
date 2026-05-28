@@ -1,5 +1,6 @@
 import { getInstance } from '../config.js';
 import { CollibraClient, enrichResponseUrls } from '../utils/collibra-client.js';
+import { okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 
 export const getAssetByIdTool = {
@@ -279,8 +280,13 @@ export async function executeGetAssetById(args: any): Promise<ToolResult> {
           fromDomain: inheritedByDomain,
         } : null,
       },
-    });
-    return { text: JSON.stringify(structured), structured };
+    }) as Record<string, unknown>;
+    return okWithNext(structured, [
+      { tool: 'get_asset_relations', args: { instance_name, asset_id }, why: 'Paginate through related assets beyond the first page.' },
+      { tool: 'update_asset_description', args: { instance_name, asset_id, description: '<new description>' }, why: 'Edit the description.' },
+      { tool: 'update_asset_attribute', args: { instance_name, asset_id, attribute_type_id: '<from get_attribute_types>', value: '<value>' }, why: 'Edit attributes.' },
+      { tool: 'find_traversal_path', args: { instance_name, source_asset_type_name: '<this asset type>', target_asset_type_name: '<desired type>' }, why: 'Plan navigation to a different asset type using the operating model.' },
+    ]);
 
   } catch (error) {
     const structured = {

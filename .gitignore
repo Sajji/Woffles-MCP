@@ -147,3 +147,7 @@ config.json
 # Large API/GraphQL reference schemas (dev-only, not used at runtime)
 collibra-rest-schema.json
 graphqlSchema.json
+
+# macOS metadata files
+.DS_Store
+**/.DS_Store

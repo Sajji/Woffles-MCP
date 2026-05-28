@@ -1,4 +1,4 @@
-import { ok, okPretty } from '../utils/tool-result.js';
+import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
@@ -85,7 +85,7 @@ export async function executeCreateDomain(args: any): Promise<ToolResult> {
 
     const created = await client.restCallWithBody<any>('/rest/2.0/domains', 'POST', body);
 
-    return okPretty({
+    return okWithNext({
       action: 'created',
       domain: {
         id: created.id,
@@ -94,7 +94,11 @@ export async function executeCreateDomain(args: any): Promise<ToolResult> {
         community: created.community ? { id: created.community.id, name: created.community.name } : null,
         type: created.type ? { id: created.type.id, name: created.type.name } : null,
       },
-    });
+    }, [
+      { tool: 'prepare_create_asset', args: { instance_name, asset_name: '<asset name>', asset_type_id: '<asset type id>', domain_id: created.id }, why: 'Begin creating assets inside the new domain.' },
+      { tool: 'plan_asset_creation', args: { instance_name, asset_name: '<asset name>', asset_type_id: '<asset type id>', domain_id: created.id }, why: 'See assignable attributes and eligible statuses for the new domain.' },
+      { tool: 'get_domains', args: { instance_name, community_id: created.community?.id }, why: 'List domains in the community to confirm visibility.' },
+    ], true);
 
   } catch (error) {
     return ok({

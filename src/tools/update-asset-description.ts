@@ -1,5 +1,6 @@
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
+import { okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 
 // Well-known Collibra attribute type ID for "Description"
@@ -11,7 +12,8 @@ export const updateAssetDescriptionTool = {
     'This tool uses a two-step safety process: ' +
     '1) Call with confirm=false (default) to PREVIEW the current description and see what will change. ' +
     '2) Call again with confirm=true to APPLY the change. ' +
-    'The preview step fetches the asset name and current description so you can verify before committing.',
+    'The preview step fetches the asset name and current description so you can verify before committing. ' +
+    'For updating 2 or more assets, prefer bulk_update_asset_descriptions (one /attributes/bulk call instead of N).',
   inputSchema: {
     type: 'object',
     properties: {
@@ -133,7 +135,9 @@ export async function executeUpdateAssetDescription(args: any): Promise<ToolResu
       attributeId: result.id || existingAttr?.id,
     };
 
-    return { text: JSON.stringify(output, null, 2), structured: output };
+    return okWithNext(output as Record<string, unknown>, [
+      { tool: 'get_asset_by_id', args: { instance_name, asset_id }, why: 'Verify the updated description on the asset.' },
+    ], true);
   } catch (error) {
     const structured = {
       error: `Failed to update asset description: ${(error as Error).message}`,

@@ -1,4 +1,4 @@
-import { ok, okPretty } from '../utils/tool-result.js';
+import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
@@ -11,7 +11,9 @@ export const updateAssetAttributeTool = {
     '1) Call with confirm=false (default) to PREVIEW the current value and see what will change. ' +
     '2) Call again with confirm=true to APPLY the change. ' +
     'Use get_attribute_types first to find the attribute type ID for the attribute you want to update. ' +
-    'For Boolean attributes (e.g. "Personally Identifiable Information"), pass "true" or "false" as the new_value string.',
+    'For Boolean attributes (e.g. "Personally Identifiable Information"), pass "true" or "false" as the new_value string. ' +
+    'For updating 2 or more assets, prefer bulk_update_asset_attributes (one /attributes/bulk call). ' +
+    'For applying many DIFFERENT changes to a single asset, prefer edit_asset.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -137,7 +139,9 @@ export async function executeUpdateAssetAttribute(args: any): Promise<ToolResult
       attributeId: result.id || existingAttr?.id,
     };
 
-    return okPretty(output);
+    return okWithNext(output, [
+      { tool: 'get_asset_by_id', args: { instance_name, asset_id }, why: 'Verify the updated attribute on the asset.' },
+    ], true);
   } catch (error) {
     return ok({
       error: `Failed to update asset attribute: ${(error as Error).message}`,

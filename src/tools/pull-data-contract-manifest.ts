@@ -1,4 +1,4 @@
-import { ok, okPretty } from '../utils/tool-result.js';
+import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 
@@ -54,11 +54,13 @@ export async function executePullDataContractManifest(args: any): Promise<ToolRe
 
     const manifestContent = await response.text();
 
-    return okPretty({
+    return okWithNext({
       instance: instance_name,
       dataContractId: data_contract_id,
       manifest: manifestContent,
-    });
+    }, [
+      { tool: 'push_data_contract_manifest', args: { instance_name, data_contract_id, manifest: '<edited manifest>' }, why: 'Push an edited version of this manifest back.' },
+    ], true);
 
   } catch (error) {
     return ok({

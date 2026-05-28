@@ -1,4 +1,4 @@
-import { ok, okPretty } from '../utils/tool-result.js';
+import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
@@ -11,7 +11,9 @@ export const createRelationTool = {
     'the existing relation is returned without creating a duplicate. ' +
     'Use get_relation_types to find the relation_type_id. ' +
     'Use get_asset_relations on the source asset to verify what relations already exist before calling this tool. ' +
-    'Returns the relation id regardless of whether it was newly created or already existed.',
+    'Returns the relation id regardless of whether it was newly created or already existed. ' +
+    'For creating 2 or more relations at once, prefer bulk_create_relations — it uses /relations/bulk for one round trip. ' +
+    'Call plan_write_operation if unsure which tool to use.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -86,7 +88,7 @@ export async function executeCreateRelation(args: any): Promise<ToolResult> {
 
     const created = await client.restCallWithBody<any>('/rest/2.0/relations', 'POST', body);
 
-    return okPretty({
+    return okWithNext({
       action: 'created',
       relation: {
         id: created.id,
@@ -94,7 +96,10 @@ export async function executeCreateRelation(args: any): Promise<ToolResult> {
         source: { id: created.source?.id, name: created.source?.fullName ?? created.source?.name },
         target: { id: created.target?.id, name: created.target?.fullName ?? created.target?.name },
       },
-    });
+    }, [
+      { tool: 'get_asset_relations', args: { instance_name, asset_id: source_asset_id }, why: 'Verify the new relation appears on the source asset.' },
+      { tool: 'get_asset_by_id', args: { instance_name, asset_id: target_asset_id }, why: 'Inspect the target asset.' },
+    ], true);
 
   } catch (error) {
     return ok({

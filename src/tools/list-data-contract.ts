@@ -1,4 +1,4 @@
-import { ok, okPretty } from '../utils/tool-result.js';
+import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
@@ -54,14 +54,16 @@ export async function executeListDataContract(args: any): Promise<ToolResult> {
     const endpoint = `/rest/dataProduct/v1/dataContracts?${params.toString()}`;
     const response = await client.restCall<any>(endpoint);
 
-    return okPretty({
+    return okWithNext({
       instance: instance_name,
       filters: { manifestId: manifest_id || null },
       total: response.total ?? null,
       limit: response.limit,
       nextCursor: response.nextCursor || null,
       contracts: response.items || [],
-    });
+    }, [
+      { tool: 'pull_data_contract_manifest', args: { instance_name, data_contract_id: '<id from contracts>' }, why: 'Pull the YAML/JSON manifest for a specific contract.' },
+    ], true);
 
   } catch (error) {
     return ok({

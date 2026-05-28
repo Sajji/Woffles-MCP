@@ -1,4 +1,4 @@
-import { ok, okPretty } from '../utils/tool-result.js';
+import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
@@ -81,7 +81,7 @@ export async function executeCreateCommunity(args: any): Promise<ToolResult> {
 
     const created = await client.restCallWithBody<any>('/rest/2.0/communities', 'POST', body);
 
-    return okPretty({
+    return okWithNext({
       action: 'created',
       community: {
         id: created.id,
@@ -89,7 +89,10 @@ export async function executeCreateCommunity(args: any): Promise<ToolResult> {
         description: created.description || null,
         parent: created.parent ? { id: created.parent.id, name: created.parent.name } : null,
       },
-    });
+    }, [
+      { tool: 'create_domain', args: { instance_name, name: '<domain name>', community_id: created.id, type_id: '<from get_domain_types>' }, why: 'Create domains inside the new community.' },
+      { tool: 'get_communities', args: { instance_name }, why: 'See the new community in the list.' },
+    ], true);
 
   } catch (error) {
     return ok({

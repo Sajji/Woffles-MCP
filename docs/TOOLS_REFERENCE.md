@@ -1,6 +1,6 @@
 # Tools Reference
 
-Complete reference for all 52 tools provided by the Collibra MCP Server.
+Complete reference for all 66 tools provided by the Collibra MCP Server.
 
 ---
 
@@ -909,6 +909,236 @@ See full reference in the [Operating Model Management](#operating-model-manageme
 
 ---
 
+## Operating Model Intelligence
+
+These tools rely on a local operating model cache. Call `refresh_operating_model` once per session (or when the model changes) before using the other tools in this section.
+
+### refresh_operating_model
+
+Crawl a Collibra instance and persist an operating model snapshot to a local cache.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `instance_name` | Yes | Collibra instance name |
+| `force` | No | Re-crawl even if a cache already exists (default: false) |
+| `max_age_hours` | No | Reuse existing cache if younger than this (default: 24 hours) |
+
+**Returns:** Snapshot counts (asset types, domain types, attribute types, relation types, statuses), snapshot hash, `refreshedAt` timestamp, and whether an existing cache was reused.
+
+---
+
+### get_operating_model_summary
+
+Return a compact, AI-friendly digest of the cached operating model.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `instance_name` | Yes | Collibra instance name |
+
+**Returns:** Top-level asset type families (by child count), attribute-type kind distribution, status names, domain types, and total relation type count. Ideal for cheap context priming at conversation start.
+
+---
+
+### describe_asset_type
+
+Full description of a specific asset type from the cache, including on-demand assignment data fetched from the live instance.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `instance_name` | Yes | Collibra instance name |
+| `asset_type_id` | No* | UUID of the asset type (`*` provide this or `name`) |
+| `name` | No* | Asset type name — case-insensitive contains match |
+
+**Returns:** Parent/sub types, list of assignable attribute types (id, name, kind, description), assignable relation types (with direction, role/co-role label, and the other asset type), eligible workflow statuses.
+
+---
+
+### describe_domain_type
+
+Describe a domain type from the cache and list asset type families whose names overlap with it.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `instance_name` | Yes | Collibra instance name |
+| `domain_type_id` | No* | UUID of the domain type (`*` provide this or `name`) |
+| `name` | No* | Domain type name — case-insensitive contains match |
+
+**Returns:** Domain type metadata plus a heuristic list of likely asset types for that domain.
+
+---
+
+### resolve_model_term
+
+Fuzzy-resolve a free-text term against every kind of element in the cached model.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `instance_name` | Yes | Collibra instance name |
+| `term` | Yes | Free-text term to resolve (case-insensitive contains match) |
+| `categories` | No | Restrict to: `assetType`, `domainType`, `attributeType`, `relationType`, `status`. Default: all. |
+| `limit_per_category` | No | Max matches per category (default: 10) |
+
+**Returns:** Ranked candidate matches per category, each with UUID, name, and match score.
+
+---
+
+### plan_asset_creation
+
+Produce a portable, executable plan for creating an asset that conforms to the instance's operating model. Makes no API calls when reading from cache.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `instance_name` | Yes | Collibra instance name |
+| `asset_name` | Yes | Proposed asset name |
+| `asset_type_id` | No* | UUID of the asset type (`*` provide this or `asset_type_name`) |
+| `asset_type_name` | No* | Asset type name (case-insensitive contains match) |
+| `domain_id` | No* | UUID of the target domain (`*` provide this or `domain_name`) |
+| `domain_name` | No* | Domain name (case-insensitive contains match) |
+| `domain_type_id` | No | Domain type UUID hint when domain is not yet chosen |
+| `preferred_status_name` | No | Preferred initial status name (e.g. `"Candidate"`) |
+
+**Returns:** Resolved asset type UUID, domain UUID, assignable attribute types, recommended status, and a `nextAction` pointing at `prepare_create_asset` / `create_asset` with all resolved IDs.
+
+---
+
+### find_traversal_path
+
+Find the shortest sequence of relation types connecting two asset types in the cached model.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `instance_name` | Yes | Collibra instance name |
+| `source_asset_type_id` | No* | UUID of the source asset type (`*` provide ID or name) |
+| `source_asset_type_name` | No* | Source asset type name (case-insensitive contains match) |
+| `target_asset_type_id` | No* | UUID of the target asset type |
+| `target_asset_type_name` | No* | Target asset type name |
+| `max_depth` | No | Maximum path length to consider (default: 5) |
+| `max_paths` | No | Maximum number of paths to return (default: 3) |
+
+**Returns:** Up to `max_paths` shortest paths. Each path is an ordered list of steps: `fromType`, `toType`, `relationTypeId`, `role`, `direction` (OUTGOING/INCOMING).
+
+---
+
+### validate_against_model
+
+Pre-flight a proposed write against the cached model and return violations before any API call.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `instance_name` | Yes | Collibra instance name |
+| `proposal_type` | Yes | `asset`, `relation`, or `attribute` |
+| `asset_type_id` | No | For `asset`: UUID to validate |
+| `status_id` | No | For `asset`: status UUID to validate |
+| `attribute_type_ids` | No | For `asset`: array of attribute type UUIDs to validate |
+| `relation_type_id` | No | For `relation`: UUID to validate |
+| `source_asset_type_id` | No | For `relation`: source asset type UUID |
+| `target_asset_type_id` | No | For `relation`: target asset type UUID |
+| `attribute_type_id` | No | For `attribute`: UUID to validate |
+
+**Returns:** `valid: true/false`, list of violations (if any) with descriptions.
+
+---
+
+### plan_write_operation
+
+Pure-logic decision helper — returns the recommended write tool and rationale. Makes no API calls.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `kind` | Yes | One of: `create_asset`, `create_relation`, `create_community`, `create_domain`, `update_attribute`, `update_description`, `add_business_term`, `delete_asset`, `delete_relation`, `multi_op_one_asset` |
+| `items_count` | Yes | Number of items the operation involves |
+| `same_target_type` | No | For `update_attribute`: are all updates targeting the same `attribute_type_id`? (default: true) |
+| `affects_single_asset` | No | For `multi_op_one_asset`: confirm all ops target the same asset UUID (default: false) |
+
+**Returns:** Recommended tool name plus rationale (why single vs. bulk vs. `edit_asset` is preferred for that combination).
+
+---
+
+## Bulk Operations
+
+All bulk tools use the two-step **preview/confirm** pattern: call with `confirm=false` (default) to preview, then `confirm=true` to apply.
+
+> **Write operation** — all bulk tools are hidden when `"readOnly": true`.
+
+### bulk_create_assets
+
+Create multiple Collibra assets in a single `POST /rest/2.0/assets/bulk` call with an optional `POST /rest/2.0/attributes/bulk` pass for attributes. Far more efficient than calling `create_asset` N times.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `instance_name` | Yes | Collibra instance name |
+| `assets` | Yes | Array of assets to create. Each entry: `name` (req), `asset_type_id` (req), `domain_id` (req), `display_name`, `status_id`, `attributes` (map of type UUID → value) |
+| `confirm` | No | `true` to apply, `false` to preview (default). Preview detects existing `(domain_id, name)` pairs. |
+| `skip_existing` | No | Skip assets whose `(domain_id, name)` already exists in confirm mode (default: true) |
+
+---
+
+### bulk_create_relations
+
+Create multiple typed relations in a single `POST /rest/2.0/relations/bulk` call. Idempotent — existing `(source, target, type)` triples are detected in preview and skipped on apply.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `instance_name` | Yes | Collibra instance name |
+| `relations` | Yes | Array of relations to create. Each entry: `source_asset_id` (req), `target_asset_id` (req), `relation_type_id` (req) |
+| `confirm` | No | `true` to apply, `false` to preview (default). Preview classifies each as NEW or EXISTING. |
+
+---
+
+### bulk_delete_assets
+
+Permanently delete multiple assets in a single `DELETE /rest/2.0/assets/bulk` call.
+
+> **DESTRUCTIVE** — all attributes, relations, attachments, and comments for each asset are removed. Cannot be undone.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `instance_name` | Yes | Collibra instance name |
+| `asset_ids` | Yes | Array of asset UUIDs to delete |
+| `confirm` | No | `true` to delete, `false` to preview (default). Preview shows name, type, domain, and URL for each asset. |
+
+---
+
+### bulk_delete_relations
+
+Permanently delete multiple relations in a single `DELETE /rest/2.0/relations/bulk` call.
+
+> **DESTRUCTIVE** — relations are removed permanently; linked assets are untouched.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `instance_name` | Yes | Collibra instance name |
+| `relation_ids` | Yes | Array of relation UUIDs to delete |
+| `confirm` | No | `true` to delete, `false` to preview (default). Preview shows source asset, target asset, and relation type for each. |
+
+---
+
+### edit_asset
+
+Apply a list of typed edits to a single asset in one tool call. Attribute changes are batched via `/attributes/bulk`; relation changes are batched via `/relations/bulk`.
+
+> **Write operation** — hidden when `"readOnly": true`.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `instance_name` | Yes | Collibra instance name |
+| `asset_id` | Yes | UUID of the asset to edit |
+| `operations` | Yes | Ordered list of edit operations (see below) |
+| `confirm` | No | `true` to apply, `false` to preview (default). Preview shows current vs. proposed value for each op. |
+
+**Operation types:**
+
+| `op` | Required extra fields | Description |
+|------|-----------------------|-------------|
+| `update_attribute` | `attribute_type_id`, `value` | PATCH existing attribute; POST if not present |
+| `add_attribute` | `attribute_type_id`, `value` | Always POST a new attribute value |
+| `remove_attribute` | `attribute_type_id` | DELETE all attribute values for that type on this asset |
+| `update_property` | `property` (`name`/`displayName`/`statusId`), `value` | PATCH the asset's top-level property |
+| `add_relation` | `target_asset_id`, `relation_type_id` | Create a typed relation (idempotent) |
+| `remove_relation` | `target_asset_id`, `relation_type_id` | Delete a typed relation |
+
+---
+
 ## Common Workflows
 
 ### Data Discovery
@@ -949,4 +1179,29 @@ list_assessment_templates (find template) → create_assessment (template_id, as
 ### Bulk Attribute Update
 ```
 get_attribute_types (find type ID) → bulk_update_asset_attributes (preview) → bulk_update_asset_attributes (confirm)
+```
+
+### Operating Model — Prime Context Before Writing
+```
+refresh_operating_model → get_operating_model_summary → describe_asset_type (or resolve_model_term)
+```
+
+### Discover How Two Asset Types Relate
+```
+refresh_operating_model → find_traversal_path (source_asset_type_name, target_asset_type_name)
+```
+
+### Plan and Validate an Asset Before Creating It
+```
+refresh_operating_model → plan_asset_creation → validate_against_model → prepare_create_asset → create_asset
+```
+
+### Bulk-Create Assets from a List
+```
+plan_write_operation (kind=create_asset, items_count=N) → bulk_create_assets (confirm=false) → bulk_create_assets (confirm=true)
+```
+
+### Multi-Op Edit on a Single Asset
+```
+plan_write_operation (kind=multi_op_one_asset) → edit_asset (confirm=false preview) → edit_asset (confirm=true)
 ```

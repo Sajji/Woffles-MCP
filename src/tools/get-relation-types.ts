@@ -1,4 +1,4 @@
-import { ok, okPretty } from '../utils/tool-result.js';
+import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
@@ -104,7 +104,7 @@ export async function executeGetRelationTypes(args: any): Promise<ToolResult> {
       coRole: r.coRole,
     }));
 
-    return ok({
+    return okWithNext({
       instance: instance_name,
       filters: {
         sourceTypeName: source_type_name || 'All',
@@ -114,7 +114,10 @@ export async function executeGetRelationTypes(args: any): Promise<ToolResult> {
       total: allResults.length,
       returned: relationTypes.length,
       relationTypes,
-    });
+    }, [
+      { tool: 'find_traversal_path', args: { instance_name, source_asset_type_name: source_type_name || '<source>', target_asset_type_name: target_type_name || '<target>' }, why: 'Compute a shortest relation path between two asset types.' },
+      { tool: 'validate_against_model', args: { instance_name, proposal_type: 'relation', relation_type_id: '<pick from relationTypes>', source_asset_type_id: '<source uuid>', target_asset_type_id: '<target uuid>' }, why: 'Verify endpoints before calling create_relation.' },
+    ]);
 
   } catch (error) {
     return ok({

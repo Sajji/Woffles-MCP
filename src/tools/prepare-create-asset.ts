@@ -1,4 +1,4 @@
-import { ok, okPretty } from '../utils/tool-result.js';
+import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
@@ -182,7 +182,11 @@ export async function executePrepareCreateAsset(args: any): Promise<ToolResult> 
       domainName: resolvedDomainName,
     };
 
-    return okPretty(result);
+    return okWithNext(result, [
+      { tool: 'plan_asset_creation', args: { instance_name, asset_name, asset_type_id: resolvedTypeId, domain_id: resolvedDomainId }, why: 'Get assignable attributes, eligible statuses, and default status for this type before writing.' },
+      { tool: 'validate_against_model', args: { instance_name, proposal_type: 'asset', asset_type_id: resolvedTypeId }, why: 'Schema-check the proposed write against the cached model.' },
+      { tool: 'create_asset', args: { instance_name, name: asset_name, asset_type_id: resolvedTypeId, domain_id: resolvedDomainId }, why: 'Execute the create once you are ready.' },
+    ], true);
 
   } catch (error) {
     return ok({

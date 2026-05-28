@@ -1,6 +1,6 @@
 import { getInstance } from '../config.js';
 import { CollibraClient, enrichResponseUrls } from '../utils/collibra-client.js';
-import { ok, okPretty } from '../utils/tool-result.js';
+import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 
 export const getDomainsTool = {
@@ -78,7 +78,7 @@ export async function executeGetDomains(args: any): Promise<ToolResult> {
     });
 
     // Return formatted response
-    return ok(enrichResponseUrls(instance.baseUrl, {
+    return okWithNext(enrichResponseUrls(instance.baseUrl, {
       instance: instance_name,
       filters: {
         communityId: community_id || 'All communities',
@@ -88,7 +88,10 @@ export async function executeGetDomains(args: any): Promise<ToolResult> {
       returned: response.results?.length || 0,
       domainsByCommunity,
       allDomains: response.results || [],
-    }));
+    }) as Record<string, unknown>, [
+      { tool: 'prepare_create_asset', args: { instance_name, asset_name: '<name>', asset_type_name: '<type>', domain_id: '<pick from allDomains>' }, why: 'Pre-flight check before creating an asset in a chosen domain.' },
+      { tool: 'plan_asset_creation', args: { instance_name, asset_name: '<name>', asset_type_name: '<type>', domain_id: '<pick from allDomains>' }, why: 'Build a model-conformant creation plan including attributes and status.' },
+    ]);
 
   } catch (error) {
     return ok({
