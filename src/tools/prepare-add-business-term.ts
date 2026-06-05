@@ -11,14 +11,14 @@ const DEFINITION_ATTR_TYPE_ID = '00000000-0000-0000-0000-000000000202';
 export const prepareAddBusinessTermTool = {
   name: 'prepare_add_business_term',
   description:
-    'Pre-flight check before calling add_business_term. ' +
+    'Pre-flight check before calling bulk_create_assets for a Business Term. ' +
     'Resolves the target domain (by name or UUID), checks for duplicate business terms with the same name, ' +
     'and returns the available attribute schema (e.g., Definition, Note, Example). ' +
     'Returns a status of "ready" when domain is resolved and no duplicate found, ' +
     '"incomplete" when required information is missing, ' +
     '"needs_clarification" when the domain name matches multiple candidates (returns up to 20 options), ' +
     'or "duplicate_found" when a business term with the same name already exists in that domain. ' +
-    'Pass the resolved domainId from this response to add_business_term.',
+    'Pass the resolved domainId to bulk_create_assets with asset_type_id=00000000-0000-0000-0000-000000011001.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -162,8 +162,8 @@ export async function executePrepareAddBusinessTerm(args: any): Promise<ToolResu
     // --- All good ---
     result.status = 'ready';
     result.instructions =
-      'Call add_business_term with the resolved domainId. ' +
-      'Optionally include a definition and/or additional attributes from attributeSchema.';
+      'Call bulk_create_assets with asset_type_id=00000000-0000-0000-0000-000000011001 and the resolved domainId. ' +
+      'Use attributes map with key 00000000-0000-0000-0000-000000000202 for the Definition. Pass confirm=false first to preview.';
     result.resolved = {
       domainId: resolvedDomainId,
       domainName: resolvedDomainName,
@@ -174,7 +174,7 @@ export async function executePrepareAddBusinessTerm(args: any): Promise<ToolResu
     }
 
     return okWithNext(result, [
-      { tool: 'add_business_term', args: { instance_name, domain_id: resolvedDomainId, name: '<term name>', definition: '<optional>' }, why: 'Execute the create now that the domain is resolved.' },
+      { tool: 'bulk_create_assets', args: { instance_name, assets: [{ name: '<term name>', asset_type_id: '00000000-0000-0000-0000-000000011001', domain_id: resolvedDomainId, attributes: { '00000000-0000-0000-0000-000000000202': '<definition>' } }], confirm: false }, why: 'Preview then confirm the Business Term creation via bulk_create_assets.' },
       { tool: 'validate_against_model', args: { instance_name, proposal_type: 'attribute', attribute_type_id: DEFINITION_ATTR_TYPE_ID }, why: 'Schema-check the Definition attribute before writing.' },
     ], true);
 

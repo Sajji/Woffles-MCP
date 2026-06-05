@@ -6,14 +6,14 @@ import { CollibraClient } from '../utils/collibra-client.js';
 export const prepareCreateAssetTool = {
   name: 'prepare_create_asset',
   description:
-    'Pre-flight check before calling create_asset. ' +
+    'Pre-flight check before calling bulk_create_assets. ' +
     'Resolves the asset type (by name or UUID) and domain (by name or UUID), hydrates the available attribute schema, ' +
     'and checks for duplicate asset names. ' +
     'Returns a status of "ready" when both assetTypeId and domainId are resolved, ' +
     '"incomplete" when required information is missing, ' +
     '"needs_clarification" when the type or domain name matches multiple candidates (returns up to 20 options), ' +
     'or "duplicate_found" when an asset with the same name already exists in that domain. ' +
-    'Pass the resolved assetTypeId and domainId from this response to create_asset.',
+    'Pass the resolved assetTypeId and domainId from this response to bulk_create_assets.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -174,7 +174,7 @@ export async function executePrepareCreateAsset(args: any): Promise<ToolResult> 
 
     // --- All good ---
     result.status = 'ready';
-    result.instructions = 'Call create_asset with the resolved assetTypeId and domainId below.';
+    result.instructions = 'Call bulk_create_assets with the resolved assetTypeId and domainId below. Pass assets as a single-element array for one asset, or extend the array for a batch.';
     result.resolved = {
       assetTypeId: resolvedTypeId,
       assetTypeName: resolvedTypeName,
@@ -185,7 +185,7 @@ export async function executePrepareCreateAsset(args: any): Promise<ToolResult> 
     return okWithNext(result, [
       { tool: 'plan_asset_creation', args: { instance_name, asset_name, asset_type_id: resolvedTypeId, domain_id: resolvedDomainId }, why: 'Get assignable attributes, eligible statuses, and default status for this type before writing.' },
       { tool: 'validate_against_model', args: { instance_name, proposal_type: 'asset', asset_type_id: resolvedTypeId }, why: 'Schema-check the proposed write against the cached model.' },
-      { tool: 'create_asset', args: { instance_name, name: asset_name, asset_type_id: resolvedTypeId, domain_id: resolvedDomainId }, why: 'Execute the create once you are ready.' },
+      { tool: 'bulk_create_assets', args: { instance_name, assets: [{ name: asset_name, asset_type_id: resolvedTypeId, domain_id: resolvedDomainId }], confirm: false }, why: 'Preview then confirm the create with bulk_create_assets (works for single or multiple assets).' },
     ], true);
 
   } catch (error) {

@@ -6,14 +6,15 @@ import { CollibraClient } from '../utils/collibra-client.js';
 export const bulkCreateAssetsTool = {
   name: 'bulk_create_assets',
   description:
-    'Create multiple Collibra assets in a single POST /rest/2.0/assets/bulk call, ' +
+    'Create one or more Collibra assets in a single POST /rest/2.0/assets/bulk call, ' +
     'optionally followed by a single POST /rest/2.0/attributes/bulk call for all attribute values across the batch. ' +
-    'Far more efficient than calling create_asset N times (1–2 round trips instead of N×(1+M)). ' +
+    'Use this tool for ALL asset creation — single or batch — for consistent preview/confirm safety. ' +
     'Mixed asset types and mixed target domains in one batch are supported. ' +
     'Two-step safety: ' +
     '1) Call with confirm=false (default) to PREVIEW the batch and detect existing assets by (domain_id, name). ' +
     '2) Call again with confirm=true to APPLY. ' +
-    'For a SINGLE asset prefer create_asset (no preview round trip).',
+    'Use prepare_create_asset first to resolve assetTypeId and domainId. ' +
+    'For Business Terms, use asset_type_id=00000000-0000-0000-0000-000000011001 and Definition attribute type id 00000000-0000-0000-0000-000000000202.',
   inputSchema: {
     type: 'object',
     properties: {

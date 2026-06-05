@@ -70,16 +70,12 @@ export async function executePlanWriteOperation(args: any): Promise<ToolResult> 
 
   switch (kind) {
     case 'create_asset': {
-      if (n === 1) {
-        recommendation = 'create_asset';
-        alternatives = ['prepare_create_asset (call first to resolve IDs and check duplicates)'];
-        why = 'Single asset: the singleton is fastest (no preview round trip).';
-      } else {
-        recommendation = 'bulk_create_assets';
-        alternatives = ['create_asset (N×)'];
-        why = `Creating ${n} assets in one bulk POST is ~${n}× fewer round trips. The tool also fans all attributes through a single /attributes/bulk call.`;
-        efficiencyNote = `Approx round trips: bulk_create_assets = 1 lookup-batch + 1 POST + 1 attrs POST ≈ 3; create_asset×${n} = ${n}×(1+M) ≈ ${n * 2}+.`;
-      }
+      recommendation = 'bulk_create_assets';
+      alternatives = ['prepare_create_asset (call first to resolve IDs and check duplicates)'];
+      why = n === 1
+        ? 'Even for a single asset, bulk_create_assets provides a preview/confirm safety step and uses /assets/bulk which accepts single-element arrays.'
+        : `Creating ${n} assets in one bulk POST is ~${n}× fewer round trips. The tool also fans all attributes through a single /attributes/bulk call.`;
+      efficiencyNote = `Approx round trips: bulk_create_assets = 1 lookup-batch + 1 POST + 1 attrs POST ≈ 3.`;
       break;
     }
     case 'create_relation': {
@@ -121,15 +117,11 @@ export async function executePlanWriteOperation(args: any): Promise<ToolResult> 
       break;
     }
     case 'add_business_term': {
-      if (n === 1) {
-        recommendation = 'add_business_term';
-        alternatives = ['prepare_add_business_term (call first to resolve domain and check duplicates)'];
-        why = 'Singleton creates the asset and any attributes in one bulk attribute POST.';
-      } else {
-        recommendation = 'bulk_create_assets (with Business Term type and Definition attribute)';
-        alternatives = ['add_business_term (N×)'];
-        why = `For ${n} business terms, use bulk_create_assets with asset_type_id=<BusinessTerm> and attributes={ '00000000-0000-0000-0000-000000000202': definition }.`;
-      }
+      recommendation = 'bulk_create_assets (with Business Term asset_type_id=00000000-0000-0000-0000-000000011001 and Definition attribute 00000000-0000-0000-0000-000000000202)';
+      alternatives = ['prepare_add_business_term (call first to resolve domain and check duplicates)'];
+      why = n === 1
+        ? 'Even for a single business term, bulk_create_assets provides a preview/confirm safety step and accepts single-element arrays.'
+        : `For ${n} business terms, use bulk_create_assets — one /assets/bulk POST + one /attributes/bulk POST covers the entire batch.`;
       break;
     }
     case 'delete_asset':
