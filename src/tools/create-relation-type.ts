@@ -69,7 +69,7 @@ export async function executeCreateRelationType(args: any): Promise<ToolResult> 
     const match = (existing.results || []).find(
       (rt: any) =>
         rt.role === role &&
-        rt.corole === corole &&
+        (rt.coRole ?? rt.corole) === corole &&
         rt.sourceType?.id === source_asset_type_id &&
         rt.targetType?.id === target_asset_type_id,
     );
@@ -80,7 +80,7 @@ export async function executeCreateRelationType(args: any): Promise<ToolResult> 
         relationType: {
           id: match.id,
           role: match.role,
-          corole: match.corole,
+          corole: match.coRole ?? match.corole,
           sourceType: match.sourceType ? { id: match.sourceType.id, name: match.sourceType.name } : null,
           targetType: match.targetType ? { id: match.targetType.id, name: match.targetType.name } : null,
         },
@@ -89,9 +89,10 @@ export async function executeCreateRelationType(args: any): Promise<ToolResult> 
     }
 
     // ── Create ────────────────────────────────────────────────────────
+    // Collibra's addRelationType expects the camelCase field `coRole`.
     const body: any = {
       role,
-      corole,
+      coRole: corole,
       sourceTypeId: source_asset_type_id,
       targetTypeId: target_asset_type_id,
     };
@@ -104,7 +105,7 @@ export async function executeCreateRelationType(args: any): Promise<ToolResult> 
       relationType: {
         id: created.id,
         role: created.role,
-        corole: created.corole,
+        corole: created.coRole ?? created.corole,
         sourceType: created.sourceType ? { id: created.sourceType.id, name: created.sourceType.name } : null,
         targetType: created.targetType ? { id: created.targetType.id, name: created.targetType.name } : null,
       },

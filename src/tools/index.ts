@@ -65,6 +65,8 @@ import { bulkCreateRelationsTool, executeBulkCreateRelations } from './bulk-crea
 import { bulkDeleteAssetsTool, executeBulkDeleteAssets, bulkDeleteRelationsTool, executeBulkDeleteRelations } from './bulk-delete.js';
 import { editAssetTool, executeEditAsset } from './edit-asset.js';
 import { planWriteOperationTool, executePlanWriteOperation } from './plan-write-operation.js';
+import { createAttributeTypeTool, executeCreateAttributeType } from './create-attribute-type.js';
+import { assignAttributeToAssetTypeTool, executeAssignAttributeToAssetType } from './assign-attribute-to-asset-type.js';
 
 // Write tools that are disabled when readOnly mode is enabled
 const WRITE_TOOL_NAMES = [
@@ -88,6 +90,8 @@ const WRITE_TOOL_NAMES = [
   'bulk_delete_assets',
   'bulk_delete_relations',
   'edit_asset',
+  'create_attribute_type',
+  'assign_attribute_to_asset_type',
 ];
 
 const allTools = [
@@ -155,6 +159,8 @@ const allTools = [
   bulkDeleteRelationsTool,
   editAssetTool,
   planWriteOperationTool,
+  createAttributeTypeTool,
+  assignAttributeToAssetTypeTool,
 ];
 
 export const tools = isReadOnly()
@@ -231,6 +237,8 @@ export const toolExecutors: Record<string, (args: any) => Promise<string | ToolR
   bulk_delete_relations: executeBulkDeleteRelations,
   edit_asset: executeEditAsset,
   plan_write_operation: executePlanWriteOperation,
+  create_attribute_type: executeCreateAttributeType,
+  assign_attribute_to_asset_type: executeAssignAttributeToAssetType,
 };
 
 // Helper function to execute a tool by name. Always returns a normalized

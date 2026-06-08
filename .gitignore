@@ -151,3 +151,9 @@ graphqlSchema.json
 # macOS metadata files
 .DS_Store
 **/.DS_Store
+
+#dcat stuff
+dcat*
+
+#scripts
+/scripts/
