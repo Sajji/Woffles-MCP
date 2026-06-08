@@ -22,8 +22,6 @@ export interface ToolResult {
 export interface CollibraConfig {
   instances: CollibraInstance[];
   readOnly?: boolean;
-  warning?: string;
-  warningIcon?: string;
 }
 
 // Asset Type types

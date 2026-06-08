@@ -60,10 +60,4 @@ export function isReadOnly(): boolean {
   return loadConfig().readOnly === true;
 }
 
-export function getWarning(): string | undefined {
-  return loadConfig().warning;
-}
 
-export function getWarningIcon(): string {
-  return loadConfig().warningIcon ?? '⚠️';
-}
