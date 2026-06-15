@@ -1,7 +1,5 @@
 {
   "readOnly": true,
-  "warning": "Your new AI friends can sometimes make mistakes. Always double-check their work!",
-  "warningIcon": "🤖",
   "instances": [
     {
       "name": "Production",
