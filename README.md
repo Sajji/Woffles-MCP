@@ -4,7 +4,8 @@ A [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server for Co
 
 ## Features
 
-- **66 tools** covering discovery, governance, semantic traversal, lineage, asset creation, operating model management, operating model intelligence, API catalog traversal, data classification, data contracts, assessments, bulk operations, and write operations
+- **Not just Collibra — a true multi-API federation layer.** A single MCP server can integrate *many* APIs, not only Collibra ones. It ships with the public [Star Wars API](https://www.swapi.tech) built in as a live proof point, so `search_subject` can answer a question from **every configured Collibra instance _and_ an external public API in one call**. Add your own REST APIs the same way. ([details below](#not-just-collibra-multi-api-federation))
+- **70 tools** covering discovery, governance, semantic traversal, lineage, asset creation, operating model management, operating model intelligence, API catalog traversal, data classification, data contracts, assessments, bulk operations, write operations, and multi-source federation (including the public Star Wars API)
 - **Multi-instance** support — connect to production, dev, and UAT simultaneously
 - **REST + GraphQL** — uses whichever Collibra API is best for each operation
 - **Full user name resolution** — responsibilities show real names and emails, not UUIDs
@@ -24,7 +25,38 @@ A [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server for Co
 - **AI Use Case assessments** — retrieve assessments linked to any AI Use Case asset by its UUID; read full Q&A content, create new assessments, and submit them
 - **Structured tool output** — every tool ships an MCP `outputSchema` and returns `structuredContent` alongside the human-readable text, so structured-aware clients can parse responses directly without re-parsing JSON out of the text block
 
+## Not Just Collibra: Multi-API Federation
+
+> **This server is a federation layer, not a single-API wrapper.** One MCP server can front *multiple* back-end APIs at once — Collibra instances **and** arbitrary external REST APIs — and present them to an AI assistant as one unified tool surface.
+
+To prove the point out of the box, the server integrates the public **[Star Wars API](https://www.swapi.tech)** (no API key required) right alongside your Collibra instances. Ask an assistant about a subject and the server fans the query out to **every source in parallel**, grouping the results by source. A failure in any one source never blocks the others.
+
+```mermaid
+flowchart LR
+    AI["AI assistant"] -->|search_subject| MCP["Collibra MCP Server<br/>(federation layer)"]
+    MCP --> C1["Collibra: Production"]
+    MCP --> C2["Collibra: Sandbox"]
+    MCP --> SW["Star Wars API<br/>(external, public)"]
+    MCP -.->|add your own| EXT["Any REST API"]
+```
+
+Two tools showcase the pattern:
+
+| Tool | What it does |
+|------|--------------|
+| `search_subject` | **Federated search** — fans one query across **all Collibra instances + the Star Wars API** in a single call, grouping hits by source and tagging each `collibra` or `starwars`. Per-source failures are isolated. |
+| `search_star_wars` | Searches only the Star Wars API (people, planets, starships, vehicles, species, films). |
+
+The Star Wars source is **enabled by default** and configured under the optional `externalSources` block in `config.json` (see [Configuration](#beyond-collibra-external-sources)). The same registration pattern extends to any additional public or internal REST API — Collibra is simply the first, richest integration, not the only one.
+
 ## Available Tools
+
+### Multi-Source Federation
+
+| Tool | Description |
+|------|-------------|
+| `search_subject` | Federated search across **every Collibra instance + the Star Wars API** in one call; results grouped by source, per-source failures isolated |
+| `search_star_wars` | Search the public Star Wars API only (people, planets, starships, vehicles, species, films) |
 
 ### Discovery & Navigation
 
@@ -77,6 +109,8 @@ A [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server for Co
 | `create_relation` | Create a typed relationship between two assets — idempotent *(write)* |
 | `create_asset_type` | Create an asset type in the operating model — idempotent *(write)* |
 | `create_relation_type` | Create a relation type in the operating model — idempotent *(write)* |
+| `create_attribute_type` | Create an attribute type (characteristic) in the operating model — idempotent *(write)* |
+| `assign_attribute_to_asset_type` | Assign an existing attribute type to an asset type — idempotent *(write)* |
 
 ### Data Classification
 
@@ -172,6 +206,8 @@ Cache the operating model once and use these tools for customer-agnostic guidanc
 | `bulk_create_relations` | Create multiple typed relations in one bulk call |
 | `create_asset_type` | Create an asset type in the operating model (idempotent) |
 | `create_relation_type` | Create a relation type in the operating model (idempotent) |
+| `create_attribute_type` | Create an attribute type in the operating model (idempotent) |
+| `assign_attribute_to_asset_type` | Assign an attribute type to an asset type (idempotent) |
 | `add_data_classification_match` | Associate a data class with an asset |
 | `remove_data_classification_match` | Remove a classification match (preview → confirm) |
 | `push_data_contract_manifest` | Upload a new data contract manifest version |
@@ -228,11 +264,42 @@ You can add multiple instances and reference them by name when calling any tool.
 | Value | behavior |
 |-------|-----------|
 | `true` (default) | Write tools are **hidden from the AI** — they do not appear in the tool list and cannot be called |
-| `false` | All 66 tools are available, including the 22 write tools |
+| `false` | All 70 tools are available, including the 24 write tools |
 
 Set `"readOnly": false` only when you personally need to make changes, then switch back to `true` when done.
 
 > **Security:** `config.json` is in `.gitignore` — never commit credentials to version control.
+
+### Beyond Collibra: External Sources
+
+The server is a **federation layer**, not just a Collibra wrapper — it can query non-Collibra
+REST APIs alongside your Collibra instances. As a built-in illustration, it integrates the
+public [Star Wars API](https://www.swapi.tech), so asking an LLM about a subject like
+"Luke Skywalker" checks **every configured Collibra instance _and_ the Star Wars API** at once.
+
+External sources are declared in the optional `externalSources` block of `config.json`:
+
+```json
+{
+  "externalSources": {
+    "starWars": {
+      "enabled": true,
+      "baseUrl": "https://www.swapi.tech/api"
+    }
+  }
+}
+```
+
+The Star Wars source is **enabled by default** (omit the block to accept defaults; set
+`enabled: false` to turn it off). Two tools use it:
+
+| Tool | What it does |
+|------|--------------|
+| `search_star_wars` | Searches only the Star Wars API (people, planets, starships, vehicles, species, films) |
+| `search_subject` | Federated search: fans out across **all Collibra instances + the Star Wars API** in one call, grouping results by source. A failure in one source never blocks the others. |
+
+This pattern is designed to be extended — additional public or internal REST APIs can be
+registered the same way.
 
 ## Documentation
 
@@ -240,7 +307,7 @@ Set `"readOnly": false` only when you personally need to make changes, then swit
 |-------|-------------|
 | [INSTALL.md](INSTALL.md) | Full installation and MCP client configuration |
 | [docs/CLAUDE_DESKTOP_SETUP.md](docs/CLAUDE_DESKTOP_SETUP.md) | Claude Desktop integration step-by-step |
-| [docs/TOOLS_REFERENCE.md](docs/TOOLS_REFERENCE.md) | Detailed parameter reference for all 66 tools |
+| [docs/TOOLS_REFERENCE.md](docs/TOOLS_REFERENCE.md) | Detailed parameter reference for all 70 tools |
 
 ## Project Structure
 
@@ -250,7 +317,7 @@ Set `"readOnly": false` only when you personally need to make changes, then swit
 │   ├── config.ts                         # Configuration loader
 │   ├── types.ts                          # TypeScript type definitions
 │   ├── tools/
-│   │   ├── index.ts                              # Tool registry (66 tools)
+│   │   ├── index.ts                              # Tool registry (70 tools)
 │   │   ├── get-asset-types.ts                    # Asset type definitions
 │   │   ├── get-communities.ts                    # Community hierarchy
 │   │   ├── get-domains.ts                        # Domain listing
@@ -315,10 +382,16 @@ Set `"readOnly": false` only when you personally need to make changes, then swit
 │   │   ├── bulk-create-assets.ts                 # Bulk asset creation (write)
 │   │   ├── bulk-create-relations.ts              # Bulk relation creation (write)
 │   │   ├── bulk-delete.ts                        # Bulk asset + relation delete (write)
-│   │   └── edit-asset.ts                         # Multi-op compound edit (write)
-│   │   # (tool registry index.ts registers all 66 tools)
+│   │   ├── edit-asset.ts                         # Multi-op compound edit (write)
+│   │   ├── plan-write-operation.ts               # Write advisor — pick single/bulk/edit_asset
+│   │   ├── create-attribute-type.ts              # Create attribute type in operating model (write)
+│   │   ├── assign-attribute-to-asset-type.ts     # Assign attribute type to asset type (write)
+│   │   ├── search-star-wars.ts                   # Search the public Star Wars API (federation demo)
+│   │   └── search-subject.ts                     # Federated search across Collibra + Star Wars API
+│   │   # (tool registry index.ts registers all 70 tools)
 │   └── utils/
 │       ├── collibra-client.ts            # REST + GraphQL client with URL helpers
+│       ├── swapi-client.ts               # Minimal client for the public Star Wars API
 │       ├── operating-model-cache.ts      # Local operating model snapshot store
 │       └── tool-result.ts                # `ok` / `okPretty` helpers for structuredContent
 ├── config.example.json                   # Configuration template

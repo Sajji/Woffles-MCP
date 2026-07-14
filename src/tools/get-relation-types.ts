@@ -49,21 +49,11 @@ export async function executeGetRelationTypes(args: any): Promise<ToolResult> {
     const instance = getInstance(instance_name);
     const client = new CollibraClient(instance);
 
-    // Fetch all relation types (paginate if needed)
-    let allResults: any[] = [];
-    let offset = 0;
-    const pageSize = 1000;
-    let hasMore = true;
-
-    while (hasMore) {
-      const response = await client.restCall<any>(
-        `/rest/2.0/relationTypes?offset=${offset}&limit=${pageSize}&sortField=ROLE&sortOrder=ASC`
-      );
-      const results = response.results || [];
-      allResults = allResults.concat(results);
-      hasMore = results.length === pageSize;
-      offset += pageSize;
-    }
+    // Fetch all relation types (auto-paginated, page size clamped to the REST max)
+    const allResults: any[] = await client.restPaginate('/rest/2.0/relationTypes', {
+      sortField: 'ROLE',
+      sortOrder: 'ASC',
+    });
 
     // Apply client-side filters
     let filtered = allResults;

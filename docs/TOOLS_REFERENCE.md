@@ -1,6 +1,6 @@
 # Tools Reference
 
-Complete reference for all 66 tools provided by the Collibra MCP Server.
+Complete reference for all 70 tools provided by the Collibra MCP Server.
 
 ---
 
@@ -84,7 +84,7 @@ Retrieve all asset workflow statuses from a Collibra instance. Returns the `id` 
 
 Traverse the REST API catalog hierarchy in a Collibra instance: **REST API → REST API Version → REST API Endpoint → REST API Operation**. Returns a structured tree showing all cataloged APIs, their versioned releases, endpoint paths, and the HTTP operations on each path.
 
-> **Prerequisite:** The REST API operating model must be configured in the target instance (run `setupArmyRestApiModel.mjs` first).
+> **Prerequisite:** The REST API operating model must be configured in the target instance.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
@@ -158,7 +158,47 @@ All user/group owners are resolved to full names, emails, and usernames via batc
 
 ---
 
+## External Sources (Multi-Source)
+
+These tools demonstrate that the server is a **federation layer**, not just a Collibra
+wrapper: it can query non-Collibra REST APIs (here, the public Star Wars API) on their own
+or alongside every configured Collibra instance in a single call.
+
+Configure external sources via the optional `externalSources` block in `config.json`
+(see `config.example.json`). The Star Wars source is enabled by default.
+
+### search_star_wars
+
+Search the public Star Wars API (swapi.tech) for characters, planets, starships, vehicles, species, and films by name.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `search_term` | Yes | Subject to search for, e.g. "Luke Skywalker", "Tatooine", "X-wing" |
+| `resources` | No | Which resource types to search: `people`, `planets`, `starships`, `vehicles`, `species`, `films` (default: all) |
+| `limit` | No | Max hits per resource type (default: 10) |
+
+**Note:** `films` are matched by title; every other resource is matched by name. No API key or authentication is required. Results are grouped by resource type under `data.byResource`.
+
+---
+
+### search_subject
+
+Federated search: look up a subject across **every configured Collibra instance AND** the Star Wars API in one call. Results are grouped by source under `data.sources`, each tagged `collibra` or `starwars`. A failure in one source never blocks the others (each source is queried independently and captured with an `error` field if it fails).
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `subject` | Yes | Subject to look up across all sources, e.g. "Luke Skywalker" |
+| `instance_names` | No | Restrict the Collibra fan-out to these instance names (default: all instances) |
+| `include_star_wars` | No | Include the Star Wars API source (default: true) |
+| `star_wars_resources` | No | Which Star Wars resource types to include (default: all) |
+| `limit` | No | Max hits per source (default: 10) |
+
+**Tip:** Use `search_subject` for a one-shot "tell me everything about X" query, then drill into a single source with `search_star_wars` or `search_assets_by_name`.
+
+---
+
 ## Relationships & Governance
+
 
 ### get_asset_relations
 
@@ -507,6 +547,48 @@ Create a relation type in the operating model. If a relation type with the same 
 | `description` | No | Description for the relation type |
 
 **Returns:** `action` (`created` or `existing`), relation type `id`, `role`, `corole`, `sourceType`, and `targetType`.
+
+---
+
+### create_attribute_type
+
+Create an attribute type (characteristic) in the operating model. If an attribute type with the same name already exists, the existing type is returned.
+
+> **Write operation** — set `"readOnly": false` in `config.json` to enable.
+
+| Parameter | Required | Description |
+|-----------|----------|--------------|
+| `instance_name` | Yes | Collibra instance name |
+| `name` | Yes | Name of the new attribute type (unique across all attribute types) |
+| `kind` | No | One of `STRING`, `SINGLE_VALUE_LIST`, `MULTI_VALUE_LIST`, `NUMERIC`, `DATE`, `BOOLEAN`, `SCRIPT` (default: `STRING`) |
+| `description` | No | Description for the attribute type |
+| `allowed_values` | No | For `SINGLE_VALUE_LIST` / `MULTI_VALUE_LIST` kinds: the permitted values |
+| `string_type` | No | For `STRING` kind: `PLAIN_TEXT` (default) or `RICH_TEXT` |
+| `is_integer` | No | For `NUMERIC` kind: whether the value is an integer |
+| `statistics_enabled` | No | For `NUMERIC` / `BOOLEAN` kind: whether statistics are enabled |
+| `public_id` | No | Public id (must start with an uppercase ASCII letter and end with `_C`) |
+
+**Returns:** `action` (`created` or `existing`), attribute type `id`, `name`, `kind`, and `description`.
+
+---
+
+### assign_attribute_to_asset_type
+
+Assign an existing attribute type to an asset type so assets of that type can carry the attribute. An asset type may have multiple assignments (one per eligible domain type); by default the attribute is added to all of them. Idempotent — if the attribute is already assigned everywhere, no change is made.
+
+> **Write operation** — set `"readOnly": false` in `config.json` to enable.
+
+| Parameter | Required | Description |
+|-----------|----------|--------------|
+| `instance_name` | Yes | Collibra instance name |
+| `asset_type_id` | Yes | UUID of the asset type. Use `get_asset_types` to find this. |
+| `attribute_type_id` | Yes | UUID of the attribute type. Use `get_attribute_types` or `create_attribute_type` to find this. |
+| `assignment_id` | No | Target a single assignment by id (default: all assignments of the asset type) |
+| `minimum_occurrences` | No | Minimum occurrences for the attribute (default: 0) |
+| `maximum_occurrences` | No | Maximum occurrences (default: 1; omit for no limit) |
+| `dry_run` | No | Preview the merged characteristic list without writing (default: false) |
+
+**Returns:** `action` (`created` or `existing`), the `assetType`, and the `attributeType` assigned.
 
 ---
 

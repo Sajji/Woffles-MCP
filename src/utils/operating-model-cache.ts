@@ -110,20 +110,11 @@ async function paged<T>(
   client: CollibraClient,
   endpoint: string,
 ): Promise<T[]> {
-  const out: T[] = [];
-  let offset = 0;
-  // Cap to avoid runaway pulls on pathological models; 50k is more than
-  // any realistic operating model.
-  while (offset < 50_000) {
-    const sep = endpoint.includes('?') ? '&' : '?';
-    const url = `${endpoint}${sep}offset=${offset}&limit=${PAGE}`;
-    const resp = await client.restCall<{ results?: T[]; total?: number }>(url);
-    const batch = resp.results || [];
-    out.push(...batch);
-    if (batch.length < PAGE) break;
-    offset += PAGE;
-  }
-  return out;
+  // Split any embedded query string into params for restPaginate, which
+  // handles offset looping and clamps page size to the REST maximum.
+  const [path, qs] = endpoint.split('?');
+  const params = Object.fromEntries(new URLSearchParams(qs ?? ''));
+  return client.restPaginate<T>(path, params, PAGE);
 }
 
 /**

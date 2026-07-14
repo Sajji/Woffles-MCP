@@ -60,4 +60,17 @@ export function isReadOnly(): boolean {
   return loadConfig().readOnly === true;
 }
 
+/**
+ * Resolve the Star Wars external source configuration, applying defaults when
+ * the `externalSources.starWars` section is absent from config.json. Enabled by
+ * default so the multi-source demo works out of the box.
+ */
+export function getStarWarsSource(): { enabled: boolean; baseUrl: string } {
+  const starWars = loadConfig().externalSources?.starWars;
+  return {
+    enabled: starWars?.enabled !== false,
+    baseUrl: (starWars?.baseUrl || 'https://www.swapi.tech/api').replace(/\/+$/, ''),
+  };
+}
+
 

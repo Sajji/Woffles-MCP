@@ -36,6 +36,9 @@ try {
   console.error(`✓ Loaded configuration with ${instances.length} Collibra instance(s):`);
   instances.forEach(instance => {
     console.error(`  - ${instance.name}: ${instance.baseUrl}`);
+    if (instance.insecure) {
+      console.error(`  ⚠ WARNING: TLS certificate verification is DISABLED for "${instance.name}" (insecure: true) — do not use in production`);
+    }
   });
 } catch (error) {
   console.error('✗ Failed to enumerate instances:', (error as Error).message);

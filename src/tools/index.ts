@@ -67,6 +67,8 @@ import { editAssetTool, executeEditAsset } from './edit-asset.js';
 import { planWriteOperationTool, executePlanWriteOperation } from './plan-write-operation.js';
 import { createAttributeTypeTool, executeCreateAttributeType } from './create-attribute-type.js';
 import { assignAttributeToAssetTypeTool, executeAssignAttributeToAssetType } from './assign-attribute-to-asset-type.js';
+import { searchStarWarsTool, executeSearchStarWars } from './search-star-wars.js';
+import { searchSubjectTool, executeSearchSubject } from './search-subject.js';
 
 // Write tools that are disabled when readOnly mode is enabled
 const WRITE_TOOL_NAMES = [
@@ -74,6 +76,8 @@ const WRITE_TOOL_NAMES = [
   'bulk_update_asset_descriptions',
   'update_asset_attribute',
   'bulk_update_asset_attributes',
+  'create_asset',
+  'add_business_term',
   'bulk_create_assets',
   'add_data_classification_match',
   'remove_data_classification_match',
@@ -116,7 +120,9 @@ const allTools = [
   getLineageEntityTool,
   searchLineageEntitiesTool,
   prepareCreateAssetTool,
+  createAssetTool,
   prepareAddBusinessTermTool,
+  addBusinessTermTool,
   searchDataClassTool,
   addDataClassificationMatchTool,
   searchDataClassificationMatchTool,
@@ -161,6 +167,8 @@ const allTools = [
   planWriteOperationTool,
   createAttributeTypeTool,
   assignAttributeToAssetTypeTool,
+  searchStarWarsTool,
+  searchSubjectTool,
 ];
 
 export const tools = isReadOnly()
@@ -239,6 +247,8 @@ export const toolExecutors: Record<string, (args: any) => Promise<string | ToolR
   plan_write_operation: executePlanWriteOperation,
   create_attribute_type: executeCreateAttributeType,
   assign_attribute_to_asset_type: executeAssignAttributeToAssetType,
+  search_star_wars: executeSearchStarWars,
+  search_subject: executeSearchSubject,
 };
 
 // Helper function to execute a tool by name. Always returns a normalized

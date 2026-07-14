@@ -40,6 +40,7 @@ Edit `config.json` with your Collibra instance details:
 - **name** — friendly name you'll use in tool calls
 - **baseUrl** — your Collibra URL (no trailing slash)
 - **username / password** — Collibra credentials
+- **insecure** — *(optional, default `false`)* set to `true` to disable TLS certificate verification for this instance; use only for internal or dev instances with self-signed certificates — never use in production
 
 You can add multiple instances to the `instances` array.
 
@@ -94,7 +95,7 @@ Add the following (replace paths with your actual absolute paths):
 }
 ```
 
-Restart Claude Desktop. You should see the Collibra tools available — **44 read-only tools** when `"readOnly": true`, or all **66 tools** when `"readOnly": false`.
+Restart Claude Desktop. You should see the Collibra tools available — **46 read-only tools** when `"readOnly": true`, or all **70 tools** when `"readOnly": false`.
 
 ### VS Code (GitHub Copilot)
 

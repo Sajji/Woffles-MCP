@@ -6,12 +6,12 @@ import { CollibraClient } from '../utils/collibra-client.js';
 export const getApiCatalogTool = {
   name: 'get_api_catalog',
   description:
-    'Traverse the Army REST API catalog hierarchy: REST API → REST API Version → REST API Endpoint → REST API Operation. ' +
+    'Traverse the REST API catalog hierarchy: REST API → REST API Version → REST API Endpoint → REST API Operation. ' +
     'Returns a structured tree showing all cataloged APIs, their versioned releases, endpoint paths, and the HTTP operations on each path. ' +
     'Use this tool to discover what REST APIs exist, understand their endpoint surface area, find specific operations, ' +
     'and navigate to assets for cross-domain linking (governance, lineage, classification). ' +
     'Use include_operations=false for a compact summary when exploring large catalogs. ' +
-    'Prerequisites: the REST API operating model must be configured (run setupArmyRestApiModel.mjs first).',
+    'Prerequisites: the REST API operating model must be configured in the target instance.',
   inputSchema: {
     type: 'object',
     properties: {

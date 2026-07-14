@@ -9,9 +9,16 @@
     },
     {
       "name": "Sandbox",
-      "baseUrl": "https://your-sandbox-instance.collibra.com",
+      "baseUrl": "https://192.168.x.x:5404",
       "username": "your-username",
-      "password": "your-password"
+      "password": "your-password",
+      "insecure": true
     }   
-  ]
+  ],
+  "externalSources": {
+    "starWars": {
+      "enabled": true,
+      "baseUrl": "https://www.swapi.tech/api"
+    }
+  }
 }

@@ -19,9 +19,29 @@ export interface ToolResult {
   structured?: unknown;
 }
 
+/**
+ * Configuration for a single external (non-Collibra) source.
+ */
+export interface StarWarsSourceConfig {
+  /** When false, the Star Wars source is skipped by federated/dedicated tools. Default: true. */
+  enabled?: boolean;
+  /** Base URL of the Star Wars API. Default: https://www.swapi.tech/api */
+  baseUrl?: string;
+}
+
+/**
+ * Optional catalog of external (non-Collibra) sources the server can federate
+ * queries across. Designed to be extended with additional public/internal APIs.
+ */
+export interface ExternalSourcesConfig {
+  starWars?: StarWarsSourceConfig;
+}
+
 export interface CollibraConfig {
   instances: CollibraInstance[];
   readOnly?: boolean;
+  /** Optional non-Collibra sources (e.g. the public Star Wars API). */
+  externalSources?: ExternalSourcesConfig;
 }
 
 // Asset Type types

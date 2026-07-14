@@ -1,5 +1,28 @@
 # Changelog
 
+## 9.1.0 — Multi-API Federation, Attribute-Type Tools & Registration Fix
+
+### Added
+
+#### Multi-Source Federation (Read-Only)
+- **`search_subject`** — federated search that fans a single query across **every configured Collibra instance AND the public Star Wars API** in one call; results are grouped by source and tagged `collibra` or `starwars`; each source is queried independently so a failure in one never blocks the others
+- **`search_star_wars`** — search the public [Star Wars API](https://www.swapi.tech) (people, planets, starships, vehicles, species, films) directly; no API key required; demonstrates that the server is a federation layer that can front non-Collibra REST APIs
+- New optional `externalSources.starWars` block in `config.json` (enabled by default) and a `SwapiClient` util (`src/utils/swapi-client.ts`) that mirrors the `CollibraClient` shape so external and Collibra sources are treated uniformly
+
+#### Operating Model Management (Write)
+- **`create_attribute_type`** *(write)* — create an attribute type (characteristic) in the operating model (`POST /rest/2.0/attributeTypes`); supports `STRING`, `SINGLE_VALUE_LIST`, `MULTI_VALUE_LIST`, `NUMERIC`, `DATE`, `BOOLEAN`, `SCRIPT` kinds; idempotent
+- **`assign_attribute_to_asset_type`** *(write)* — assign an existing attribute type to an asset type so its assets can carry the attribute; merges into all existing assignments while preserving current attributes/relations/statuses; idempotent; `dry_run` preview supported
+
+### Fixed
+- **`create_asset` and `add_business_term` were callable but unregistered.** Both tools were present in the executor map but missing from the advertised `allTools` list *and* from `WRITE_TOOL_NAMES`, so they never appeared in the tool list yet could still be invoked even in read-only mode. They are now registered in the tool list and guarded by read-only mode like every other write tool.
+
+### Changed
+- Genericized the `get_api_catalog` tool description and docs: removed the internal "Army REST API" wording and the `setupArmyRestApiModel.mjs` prerequisite in favor of neutral "REST API operating model" language
+- Tool count corrected to **70** (advertised = executable); write tools now **24**; read-only tools (when `"readOnly": true`) now **46**
+- `scripts/` is now git-ignored (development/provisioning helpers are no longer published)
+
+---
+
 ## 9.0.0 — Operating Model Intelligence, Bulk Operations & Compound Edit
 
 ### Added
@@ -62,7 +85,7 @@
 - **`get_asset_statuses`** — list all workflow statuses and their UUIDs (Candidate, Accepted, Deprecated, etc.); use before `create_asset` to map status names to UUIDs across instances
 
 #### API Catalog Traversal
-- **`get_api_catalog`** — traverse the REST API catalog hierarchy: **REST API → REST API Version → REST API Endpoint → REST API Operation**; filter by API name, toggle operation detail with `include_operations`, and paginate with `limit`; designed for instances with the Army REST API operating model configured
+- **`get_api_catalog`** — traverse the REST API catalog hierarchy: **REST API → REST API Version → REST API Endpoint → REST API Operation**; filter by API name, toggle operation detail with `include_operations`, and paginate with `limit`; designed for instances with the REST API operating model configured
 
 #### Operating Model Management (Write)
 - **`create_community`** *(write)* — create a top-level community or sub-community; idempotent (returns existing if name matches under same parent)
