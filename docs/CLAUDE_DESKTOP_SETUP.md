@@ -150,7 +150,7 @@ When Claude Desktop starts, you should see your Collibra tools available:
 
 1. Start a new conversation
 2. Look for the tools icon or hammer icon
-3. You should see either 16 or 20 Collibra tools depending on your `readOnly` setting:
+3. You should see your Collibra tools — 46 in read-only mode or 71 with `"readOnly": false` (plus 3 chip-compatible aliases), for example:
    - get_asset_types
    - query_assets
    - search_assets_by_name

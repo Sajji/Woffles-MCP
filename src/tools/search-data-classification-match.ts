@@ -8,7 +8,8 @@ export const searchDataClassificationMatchTool = {
   description:
     'Search data classification matches (associations between assets and data classes) in Collibra. ' +
     'Filter by asset IDs, classification IDs, match status (ACCEPTED, REJECTED, SUGGESTED), or asset type IDs. ' +
-    'Returns paginated results with match metadata.',
+    'Returns paginated results with match metadata. ' +
+    'Requires: dgc.classify, dgc.catalog.',
   inputSchema: {
     type: 'object',
     properties: {

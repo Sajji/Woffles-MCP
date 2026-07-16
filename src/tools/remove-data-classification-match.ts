@@ -10,7 +10,8 @@ export const removeDataClassificationMatchTool = {
     'Use search_data_classification_match to find the classification_match_id. ' +
     'This tool uses a two-step safety process: ' +
     '1) Call with confirm=false (default) to PREVIEW the match that will be deleted. ' +
-    '2) Call again with confirm=true to DELETE the match.',
+    '2) Call again with confirm=true to DELETE the match. ' +
+    'Requires: dgc.classify, dgc.catalog, dgc.data-classes-edit.',
   inputSchema: {
     type: 'object',
     properties: {

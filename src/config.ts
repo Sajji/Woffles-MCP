@@ -61,6 +61,41 @@ export function isReadOnly(): boolean {
 }
 
 /**
+ * Read the optional per-tool enable/disable configuration. `enabledTools`
+ * (allowlist) is honoured via config.json or the COLLIBRA_ENABLED_TOOLS env
+ * var; `disabledTools` (denylist) via config.json or COLLIBRA_DISABLED_TOOLS.
+ * Env vars are comma-separated lists and override the config file when set.
+ * The allowlist takes precedence: when it is non-empty the denylist is ignored.
+ */
+export function getToolToggles(): { enabled: string[]; disabled: string[] } {
+  const cfg = loadConfig();
+  const parseEnv = (v?: string): string[] =>
+    (v || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+  const envEnabled = parseEnv(process.env.COLLIBRA_ENABLED_TOOLS);
+  const envDisabled = parseEnv(process.env.COLLIBRA_DISABLED_TOOLS);
+
+  const enabled = envEnabled.length > 0 ? envEnabled : cfg.enabledTools || [];
+  const disabled = envDisabled.length > 0 ? envDisabled : cfg.disabledTools || [];
+
+  return { enabled, disabled };
+}
+
+/**
+ * Decide whether a tool name is permitted by the enable/disable toggles.
+ * Read-only filtering is handled separately.
+ */
+export function isToolEnabledByConfig(toolName: string): boolean {
+  const { enabled, disabled } = getToolToggles();
+  if (enabled.length > 0) return enabled.includes(toolName);
+  if (disabled.length > 0) return !disabled.includes(toolName);
+  return true;
+}
+
+/**
  * Resolve the Star Wars external source configuration, applying defaults when
  * the `externalSources.starWars` section is absent from config.json. Enabled by
  * default so the multi-source demo works out of the box.

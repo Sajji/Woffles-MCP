@@ -37,6 +37,8 @@ Edit `config.json` with your Collibra instance details:
 ```
 
 - **readOnly** — `true` (recommended) hides all write tools from the AI so it cannot make changes; set to `false` to enable write tools
+- **enabledTools** — *(optional)* allowlist of tool names; when set to a non-empty array, ONLY those tools are exposed (takes precedence over `disabledTools`)
+- **disabledTools** — *(optional)* denylist of tool names to hide; ignored when `enabledTools` is set. The `COLLIBRA_ENABLED_TOOLS` / `COLLIBRA_DISABLED_TOOLS` env vars (comma-separated) override these
 - **name** — friendly name you'll use in tool calls
 - **baseUrl** — your Collibra URL (no trailing slash)
 - **username / password** — Collibra credentials
@@ -95,7 +97,7 @@ Add the following (replace paths with your actual absolute paths):
 }
 ```
 
-Restart Claude Desktop. You should see the Collibra tools available — **46 read-only tools** when `"readOnly": true`, or all **70 tools** when `"readOnly": false`.
+Restart Claude Desktop. You should see the Collibra tools available — **46 read-only tools** when `"readOnly": true`, or all **71 tools** when `"readOnly": false` (plus 3 chip-compatible aliases).
 
 ### VS Code (GitHub Copilot)
 

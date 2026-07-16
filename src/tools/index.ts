@@ -1,4 +1,4 @@
-import { isReadOnly } from '../config.js';
+import { isReadOnly, isToolEnabledByConfig } from '../config.js';
 import type { ToolResult } from '../types.js';
 import { getAssetTypesTool, executeGetAssetTypes } from './get-asset-types.js';
 import { queryAssetsTool, executeQueryAssets } from './query-assets.js';
@@ -31,6 +31,7 @@ import { removeDataClassificationMatchTool, executeRemoveDataClassificationMatch
 import { listDataContractTool, executeListDataContract } from './list-data-contract.js';
 import { pushDataContractManifestTool, executePushDataContractManifest } from './push-data-contract-manifest.js';
 import { pullDataContractManifestTool, executePullDataContractManifest } from './pull-data-contract-manifest.js';
+import { initDataContractTool, executeInitDataContract } from './init-data-contract.js';
 import { getColumnSemanticsTool, executeGetColumnSemantics } from './get-column-semantics.js';
 import { getMeasureDataTool, executeGetMeasureData } from './get-measure-data.js';
 import { getLineageTransformationTool, executeGetLineageTransformation } from './get-lineage-transformation.js';
@@ -82,6 +83,7 @@ const WRITE_TOOL_NAMES = [
   'add_data_classification_match',
   'remove_data_classification_match',
   'push_data_contract_manifest',
+  'init_data_contract',
   'create_assessment',
   'update_assessment',
   'retake_assessment',
@@ -130,6 +132,7 @@ const allTools = [
   listDataContractTool,
   pushDataContractManifestTool,
   pullDataContractManifestTool,
+  initDataContractTool,
   getColumnSemanticsTool,
   getMeasureDataTool,
   getLineageTransformationTool,
@@ -171,10 +174,27 @@ const allTools = [
   searchSubjectTool,
 ];
 
-export const tools = isReadOnly()
-  ? allTools.filter(t => !WRITE_TOOL_NAMES.includes(t.name))
-  : allTools;
+/**
+ * Chip-compatible aliases: expose Collibra `chip` tool names that map to this
+ * server's canonical read tools, so prompts/clients built against chip work
+ * unchanged. Aliases are additive — the canonical names remain the primary API.
+ */
+const TOOL_ALIASES: { alias: string; canonical: string }[] = [
+  { alias: 'list_asset_types', canonical: 'get_asset_types' },
+  { alias: 'search_asset_keyword', canonical: 'search_assets_by_name' },
+  { alias: 'get_asset_details', canonical: 'get_asset_by_id' },
+];
 
+const aliasTools = TOOL_ALIASES.map(({ alias, canonical }) => {
+  const base = allTools.find(t => t.name === canonical)!;
+  return { ...base, name: alias, description: `[Alias for ${canonical}] ${base.description}` };
+});
+
+const registeredTools = [...allTools, ...aliasTools];
+
+export const tools = registeredTools
+  .filter(t => !(isReadOnly() && WRITE_TOOL_NAMES.includes(t.name)))
+  .filter(t => isToolEnabledByConfig(t.name));
 // Tool executor map. Executors may return either:
 //   - a plain `string` (legacy: human-readable text only), or
 //   - a `ToolResult` ({ text, structured }) to also emit MCP `structuredContent`.
@@ -210,6 +230,7 @@ export const toolExecutors: Record<string, (args: any) => Promise<string | ToolR
   list_data_contract: executeListDataContract,
   push_data_contract_manifest: executePushDataContractManifest,
   pull_data_contract_manifest: executePullDataContractManifest,
+  init_data_contract: executeInitDataContract,
   get_column_semantics: executeGetColumnSemantics,
   get_measure_data: executeGetMeasureData,
   get_lineage_transformation: executeGetLineageTransformation,
@@ -251,6 +272,12 @@ export const toolExecutors: Record<string, (args: any) => Promise<string | ToolR
   search_subject: executeSearchSubject,
 };
 
+// Register alias executors so chip-compatible tool names resolve to the same
+// underlying executor as their canonical counterpart.
+for (const { alias, canonical } of TOOL_ALIASES) {
+  toolExecutors[alias] = toolExecutors[canonical];
+}
+
 // Helper function to execute a tool by name. Always returns a normalized
 // `ToolResult` regardless of whether the underlying executor returned a
 // string (legacy) or a `ToolResult` (refactored tool).
@@ -259,6 +286,13 @@ export async function executeTool(toolName: string, args: any): Promise<ToolResu
     throw new Error(
       `Tool "${toolName}" is disabled: this server is running in read-only mode. ` +
       `Set "readOnly": false in config.json to enable write operations.`
+    );
+  }
+
+  if (!isToolEnabledByConfig(toolName)) {
+    throw new Error(
+      `Tool "${toolName}" is disabled by server configuration ` +
+      `(enabledTools/disabledTools or COLLIBRA_ENABLED_TOOLS/COLLIBRA_DISABLED_TOOLS).`
     );
   }
 

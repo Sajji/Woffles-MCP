@@ -1,5 +1,8 @@
 {
   "readOnly": true,
+  "_comment_toolToggles": "Optional per-tool enable/disable. When 'enabledTools' is a non-empty array, ONLY those tools are exposed (allowlist). Otherwise, any tool listed in 'disabledTools' is hidden (denylist). enabledTools takes precedence. Env overrides: COLLIBRA_ENABLED_TOOLS / COLLIBRA_DISABLED_TOOLS (comma-separated).",
+  "enabledTools": [],
+  "disabledTools": [],
   "instances": [
     {
       "name": "Production",

@@ -86,6 +86,11 @@ export class CollibraClient {
       });
 
       if (!response.ok) {
+        if (response.status === 403) {
+          throw new Error(
+            `REST API call failed: 403 Forbidden — the authenticated user is likely missing a required Collibra permission or DGC scope for this operation.`,
+          );
+        }
         throw new Error(
           `REST API call failed: ${response.status} ${response.statusText}`
         );
@@ -121,6 +126,11 @@ export class CollibraClient {
 
       if (!response.ok) {
         const errorBody = await response.text().catch(() => '');
+        if (response.status === 403) {
+          throw new Error(
+            `REST API call failed: 403 Forbidden — the authenticated user is likely missing a required Collibra permission or DGC scope for this operation.${errorBody ? ` - ${errorBody}` : ''}`,
+          );
+        }
         throw new Error(
           `REST API call failed: ${response.status} ${response.statusText}${errorBody ? ` - ${errorBody}` : ''}`
         );

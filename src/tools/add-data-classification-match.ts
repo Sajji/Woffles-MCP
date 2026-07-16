@@ -8,7 +8,8 @@ export const addDataClassificationMatchTool = {
   description:
     'Associate a data class (classification) with a specific data asset in Collibra. ' +
     'Use search_data_class to find the classificationId and get_asset_by_id or search_assets_by_name to find the assetId. ' +
-    'Returns an error if the classification match already exists (HTTP 422) or if either UUID is not found (HTTP 404).',
+    'Returns an error if the classification match already exists (HTTP 422) or if either UUID is not found (HTTP 404). ' +
+    'Requires: dgc.classify, dgc.catalog.',
   inputSchema: {
     type: 'object',
     properties: {

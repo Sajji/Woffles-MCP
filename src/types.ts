@@ -40,6 +40,17 @@ export interface ExternalSourcesConfig {
 export interface CollibraConfig {
   instances: CollibraInstance[];
   readOnly?: boolean;
+  /**
+   * Optional allowlist of tool names to expose. When set and non-empty, ONLY
+   * these tools are enabled (all others hidden). Takes precedence over
+   * `disabledTools`. Mutually exclusive with it in practice.
+   */
+  enabledTools?: string[];
+  /**
+   * Optional denylist of tool names to hide. Ignored when `enabledTools` is
+   * set and non-empty.
+   */
+  disabledTools?: string[];
   /** Optional non-Collibra sources (e.g. the public Star Wars API). */
   externalSources?: ExternalSourcesConfig;
 }

@@ -37,7 +37,7 @@ Once connected to an MCP client, try these prompts:
 
 ## What's Available
 
-The server exposes **70 tools** covering:
+The server exposes **71 tools** covering:
 
 - **Discovery** — asset types, statuses, communities, domains, domain types, relation types, attribute types, REST API catalog
 - **Search & retrieval** — POST search, GraphQL queries, full asset details
@@ -47,13 +47,13 @@ The server exposes **70 tools** covering:
 - **Asset & operating-model creation** — assets, business terms, communities, domains, relations, asset types, relation types
 - **Operating model intelligence** — cache the model once (`refresh_operating_model`), then describe asset types, find relation paths, validate writes, and plan creations without extra API calls
 - **Bulk operations** — create/delete multiple assets or relations in 1–2 round trips with preview/confirm safety
-- **Compound edit** — `edit_asset` applies multiple attribute, property, and relation ops to a single asset in one call
+- **Compound edit** — `edit_asset` applies multiple attribute, property, relation, tag, and responsibility ops to a single asset in one call
 - **Data classification** — search data classes; add/remove/search classification matches
-- **Data contracts** — list, pull, push manifests
+- **Data contracts** — initialize, list, pull, push manifests
 - **Assessments** — list/get/create/update/retake assessments and templates (Collibra Assessments API)
 - **Multi-API federation** — one MCP server, many APIs: `search_subject` fans a single query across every Collibra instance **and** the public Star Wars API at once (see README)
 - **Write operations** — single + bulk attribute / description updates with preview→confirm safety
 
-Set `"readOnly": true` in `config.json` (the default) to hide all 24 write tools from the AI. Set it to `false` to enable them.
+Set `"readOnly": true` in `config.json` (the default) to hide all 25 write tools from the AI. Set it to `false` to enable them. You can further narrow the surface with `enabledTools` / `disabledTools` (see README).
 
 See [README.md](README.md) for the full tool list, [docs/TOOLS_REFERENCE.md](docs/TOOLS_REFERENCE.md) for per-parameter details, and [INSTALL.md](INSTALL.md) for MCP-client setup.

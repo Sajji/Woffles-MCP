@@ -8,7 +8,8 @@ export const searchDataClassTool = {
   description:
     'Search Collibra data classes (from the Classification service) by name, description, or rule presence. ' +
     'Data classes are used to classify columns and assets (e.g., "Email Address", "Credit Card Number"). ' +
-    'Use the returned data class UUID with add_data_classification_match to associate a class with an asset.',
+    'Use the returned data class UUID with add_data_classification_match to associate a class with an asset. ' +
+    'Requires: dgc.data-classes-read.',
   inputSchema: {
     type: 'object',
     properties: {

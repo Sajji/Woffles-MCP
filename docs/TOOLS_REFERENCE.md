@@ -1,6 +1,8 @@
 # Tools Reference
 
-Complete reference for all 70 tools provided by the Collibra MCP Server.
+Complete reference for all 71 tools provided by the Collibra MCP Server.
+
+> **Chip-compatible aliases:** `list_asset_types`, `search_asset_keyword`, and `get_asset_details` are additive aliases for `get_asset_types`, `search_assets_by_name`, and `get_asset_by_id` respectively — for interoperability with the official Collibra [`chip`](https://github.com/collibra/chip) server. They behave identically to their canonical counterparts.
 
 ---
 
@@ -144,6 +146,7 @@ Get complete details for a single asset via a single GraphQL query. Returns all 
 | `instance_name` | Yes | Collibra instance name |
 | `asset_id` | Yes | UUID of the asset |
 | `include_inherited` | No | Include inherited responsibilities (default: true) |
+| `include_assignable_schema` | No | Also return the asset type's assignable schema — every attribute it can hold (incl. empty ones), each flagged required/populated, plus assignable relation types and eligible statuses (default: false) |
 | `outgoing_relations_cursor` | No | Cursor (relation ID) to fetch next page of outgoing relations |
 | `incoming_relations_cursor` | No | Cursor (relation ID) to fetch next page of incoming relations |
 
@@ -416,6 +419,9 @@ Create any Collibra asset with optional attribute values.
 | `status_id` | No | UUID of the initial workflow status (e.g. Candidate). Use `get_asset_statuses` to find valid IDs. |
 | `display_name` | No | Optional display name (defaults to `name`) |
 | `attributes` | No | Object mapping attribute type UUIDs to their values |
+| `allow_duplicate` | No | `false` (default) blocks creation when a same-name asset already exists in the same domain and type; set `true` to override |
+
+**Required-attribute enforcement:** if the asset type's own assignment declares mandatory attributes that are not supplied in `attributes`, the call is rejected (with the list of missing attributes) before anything is created.
 
 **Returns:** New asset ID, name, Collibra URL, type, domain, and any attribute creation results.
 
@@ -698,6 +704,26 @@ Upload a new version of a data contract manifest. Supports the Open Data Contrac
 
 ---
 
+### init_data_contract
+
+Initialize a data contract asset and link it to its initial manifest — the first step in creating a data contract. Governs a Data Product Port. Idempotent by governed port: if an uninitialized contract already governs the port, that contract is initialized rather than duplicated. Provide a manifest to upload, or omit it to auto-generate the manifest from the governed port's existing Collibra metadata. After initialization, use `push_data_contract_manifest` to add further manifest versions.
+
+> **Write operation** — set `"readOnly": false` in `config.json` to enable. Requires the `dgc.data-contract` permission.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `instance_name` | Yes | Collibra instance name |
+| `governed_asset_id` | Yes | UUID of the Data Product Port asset to be governed |
+| `manifest` | No | Manifest content to upload (YAML). Omit to auto-generate from the governed port's metadata |
+| `manifest_id` | No | Data contract identifier (auto-parsed from ODCS manifests; defaults to the contract asset UUID) |
+| `version` | No | Initial manifest version (auto-parsed from ODCS; defaults to `0.0.1`) |
+| `name` | No | Custom name for the contract (auto-parsed from ODCS; defaults to the governed asset's name) |
+| `domain_id` | No | Domain to create the contract in (must support the data contract asset type; defaults to the governed asset's domain) |
+
+**Returns:** Contract `id`, `name`, `manifestId`, `domainId`/`domainName`, `activeVersion`, and manifest `format` (ODCS, DCS, or CUSTOM).
+
+---
+
 ## Assessments
 
 These tools integrate with the Collibra Assessments REST API (`/rest/assessments/v2`). Assessments capture structured Q&A against a template and are commonly linked to AI Use Case assets.
@@ -938,6 +964,12 @@ See full reference in the [Data Classification](#data-classification) section.
 ---
 
 ### push_data_contract_manifest
+
+See full reference in the [Data Contracts](#data-contracts) section.
+
+---
+
+### init_data_contract
 
 See full reference in the [Data Contracts](#data-contracts) section.
 
@@ -1218,6 +1250,9 @@ Apply a list of typed edits to a single asset in one tool call. Attribute change
 | `update_property` | `property` (`name`/`displayName`/`statusId`), `value` | PATCH the asset's top-level property |
 | `add_relation` | `target_asset_id`, `relation_type_id` | Create a typed relation (idempotent) |
 | `remove_relation` | `target_asset_id`, `relation_type_id` | Delete a typed relation |
+| `add_tag` | `tag` | Append a free-text tag without replacing existing tags (idempotent) |
+| `set_responsibility` | `role`, `owner` | Assign a user or group to a resource role (e.g. Steward, Owner) by username, email, or UUID (idempotent) |
+| `remove_responsibility` | `role`, `owner` | Unassign a directly-assigned responsibility (inherited ones are not affected) |
 
 ---
 

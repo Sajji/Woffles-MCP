@@ -1,5 +1,40 @@
 # Changelog
 
+## 9.2.0 — Chip Parity: Data Contract Init, Richer edit_asset, Create Guards & Tool Toggles
+
+Brings the server to read/write parity-plus with Collibra's official [`chip`](https://github.com/collibra/chip) MCP server (Phases A + B).
+
+### Added
+
+#### Data Contracts (Write)
+- **`init_data_contract`** *(write)* — initialize a new data contract asset governing a Data Product Port (`POST /rest/dataProduct/v1/dataContracts`, multipart); the first step in creating a contract. Provide a manifest to upload, or omit it to auto-generate from the governed port's metadata. Idempotent by governed port. Optional `manifest_id`, `version`, `name`, `domain_id`. Requires the `dgc.data-contract` permission.
+
+#### Compound Edit — new `edit_asset` operations (Write)
+- **`add_tag`** — append a free-text tag without replacing existing tags (idempotent)
+- **`set_responsibility`** — assign a user or group to a resource role (e.g. Steward, Owner) by username, email, or UUID (idempotent); role and owner are resolved server-side
+- **`remove_responsibility`** — unassign a directly-assigned responsibility (inherited ones are not affected)
+
+#### Per-Tool Enable/Disable
+- New optional `enabledTools` (allowlist) and `disabledTools` (denylist) config keys, plus `COLLIBRA_ENABLED_TOOLS` / `COLLIBRA_DISABLED_TOOLS` environment-variable overrides (comma-separated). The allowlist takes precedence; toggles apply on top of `readOnly` and are enforced both in the advertised tool list and at execution time.
+
+#### Chip-Compatible Aliases
+- Added additive aliases matching the official `chip` tool names — `list_asset_types` → `get_asset_types`, `search_asset_keyword` → `search_assets_by_name`, `get_asset_details` → `get_asset_by_id` — so prompts/clients built against `chip` work unchanged. Canonical names remain primary.
+
+### Changed
+- **`create_asset`** now enforces required attributes from the asset type's own assignment (rejects with the list of missing attributes before creating anything) and gates on duplicate name via a new `allow_duplicate` flag (default `false`, blocking a same-name asset in the same domain + type).
+- **`get_asset_by_id`** gained an `include_assignable_schema` option that returns the asset type's full assignable schema — every attribute it can hold (including empty ones), each flagged `required`/`populated`, plus assignable relation types and eligible statuses.
+- Permission (HTTP 403) errors from the REST client now return a clearer message indicating a likely missing Collibra permission / DGC scope.
+- Added `Requires: dgc.*` scope hints to the classification and data-contract tool descriptions.
+- Tool count increased from 70 to **71** (advertised = executable), plus **3** chip-compatible aliases; write tools now **25**; read-only tools (when `"readOnly": true`) remain **46**.
+- `edit_asset` `outputSchema` tightened to document PREVIEW vs. APPLIED shapes.
+- Version bumped to **9.2.0**.
+
+### Notes
+- `init_data_contract`, and the `add_tag` / `set_responsibility` / `remove_responsibility` apply paths on `edit_asset`, are write tools hidden in read-only mode.
+- A credential-free smoke test (`scripts/smoke-chip-parity.mjs`) validates the new tool registry surface (registration, schemas, and aliases).
+
+---
+
 ## 9.1.0 — Multi-API Federation, Attribute-Type Tools & Registration Fix
 
 ### Added

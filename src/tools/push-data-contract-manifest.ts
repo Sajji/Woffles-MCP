@@ -9,7 +9,8 @@ export const pushDataContractManifestTool = {
     'If the manifest adheres to the Open Data Contract Standard (ODCS), the manifest_id and version ' +
     'are parsed automatically from the file content. ' +
     'Use force=true to overwrite an existing version with the same version value. ' +
-    'Use active=true to make this the active version (deactivating the previous one).',
+    'Use active=true to make this the active version (deactivating the previous one). ' +
+    'Requires: dgc.data-contract.',
   inputSchema: {
     type: 'object',
     properties: {

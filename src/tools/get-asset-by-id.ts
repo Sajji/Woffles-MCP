@@ -1,6 +1,7 @@
 import { getInstance } from '../config.js';
 import { CollibraClient, enrichResponseUrls } from '../utils/collibra-client.js';
 import { okWithNext } from '../utils/tool-result.js';
+import { fetchAssetTypeAssignments } from '../utils/operating-model-cache.js';
 import type { ToolResult } from '../types.js';
 
 export const getAssetByIdTool = {
@@ -9,6 +10,8 @@ export const getAssetByIdTool = {
     'Returns the asset with all its attributes (string, boolean, numeric, date), relations (incoming and outgoing ' +
     'with cursor-based pagination), and responsibilities (including inherited from domain/community). ' +
     'Responsibilities are categorized by direct assignment vs inherited. User names are fully resolved. ' +
+    'Set include_assignable_schema=true to also return the full assignable attribute schema for the asset type ' +
+    '(every attribute it CAN hold — including empty ones — flagged required/populated, plus assignable relation types and eligible statuses). ' +
     'This is the most comprehensive view of a single asset. Supports cursor-based relation pagination — ' +
     'use the last relation target/source ID from a previous response as the cursor to fetch the next page.',
   inputSchema: {
@@ -26,6 +29,13 @@ export const getAssetByIdTool = {
         type: 'boolean',
         description: 'Include inherited responsibilities from domain/community (default: true)',
         default: true,
+      },
+      include_assignable_schema: {
+        type: 'boolean',
+        description:
+          'When true, also return the asset type\'s assignable schema: every attribute it can hold (incl. empty ones), ' +
+          'each flagged required/populated, plus assignable relation types and eligible statuses (default: false).',
+        default: false,
       },
       outgoing_relations_cursor: {
         type: 'string',
@@ -82,7 +92,7 @@ function buildAssetDetailsQuery(
         id
         displayName
         fullName
-        type { name }
+        type { id name }
         domain { id name }
         status { name }
         stringAttributes(limit: ${ATTRIBUTES_LIMIT}) {
@@ -121,6 +131,7 @@ export async function executeGetAssetById(args: any): Promise<ToolResult> {
     instance_name,
     asset_id,
     include_inherited = true,
+    include_assignable_schema = false,
     outgoing_relations_cursor,
     incoming_relations_cursor,
   } = args;
@@ -236,6 +247,41 @@ export async function executeGetAssetById(args: any): Promise<ToolResult> {
     const lastOutgoingId = outgoing.length > 0 ? outgoing[outgoing.length - 1].id : null;
     const lastIncomingId = incoming.length > 0 ? incoming[incoming.length - 1].id : null;
 
+    // Optionally hydrate the assignable schema for the asset's type: every
+    // attribute it can hold (including empty ones), flagged required/populated,
+    // plus assignable relation types and eligible statuses.
+    let assignableSchema: Record<string, unknown> | undefined;
+    if (include_assignable_schema && asset.type?.id) {
+      try {
+        const assignments = await fetchAssetTypeAssignments(instance_name, asset.type.id);
+        const populatedNames = new Set(
+          [
+            ...(asset.stringAttributes || []),
+            ...(asset.booleanAttributes || []),
+            ...(asset.numericAttributes || []),
+            ...(asset.dateAttributes || []),
+          ]
+            .map((a: any) => a?.type?.name)
+            .filter(Boolean),
+        );
+        assignableSchema = {
+          attributeTypes: assignments.attributeTypes.map((a) => ({
+            id: a.id,
+            name: a.name,
+            kind: a.kind,
+            required: (a.minimumOccurrences ?? 0) >= 1,
+            maximumOccurrences: a.maximumOccurrences,
+            populated: populatedNames.has(a.name),
+          })),
+          relationTypes: assignments.relationTypes,
+          eligibleStatuses: assignments.eligibleStatuses,
+          defaultStatusId: assignments.defaultStatusId,
+        };
+      } catch {
+        /* non-critical — assignment surface unavailable */
+      }
+    }
+
     const structured = enrichResponseUrls(instance.baseUrl, {
       instance: instance_name,
       assetId: asset_id,
@@ -253,6 +299,7 @@ export async function executeGetAssetById(args: any): Promise<ToolResult> {
           numeric: asset.numericAttributes || [],
           date: asset.dateAttributes || [],
         },
+        ...(assignableSchema ? { assignableSchema } : {}),
         relations: {
           outgoing,
           incoming,

@@ -5,7 +5,7 @@ A [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server for Co
 ## Features
 
 - **Not just Collibra — a true multi-API federation layer.** A single MCP server can integrate *many* APIs, not only Collibra ones. It ships with the public [Star Wars API](https://www.swapi.tech) built in as a live proof point, so `search_subject` can answer a question from **every configured Collibra instance _and_ an external public API in one call**. Add your own REST APIs the same way. ([details below](#not-just-collibra-multi-api-federation))
-- **70 tools** covering discovery, governance, semantic traversal, lineage, asset creation, operating model management, operating model intelligence, API catalog traversal, data classification, data contracts, assessments, bulk operations, write operations, and multi-source federation (including the public Star Wars API)
+- **71 tools** covering discovery, governance, semantic traversal, lineage, asset creation, operating model management, operating model intelligence, API catalog traversal, data classification, data contracts, assessments, bulk operations, write operations, and multi-source federation (including the public Star Wars API)
 - **Multi-instance** support — connect to production, dev, and UAT simultaneously
 - **REST + GraphQL** — uses whichever Collibra API is best for each operation
 - **Full user name resolution** — responsibilities show real names and emails, not UUIDs
@@ -15,11 +15,13 @@ A [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server for Co
 - **Asset & term creation** — two-step `prepare` + `create` workflow for any asset type or business term
 - **Operating model intelligence** — cache the full operating model once (`refresh_operating_model`), then use `describe_asset_type`, `find_traversal_path`, `validate_against_model`, and `plan_asset_creation` for customer-agnostic guidance without extra API calls
 - **Bulk operations** — `bulk_create_assets`, `bulk_create_relations`, `bulk_delete_assets`, `bulk_delete_relations` replace N singleton calls with 1–2 API round trips; all with preview/confirm safety
-- **Compound asset editing** — `edit_asset` applies a list of typed ops (attribute updates, property changes, relation add/remove) to a single asset in one tool call
+- **Compound asset editing** — `edit_asset` applies a list of typed ops (attribute updates, property changes, relation add/remove, tag add, responsibility assign/unassign) to a single asset in one tool call
 - **Data classification** — search data classes, add/remove classification matches on assets
-- **Data contracts** — list, pull, and push data contract manifests
+- **Data contracts** — initialize, list, pull, and push data contract manifests
 - **Assessments** — list, retrieve, create, update, and retake assessments; browse templates and attachments (integrates with the Collibra Assessments REST API at `/rest/assessments/v2`)
 - **Read-only mode** — set `"readOnly": true` in `config.json` to hide all write tools from the AI entirely; safe by default
+- **Per-tool enable/disable** — narrow the exposed surface with `enabledTools` (allowlist) or `disabledTools` (denylist) in `config.json`, or the `COLLIBRA_ENABLED_TOOLS` / `COLLIBRA_DISABLED_TOOLS` environment variables
+- **Chip-compatible aliases** — the official Collibra `chip` tool names `list_asset_types`, `search_asset_keyword`, and `get_asset_details` are exposed as additive aliases so prompts built against `chip` work unchanged
 - **Two-step safety for writes** — all update/create/delete tools preview changes before applying them (when read-only mode is off)
 - **Clickable URLs** — all responses include direct links to assets, domains, and communities in Collibra
 - **AI Use Case assessments** — retrieve assessments linked to any AI Use Case asset by its UUID; read full Q&A content, create new assessments, and submit them
@@ -91,7 +93,7 @@ The Star Wars source is **enabled by default** and configured under the optional
 | Tool | Description |
 |------|-------------|
 | `prepare_create_asset` | Pre-flight check before creating an asset — resolves type/domain, checks for duplicates |
-| `create_asset` | Create any Collibra asset with optional attribute values *(write)* |
+| `create_asset` | Create any Collibra asset — enforces required attributes and gates on duplicate name *(write)* |
 
 ### Business Term Creation
 
@@ -125,6 +127,7 @@ The Star Wars source is **enabled by default** and configured under the optional
 
 | Tool | Description |
 |------|-------------|
+| `init_data_contract` | Initialize a data contract governing a Data Product Port, with an optional initial manifest — the first step in creating a contract *(write)* |
 | `list_data_contract` | List data contracts with cursor-based pagination |
 | `pull_data_contract_manifest` | Download the active manifest for a data contract |
 | `push_data_contract_manifest` | Upload a new data contract manifest version *(write)* |
@@ -187,7 +190,7 @@ Cache the operating model once and use these tools for customer-agnostic guidanc
 | `bulk_create_relations` | Create multiple typed relations in one call — idempotent *(write)* |
 | `bulk_delete_assets` | Delete multiple assets permanently (preview → confirm) *(write)* |
 | `bulk_delete_relations` | Delete multiple relations permanently (preview → confirm) *(write)* |
-| `edit_asset` | Apply multiple typed edits to one asset in one call: attribute ops, property changes, relation ops *(write)* |
+| `edit_asset` | Apply multiple typed edits to one asset in one call: attribute ops, property changes, relation ops, tag add, responsibility assign/unassign *(write)* |
 
 ### Write Operations
 
@@ -210,11 +213,12 @@ Cache the operating model once and use these tools for customer-agnostic guidanc
 | `assign_attribute_to_asset_type` | Assign an attribute type to an asset type (idempotent) |
 | `add_data_classification_match` | Associate a data class with an asset |
 | `remove_data_classification_match` | Remove a classification match (preview → confirm) |
+| `init_data_contract` | Initialize a data contract governing a Data Product Port (optional initial manifest) |
 | `push_data_contract_manifest` | Upload a new data contract manifest version |
 | `create_assessment` | Create a new assessment linked to an asset or template |
 | `update_assessment` | Update status, answers, owner, assignees, or visibility |
 | `retake_assessment` | Start a new revision of a submitted assessment |
-| `edit_asset` | Multi-op edit on a single asset (attribute updates, property changes, relation ops) |
+| `edit_asset` | Multi-op edit on a single asset (attribute updates, property changes, relation ops, tag add, responsibility assign/unassign) |
 | `bulk_delete_assets` | Delete multiple assets permanently (preview → confirm) |
 | `bulk_delete_relations` | Delete multiple relations permanently (preview → confirm) |
 
@@ -264,11 +268,38 @@ You can add multiple instances and reference them by name when calling any tool.
 | Value | behavior |
 |-------|-----------|
 | `true` (default) | Write tools are **hidden from the AI** — they do not appear in the tool list and cannot be called |
-| `false` | All 70 tools are available, including the 24 write tools |
+| `false` | All 71 tools are available, including the 25 write tools |
 
 Set `"readOnly": false` only when you personally need to make changes, then switch back to `true` when done.
 
 > **Security:** `config.json` is in `.gitignore` — never commit credentials to version control.
+
+### Limiting Which Tools Are Exposed
+
+Beyond `readOnly`, you can narrow the exposed tool surface:
+
+| Setting | behavior |
+|---------|-----------|
+| `enabledTools` | **Allowlist** — when set to a non-empty array, ONLY those tools are exposed. Takes precedence over `disabledTools`. |
+| `disabledTools` | **Denylist** — any tool named here is hidden. Ignored when `enabledTools` is set. |
+
+```json
+{
+  "disabledTools": ["bulk_delete_assets", "bulk_delete_relations"]
+}
+```
+
+The environment variables `COLLIBRA_ENABLED_TOOLS` and `COLLIBRA_DISABLED_TOOLS` (comma-separated tool names) override the config-file values when set. These toggles apply on top of `readOnly`.
+
+### Chip-Compatible Aliases
+
+For interoperability with the official Collibra [`chip`](https://github.com/collibra/chip) server, three read tools are also exposed under their `chip` names (additive — the canonical names remain primary):
+
+| Alias | Canonical tool |
+|-------|----------------|
+| `list_asset_types` | `get_asset_types` |
+| `search_asset_keyword` | `search_assets_by_name` |
+| `get_asset_details` | `get_asset_by_id` |
 
 ### Beyond Collibra: External Sources
 
@@ -307,7 +338,7 @@ registered the same way.
 |-------|-------------|
 | [INSTALL.md](INSTALL.md) | Full installation and MCP client configuration |
 | [docs/CLAUDE_DESKTOP_SETUP.md](docs/CLAUDE_DESKTOP_SETUP.md) | Claude Desktop integration step-by-step |
-| [docs/TOOLS_REFERENCE.md](docs/TOOLS_REFERENCE.md) | Detailed parameter reference for all 70 tools |
+| [docs/TOOLS_REFERENCE.md](docs/TOOLS_REFERENCE.md) | Detailed parameter reference for all 71 tools |
 
 ## Project Structure
 
@@ -317,7 +348,7 @@ registered the same way.
 │   ├── config.ts                         # Configuration loader
 │   ├── types.ts                          # TypeScript type definitions
 │   ├── tools/
-│   │   ├── index.ts                              # Tool registry (70 tools)
+│   │   ├── index.ts                              # Tool registry (71 tools)
 │   │   ├── get-asset-types.ts                    # Asset type definitions
 │   │   ├── get-communities.ts                    # Community hierarchy
 │   │   ├── get-domains.ts                        # Domain listing
@@ -388,7 +419,7 @@ registered the same way.
 │   │   ├── assign-attribute-to-asset-type.ts     # Assign attribute type to asset type (write)
 │   │   ├── search-star-wars.ts                   # Search the public Star Wars API (federation demo)
 │   │   └── search-subject.ts                     # Federated search across Collibra + Star Wars API
-│   │   # (tool registry index.ts registers all 70 tools)
+│   │   # (tool registry index.ts registers all 71 tools)
 │   └── utils/
 │       ├── collibra-client.ts            # REST + GraphQL client with URL helpers
 │       ├── swapi-client.ts               # Minimal client for the public Star Wars API
