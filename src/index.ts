@@ -5,7 +5,7 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import { loadConfig, getInstances } from './config.js';
+import { loadConfig, getInstances, isReadOnly } from './config.js';
 import { tools, executeTool } from './tools/index.js';
 
 // Initialize configuration (must happen before constructing the server so we
@@ -27,12 +27,15 @@ const server = new Server(
     capabilities: {
       tools: {},
     },
+    instructions:
+      'Every tool requires an "instance_name" argument identifying a configured Collibra instance. ' +
+      'Call get_instances first (no arguments) to discover the valid instance names before calling any other tool.' +
+      (isReadOnly() ? ' This server is running in read-only mode: write tools are disabled.' : ''),
   }
 );
 
 try {
   const instances = getInstances();
-  console.error(`✓ Loaded configuration with ${instances.length} Collibra instance(s):`);
   console.error(`✓ Loaded configuration with ${instances.length} Collibra instance(s):`);
   instances.forEach(instance => {
     console.error(`  - ${instance.name}: ${instance.baseUrl}`);

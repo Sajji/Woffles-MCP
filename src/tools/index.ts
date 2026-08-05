@@ -1,5 +1,6 @@
 import { isReadOnly, isToolEnabledByConfig } from '../config.js';
 import type { ToolResult } from '../types.js';
+import { getInstancesTool, executeGetInstances } from './get-instances.js';
 import { getAssetTypesTool, executeGetAssetTypes } from './get-asset-types.js';
 import { queryAssetsTool, executeQueryAssets } from './query-assets.js';
 import { searchAssetsByNameTool, executeSearchAssetsByName } from './search-assets-by-name.js';
@@ -101,6 +102,7 @@ const WRITE_TOOL_NAMES = [
 ];
 
 const allTools = [
+  getInstancesTool,
   getAssetTypesTool,
   queryAssetsTool,
   searchAssetsByNameTool,
@@ -199,6 +201,7 @@ export const tools = registeredTools
 //   - a plain `string` (legacy: human-readable text only), or
 //   - a `ToolResult` ({ text, structured }) to also emit MCP `structuredContent`.
 export const toolExecutors: Record<string, (args: any) => Promise<string | ToolResult>> = {
+  get_instances: executeGetInstances,
   get_asset_types: executeGetAssetTypes,
   query_assets: executeQueryAssets,
   search_assets_by_name: executeSearchAssetsByName,

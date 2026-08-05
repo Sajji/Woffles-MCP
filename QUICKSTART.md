@@ -37,9 +37,9 @@ Once connected to an MCP client, try these prompts:
 
 ## What's Available
 
-The server exposes **71 tools** covering:
+The server exposes **72 tools** covering:
 
-- **Discovery** — asset types, statuses, communities, domains, domain types, relation types, attribute types, REST API catalog
+- **Discovery** — configured instances, asset types, statuses, communities, domains, domain types, relation types, attribute types, REST API catalog
 - **Search & retrieval** — POST search, GraphQL queries, full asset details
 - **Governance** — relations, responsibilities (with inheritance + full user name resolution)
 - **Semantic traversal** — Table ↔ Column ↔ Data Attribute ↔ Business Term ↔ Measure

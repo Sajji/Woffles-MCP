@@ -1,12 +1,20 @@
 # Tools Reference
 
-Complete reference for all 71 tools provided by the Collibra MCP Server.
+Complete reference for all 72 tools provided by the Collibra MCP Server.
 
 > **Chip-compatible aliases:** `list_asset_types`, `search_asset_keyword`, and `get_asset_details` are additive aliases for `get_asset_types`, `search_assets_by_name`, and `get_asset_by_id` respectively — for interoperability with the official Collibra [`chip`](https://github.com/collibra/chip) server. They behave identically to their canonical counterparts.
 
 ---
 
 ## Discovery & Navigation
+
+### get_instances
+
+List the Collibra instances configured in this server's config.json. Takes no parameters.
+
+**Tip:** Call this first, before any other tool — every other tool requires an `instance_name` and there is no other way to discover the valid values.
+
+---
 
 ### get_asset_types
 
