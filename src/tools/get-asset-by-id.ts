@@ -37,6 +37,17 @@ export const getAssetByIdTool = {
           'each flagged required/populated, plus assignable relation types and eligible statuses (default: false).',
         default: false,
       },
+      include_breadcrumb: {
+        type: 'boolean',
+        description: 'When true, also return the community/domain breadcrumb path leading to this asset (default: false).',
+        default: false,
+      },
+      context_specification_id: {
+        type: 'string',
+        description:
+          'Optional: UUID of a Context Specification (from list_context_specifications) — also generates the ' +
+          'structured YAML context for this asset via the Semantic Blueprint context engine.',
+      },
       outgoing_relations_cursor: {
         type: 'string',
         description: 'Optional: Cursor (relation ID) to fetch next page of outgoing relations. Use the last outgoingRelation id from the previous response.',
@@ -132,6 +143,8 @@ export async function executeGetAssetById(args: any): Promise<ToolResult> {
     asset_id,
     include_inherited = true,
     include_assignable_schema = false,
+    include_breadcrumb = false,
+    context_specification_id,
     outgoing_relations_cursor,
     incoming_relations_cursor,
   } = args;
@@ -141,13 +154,23 @@ export async function executeGetAssetById(args: any): Promise<ToolResult> {
     const client = new CollibraClient(instance);
 
     // Fetch asset details via GraphQL and responsibilities via REST in parallel
-    const [gqlResponse, responsibilitiesResponse] = await Promise.all([
+    const [gqlResponse, responsibilitiesResponse, breadcrumbResponse, generatedContext] = await Promise.all([
       client.graphqlQuery<{ data: { assets: any[] } }>(
         buildAssetDetailsQuery(asset_id, outgoing_relations_cursor, incoming_relations_cursor),
       ),
       client.restCall<any>(
         `/rest/2.0/responsibilities?resourceIds=${asset_id}&includeInherited=${include_inherited}&limit=1000`
       ).catch(() => ({ results: [] })),
+      include_breadcrumb
+        ? client.restCall<any>(`/rest/2.0/assets/${encodeURIComponent(asset_id)}/breadcrumb`).catch(() => null)
+        : Promise.resolve(null),
+      context_specification_id
+        ? client.restCallWithBody<any>('/rest/contextEngine/v1/contexts/generate', 'POST', {
+            assetId: asset_id,
+            contextSpecificationId: context_specification_id,
+            includeMetadata: true,
+          }).catch((err: Error) => ({ error: err.message }))
+        : Promise.resolve(null),
     ]);
 
     const asset = gqlResponse.data.assets[0];
@@ -300,6 +323,8 @@ export async function executeGetAssetById(args: any): Promise<ToolResult> {
           date: asset.dateAttributes || [],
         },
         ...(assignableSchema ? { assignableSchema } : {}),
+        ...(breadcrumbResponse ? { breadcrumb: breadcrumbResponse } : {}),
+        ...(generatedContext ? { generatedContext } : {}),
         relations: {
           outgoing,
           incoming,

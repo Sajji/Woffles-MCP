@@ -8,6 +8,7 @@ const ASSESSMENTS_BASE = '/rest/assessments/v2';
 export const updateAssessmentTool = {
   name: 'update_assessment',
   description:
+    'DEPRECATED: prefer edit_assessment, which uses typed operations instead of raw JSON strings and previews changes. ' +
     'Update an existing assessment. All fields are optional — only provided fields are changed. ' +
     'Common uses: submit an assessment (set status to SUBMITTED), update Q&A answers, ' +
     'change the owner or assignees, or toggle visibility. ' +

@@ -5,7 +5,7 @@ A [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server for Co
 ## Features
 
 - **Not just Collibra — a true multi-API federation layer.** A single MCP server can integrate *many* APIs, not only Collibra ones. It ships with the public [Star Wars API](https://www.swapi.tech) built in as a live proof point, so `search_subject` can answer a question from **every configured Collibra instance _and_ an external public API in one call**. Add your own REST APIs the same way. ([details below](#not-just-collibra-multi-api-federation))
-- **72 tools** covering discovery, governance, semantic traversal, lineage, asset creation, operating model management, operating model intelligence, API catalog traversal, data classification, data contracts, assessments, bulk operations, write operations, and multi-source federation (including the public Star Wars API)
+- **94 tools** covering discovery, governance, semantic traversal, lineage, asset creation, operating model management, operating model intelligence, API catalog traversal, data classification, data contracts, assessments, workflows, comments, activities, ratings, tags, mappings, Output Module exports, context specifications, skills, bulk operations, write operations, and multi-source federation (including the public Star Wars API)
 - **Multi-instance** support — connect to production, dev, and UAT simultaneously
 - **REST + GraphQL** — uses whichever Collibra API is best for each operation
 - **Full user name resolution** — responsibilities show real names and emails, not UUIDs
@@ -269,7 +269,7 @@ You can add multiple instances and reference them by name when calling any tool.
 | Value | behavior |
 |-------|-----------|
 | `true` (default) | Write tools are **hidden from the AI** — they do not appear in the tool list and cannot be called |
-| `false` | All 72 tools are available, including the 25 write tools |
+| `false` | All 94 tools are available, including the 31 write tools |
 
 Set `"readOnly": false` only when you personally need to make changes, then switch back to `true` when done.
 
@@ -339,7 +339,7 @@ registered the same way.
 |-------|-------------|
 | [INSTALL.md](INSTALL.md) | Full installation and MCP client configuration |
 | [docs/CLAUDE_DESKTOP_SETUP.md](docs/CLAUDE_DESKTOP_SETUP.md) | Claude Desktop integration step-by-step |
-| [docs/TOOLS_REFERENCE.md](docs/TOOLS_REFERENCE.md) | Detailed parameter reference for all 72 tools |
+| [docs/TOOLS_REFERENCE.md](docs/TOOLS_REFERENCE.md) | Detailed parameter reference for all 94 tools |
 
 ## Project Structure
 
@@ -349,7 +349,7 @@ registered the same way.
 │   ├── config.ts                         # Configuration loader
 │   ├── types.ts                          # TypeScript type definitions
 │   ├── tools/
-│   │   ├── index.ts                              # Tool registry (72 tools)
+│   │   ├── index.ts                              # Tool registry (94 tools)
 │   │   ├── get-asset-types.ts                    # Asset type definitions
 │   │   ├── get-communities.ts                    # Community hierarchy
 │   │   ├── get-domains.ts                        # Domain listing
@@ -420,7 +420,7 @@ registered the same way.
 │   │   ├── assign-attribute-to-asset-type.ts     # Assign attribute type to asset type (write)
 │   │   ├── search-star-wars.ts                   # Search the public Star Wars API (federation demo)
 │   │   └── search-subject.ts                     # Federated search across Collibra + Star Wars API
-│   │   # (tool registry index.ts registers all 72 tools)
+│   │   # (tool registry index.ts registers all 94 tools)
 │   └── utils/
 │       ├── collibra-client.ts            # REST + GraphQL client with URL helpers
 │       ├── swapi-client.ts               # Minimal client for the public Star Wars API

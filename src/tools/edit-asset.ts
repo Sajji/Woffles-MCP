@@ -389,16 +389,27 @@ export async function executeEditAsset(args: any): Promise<ToolResult> {
     const updateOps = resolved.filter((r) => r.op === 'update_attribute' && !r.error);
     const addOps = resolved.filter((r) => r.op === 'add_attribute' && !r.error);
 
+    // Markdown → HTML for values targeting RICH_TEXT attribute types
+    const richTextValues = new Map<any, string>();
+    for (const r of [...updateOps, ...addOps]) {
+      const { entries } = await client.convertRichTextEntries([
+        { typeId: r.raw.attribute_type_id, value: r.raw.value },
+      ]);
+      richTextValues.set(r, entries[0].value);
+    }
+
     const patchBody: { id: string; value: string }[] = [];
     const postBody: { assetId: string; typeId: string; value: string }[] = [];
 
     for (const r of updateOps) {
+      const value = richTextValues.get(r) ?? r.raw.value;
       const existingId = r.existingAttributeIds?.[0];
-      if (existingId) patchBody.push({ id: existingId, value: r.raw.value });
-      else postBody.push({ assetId: asset_id, typeId: r.raw.attribute_type_id, value: r.raw.value });
+      if (existingId) patchBody.push({ id: existingId, value });
+      else postBody.push({ assetId: asset_id, typeId: r.raw.attribute_type_id, value });
     }
     for (const r of addOps) {
-      postBody.push({ assetId: asset_id, typeId: r.raw.attribute_type_id, value: r.raw.value });
+      const value = richTextValues.get(r) ?? r.raw.value;
+      postBody.push({ assetId: asset_id, typeId: r.raw.attribute_type_id, value });
     }
 
     if (patchBody.length > 0) {

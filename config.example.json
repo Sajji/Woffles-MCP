@@ -23,5 +23,11 @@
       "enabled": true,
       "baseUrl": "https://www.swapi.tech/api"
     }
-  }
+  },
+  "_comment_skillsDir": "Optional: external skills directory merged over the embedded catalog. Layout: <dir>/<namespace>/<name>/SKILL.md. Env override: COLLIBRA_MCP_SKILLS_DIR.",
+  "skillsDir": "",
+  "_comment_http": "Optional: serve MCP over streamable HTTP on localhost instead of stdio. Also enabled by --http[=port] or COLLIBRA_MCP_HTTP_PORT.",
+  "http": { "enabled": false, "port": 3399 },
+  "_comment_validateOutput": "Optional: when true, tool outputs are checked against their outputSchema and mismatches are logged (warn-only).",
+  "validateOutput": false
 }

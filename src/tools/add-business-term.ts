@@ -109,7 +109,10 @@ export async function executeAddBusinessTerm(args: any): Promise<ToolResult> {
     }
 
     if (bulkEntries.length > 0) {
-      const bulkBody = bulkEntries.map((e) => ({ assetId, typeId: e.typeId, value: e.value }));
+      // Markdown → HTML for values targeting RICH_TEXT attribute types (e.g. Definition)
+      const { entries: bulkBody } = await client.convertRichTextEntries(
+        bulkEntries.map((e) => ({ assetId, typeId: e.typeId, value: e.value })),
+      );
       try {
         const bulkResp = await client.restCallWithBody<any[]>('/rest/2.0/attributes/bulk', 'POST', bulkBody);
         (bulkResp || []).forEach((attrResp: any, idx: number) => {

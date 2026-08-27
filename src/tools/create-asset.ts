@@ -159,16 +159,24 @@ export async function executeCreateAsset(args: any): Promise<ToolResult> {
     if (attributes && typeof attributes === 'object') {
       const attrEntries = Object.entries(attributes as Record<string, string>);
       if (attrEntries.length > 0) {
-        const bulkBody = attrEntries.map(([typeId, value]) => ({ assetId, typeId, value }));
+        // Markdown → HTML for values targeting RICH_TEXT attribute types
+        const { entries: bulkBody, convertedTypeIds } = await client.convertRichTextEntries(
+          attrEntries.map(([typeId, value]) => ({ assetId, typeId, value })),
+        );
         try {
           const bulkResp = await client.restCallWithBody<any[]>('/rest/2.0/attributes/bulk', 'POST', bulkBody);
           (bulkResp || []).forEach((attrResp: any, idx: number) => {
-            const [typeId, value] = attrEntries[idx];
-            createdAttributes.push({ typeId, value, attributeId: attrResp?.id });
+            const { typeId, value } = bulkBody[idx];
+            createdAttributes.push({
+              typeId,
+              value,
+              attributeId: attrResp?.id,
+              ...(convertedTypeIds.includes(typeId) ? { markdownConverted: true } : {}),
+            });
           });
         } catch (bulkErr) {
           // If the bulk call fails outright, surface the error per requested attribute
-          for (const [typeId, value] of attrEntries) {
+          for (const { typeId, value } of bulkBody) {
             attributeErrors.push({ typeId, value, error: (bulkErr as Error).message });
           }
         }

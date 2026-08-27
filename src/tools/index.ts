@@ -45,6 +45,7 @@ import { getAssessmentTemplateTool, executeGetAssessmentTemplate } from './get-a
 import { listAssessmentAttachmentsTool, executeListAssessmentAttachments } from './list-assessment-attachments.js';
 import { createAssessmentTool, executeCreateAssessment } from './create-assessment.js';
 import { updateAssessmentTool, executeUpdateAssessment } from './update-assessment.js';
+import { editAssessmentTool, executeEditAssessment } from './edit-assessment.js';
 import { retakeAssessmentTool, executeRetakeAssessment } from './retake-assessment.js';
 import { getApiCatalogTool, executeGetApiCatalog } from './get-api-catalog.js';
 import { getDomainTypesTool, executeGetDomainTypes } from './get-domain-types.js';
@@ -71,6 +72,25 @@ import { createAttributeTypeTool, executeCreateAttributeType } from './create-at
 import { assignAttributeToAssetTypeTool, executeAssignAttributeToAssetType } from './assign-attribute-to-asset-type.js';
 import { searchStarWarsTool, executeSearchStarWars } from './search-star-wars.js';
 import { searchSubjectTool, executeSearchSubject } from './search-subject.js';
+import { searchCatalogColumnsTool, executeSearchCatalogColumns } from './search-catalog-columns.js';
+import { findWorkflowDefinitionsTool, executeFindWorkflowDefinitions } from './find-workflow-definitions.js';
+import { findWorkflowTasksTool, executeFindWorkflowTasks } from './find-workflow-tasks.js';
+import { startWorkflowInstanceTool, executeStartWorkflowInstance } from './start-workflow-instance.js';
+import { completeWorkflowTaskTool, executeCompleteWorkflowTask } from './complete-workflow-task.js';
+import { findCommentsTool, executeFindComments } from './find-comments.js';
+import { addCommentTool, executeAddComment } from './add-comment.js';
+import { getActivitiesTool, executeGetActivities } from './get-activities.js';
+import { exportOutputModuleTool, executeExportOutputModule } from './export-output-module.js';
+import { findTagsTool, executeFindTags } from './find-tags.js';
+import { findMappingsTool, executeFindMappings } from './find-mappings.js';
+import { addMappingTool, executeAddMapping } from './add-mapping.js';
+import { removeMappingTool, executeRemoveMapping } from './remove-mapping.js';
+import { getAssetViewStatsTool, executeGetAssetViewStats } from './get-asset-view-stats.js';
+import { findComplexRelationsTool, executeFindComplexRelations } from './find-complex-relations.js';
+import { findUsersTool, executeFindUsers } from './find-users.js';
+import { findRatingsTool, executeFindRatings } from './find-ratings.js';
+import { listCollibraSkillsTool, executeListCollibraSkills, loadCollibraSkillTool, executeLoadCollibraSkill } from './collibra-skills.js';
+import { listContextSpecificationsTool, executeListContextSpecifications, getContextSpecificationTool, executeGetContextSpecification } from './context-specifications.js';
 
 // Write tools that are disabled when readOnly mode is enabled
 const WRITE_TOOL_NAMES = [
@@ -87,6 +107,7 @@ const WRITE_TOOL_NAMES = [
   'init_data_contract',
   'create_assessment',
   'update_assessment',
+  'edit_assessment',
   'retake_assessment',
   'create_community',
   'create_domain',
@@ -99,6 +120,11 @@ const WRITE_TOOL_NAMES = [
   'edit_asset',
   'create_attribute_type',
   'assign_attribute_to_asset_type',
+  'start_workflow_instance',
+  'complete_workflow_task',
+  'add_comment',
+  'add_mapping',
+  'remove_mapping',
 ];
 
 const allTools = [
@@ -147,6 +173,7 @@ const allTools = [
   listAssessmentAttachmentsTool,
   createAssessmentTool,
   updateAssessmentTool,
+  editAssessmentTool,
   retakeAssessmentTool,
   getApiCatalogTool,
   getDomainTypesTool,
@@ -174,6 +201,27 @@ const allTools = [
   assignAttributeToAssetTypeTool,
   searchStarWarsTool,
   searchSubjectTool,
+  searchCatalogColumnsTool,
+  findWorkflowDefinitionsTool,
+  findWorkflowTasksTool,
+  startWorkflowInstanceTool,
+  completeWorkflowTaskTool,
+  findCommentsTool,
+  addCommentTool,
+  getActivitiesTool,
+  exportOutputModuleTool,
+  findTagsTool,
+  findMappingsTool,
+  addMappingTool,
+  removeMappingTool,
+  getAssetViewStatsTool,
+  findComplexRelationsTool,
+  findUsersTool,
+  findRatingsTool,
+  listCollibraSkillsTool,
+  loadCollibraSkillTool,
+  listContextSpecificationsTool,
+  getContextSpecificationTool,
 ];
 
 /**
@@ -246,6 +294,7 @@ export const toolExecutors: Record<string, (args: any) => Promise<string | ToolR
   list_assessment_attachments: executeListAssessmentAttachments,
   create_assessment: executeCreateAssessment,
   update_assessment: executeUpdateAssessment,
+  edit_assessment: executeEditAssessment,
   retake_assessment: executeRetakeAssessment,
   get_api_catalog:   executeGetApiCatalog,
   get_domain_types: executeGetDomainTypes,
@@ -273,6 +322,27 @@ export const toolExecutors: Record<string, (args: any) => Promise<string | ToolR
   assign_attribute_to_asset_type: executeAssignAttributeToAssetType,
   search_star_wars: executeSearchStarWars,
   search_subject: executeSearchSubject,
+  search_catalog_columns: executeSearchCatalogColumns,
+  find_workflow_definitions: executeFindWorkflowDefinitions,
+  find_workflow_tasks: executeFindWorkflowTasks,
+  start_workflow_instance: executeStartWorkflowInstance,
+  complete_workflow_task: executeCompleteWorkflowTask,
+  find_comments: executeFindComments,
+  add_comment: executeAddComment,
+  get_activities: executeGetActivities,
+  export_output_module: executeExportOutputModule,
+  find_tags: executeFindTags,
+  find_mappings: executeFindMappings,
+  add_mapping: executeAddMapping,
+  remove_mapping: executeRemoveMapping,
+  get_asset_view_stats: executeGetAssetViewStats,
+  find_complex_relations: executeFindComplexRelations,
+  find_users: executeFindUsers,
+  find_ratings: executeFindRatings,
+  list_collibra_skills: executeListCollibraSkills,
+  load_collibra_skill: executeLoadCollibraSkill,
+  list_context_specifications: executeListContextSpecifications,
+  get_context_specification: executeGetContextSpecification,
 };
 
 // Register alias executors so chip-compatible tool names resolve to the same

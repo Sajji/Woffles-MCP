@@ -1,6 +1,7 @@
 import fetch from 'node-fetch';
 import https from 'https';
 import type { CollibraInstance } from '../types.js';
+import { toRichTextValue } from './markdown.js';
 
 /**
  * Maximum page size accepted by Collibra Core REST 2.0 list endpoints.
@@ -28,6 +29,18 @@ export function attrKindFromDiscriminator(discriminator?: string | null): string
   }
 }
 
+/**
+ * Core REST list endpoints that support cursor pagination. Collibra deprecated
+ * `offset` on these; everything else still requires offset paging.
+ */
+const CURSOR_CAPABLE_PATHS = new Set([
+  '/rest/2.0/assets',
+  '/rest/2.0/attributes',
+  '/rest/2.0/communities',
+  '/rest/2.0/domains',
+  '/rest/2.0/complexRelations',
+]);
+
 export class CollibraClient {
   private instance: CollibraInstance;
   private authHeader: string;
@@ -36,6 +49,8 @@ export class CollibraClient {
   private static clampWarned = new Set<string>();
   /** Lazily-built relation-type-by-id cache, used by getAssetRelations. */
   private relationTypesById: Map<string, any> | null = null;
+  /** Lazily-built attribute-type cache, used for RICH_TEXT detection. */
+  private attributeTypesById = new Map<string, any>();
 
   constructor(instance: CollibraInstance) {
     this.instance = instance;
@@ -235,6 +250,62 @@ export class CollibraClient {
     pageSize: number = MAX_REST_PAGE_SIZE,
   ): Promise<T[]> {
     const size = Math.min(pageSize, MAX_REST_PAGE_SIZE);
+    if (CURSOR_CAPABLE_PATHS.has(path)) {
+      return this.restPaginateCursor<T>(path, params, size);
+    }
+    const out: T[] = [];
+    let offset = 0;
+    for (;;) {
+      const qp = new URLSearchParams({ ...params, limit: String(size), offset: String(offset) });
+      const resp = await this.restCall<{ results?: T[] }>(`${path}?${qp.toString()}`);
+      const page = resp.results ?? [];
+      out.push(...page);
+      if (page.length < size) break;
+      offset += size;
+    }
+    return out;
+  }
+
+  /**
+   * Cursor-based variant of {@link restPaginate} for endpoints where Collibra
+   * deprecated `offset` (assets, attributes, communities, domains,
+   * complexRelations). Falls back to offset paging if the first cursor request
+   * fails (older Collibra versions).
+   */
+  async restPaginateCursor<T = any>(
+    path: string,
+    params: Record<string, string> = {},
+    pageSize: number = MAX_REST_PAGE_SIZE,
+  ): Promise<T[]> {
+    const size = Math.min(pageSize, MAX_REST_PAGE_SIZE);
+    const out: T[] = [];
+    let cursor = '';
+    for (;;) {
+      const qp = new URLSearchParams({ ...params, limit: String(size), cursor });
+      let resp: { results?: T[]; nextCursor?: string };
+      try {
+        resp = await this.restCall<{ results?: T[]; nextCursor?: string }>(`${path}?${qp.toString()}`);
+      } catch (err) {
+        if (out.length === 0) {
+          // Cursor unsupported on this instance — fall back to offset paging.
+          return this.restPaginateOffset<T>(path, params, size);
+        }
+        throw err;
+      }
+      const page = resp.results ?? [];
+      out.push(...page);
+      if (!resp.nextCursor || page.length === 0) break;
+      cursor = resp.nextCursor;
+    }
+    return out;
+  }
+
+  /** Offset paging without the cursor upgrade — fallback for old instances. */
+  private async restPaginateOffset<T = any>(
+    path: string,
+    params: Record<string, string>,
+    size: number,
+  ): Promise<T[]> {
     const out: T[] = [];
     let offset = 0;
     for (;;) {
@@ -308,6 +379,48 @@ export class CollibraClient {
         targetId: r.target?.id,
       };
     });
+  }
+
+  /**
+   * Fetch (and cache per-client) a single attribute type by UUID. Returns null
+   * on 404/permission errors so callers can degrade gracefully.
+   */
+  async getAttributeType(typeId: string): Promise<any | null> {
+    if (this.attributeTypesById.has(typeId)) return this.attributeTypesById.get(typeId);
+    let type: any | null = null;
+    try {
+      type = await this.restCall<any>(`/rest/2.0/attributeTypes/${encodeURIComponent(typeId)}`);
+    } catch {
+      type = null;
+    }
+    this.attributeTypesById.set(typeId, type);
+    return type;
+  }
+
+  /** True when the attribute type is a RICH_TEXT string attribute. */
+  async isRichTextAttributeType(typeId: string): Promise<boolean> {
+    const type = await this.getAttributeType(typeId);
+    return type?.stringType === 'RICH_TEXT';
+  }
+
+  /**
+   * Convert Markdown values targeting RICH_TEXT attribute types into HTML.
+   * Non-rich-text targets, already-HTML values, and plain prose pass through
+   * unchanged. Returns the (possibly rewritten) entries plus which typeIds
+   * were converted, so tools can surface the conversion in their output.
+   */
+  async convertRichTextEntries<T extends { typeId: string; value: string }>(
+    entries: T[],
+  ): Promise<{ entries: T[]; convertedTypeIds: string[] }> {
+    const convertedTypeIds: string[] = [];
+    const out: T[] = [];
+    for (const entry of entries) {
+      const isRich = await this.isRichTextAttributeType(entry.typeId);
+      const { value, converted } = toRichTextValue(entry.value, isRich);
+      if (converted) convertedTypeIds.push(entry.typeId);
+      out.push(converted ? { ...entry, value } : entry);
+    }
+    return { entries: out, convertedTypeIds };
   }
 
   /**

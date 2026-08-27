@@ -1,5 +1,66 @@
 # Changelog
 
+## 9.3.0 — Chip Parity Phase C: Workflows, Comments, Activities, Skills, HTTP Transport & More
+
+The largest single expansion of the tool surface: 23 new tools (94 canonical + 3 aliases), Markdown→HTML for rich-text writes, cursor pagination, an embedded skills catalog, context specifications (Semantic Blueprint), a streamable-HTTP transport, and optional output-schema validation. Excludes Collibra AI (`discover_*`) tools by design.
+
+### Added
+
+#### Catalog Metadata Search (Read)
+- **`search_catalog_columns`** — find Column assets by metadata keyword search can't filter on: Description / Data Type attribute values, a Data Steward assignment, or a relation to a Business Term / Business Rule / Data Element / Data Attribute (by name); AND-combined into a single Knowledge Graph GraphQL query; direction-agnostic relation matching via `_or`
+
+#### Typed Assessment Editing (Write)
+- **`edit_assessment`** — edit a conducted assessment via typed operations applied as ONE atomic PATCH: `set_answer` (by `questionId`; answer type inferred from the existing answer or supplied via `answer_type`; ITEMS via `items`), `set_status`, `set_name`, `set_owner`, `set_assignees`, `set_visibility`; answers are merged into current content so untouched questions are preserved; two-step preview/confirm; resolves the assessment by UUID or exact name (ambiguity returns candidates)
+- **`update_assessment`** is now marked DEPRECATED in favor of `edit_assessment`
+
+#### Workflows (2 Read + 2 Write)
+- **`find_workflow_definitions`** — list deployed workflow definitions (name filter, pagination)
+- **`find_workflow_tasks`** — list open workflow tasks (filter by title, business item, or user)
+- **`start_workflow_instance`** *(write)* — start a workflow against assets/domains/communities; resolves the definition by UUID or exact name; the preview surfaces the start-form fields so required `form_properties` can be filled in; explicit warning that workflows can create tasks/notifications for real users
+- **`complete_workflow_task`** *(write)* — complete a task; the preview surfaces the task-form fields (e.g. approve/reject decisions)
+
+#### Collaboration & Audit (Read + Write)
+- **`find_comments`** — comments on any resource (filter by resource, author, parent/replies, root-only, resolved)
+- **`add_comment`** *(write)* — comment on an asset/domain/community or reply to a comment; Markdown auto-converted to HTML
+- **`get_activities`** — the audit trail: filter by resource, user, categories, resource kinds, and ISO date range
+- **`find_ratings`** — user ratings + reviews per asset (with computed average)
+- **`get_asset_view_stats`** — most-viewed / recently-viewed assets (navigation statistics)
+
+#### Tags, Mappings, Users & Complex Relations (Read + Write)
+- **`find_tags`** — list tags, optionally with the assets carrying each tag (`include_assets`)
+- **`find_mappings`** / **`add_mapping`** *(write, idempotent)* / **`remove_mapping`** *(write, preview/confirm)* — external-system mappings for idempotent integrations and cross-instance migration provenance
+- **`find_users`** — resolve users by name fragment across username/first/last/email (feeds `set_responsibility`, `set_owner`, `set_assignees`, `performed_by_user_id`)
+- **`find_complex_relations`** — multi-leg relations with legs and attributes, filtered by asset or type public IDs
+
+#### Output Module (Read)
+- **`export_output_module`** — run a raw TableViewConfig/ViewConfig JSON query via `POST /outputModule/export/json` and return results inline; optional server-side syntax validation (`validate=true`)
+
+#### Skills Catalog
+- **`list_collibra_skills`** / **`load_collibra_skill`** — embedded Markdown workflow guides (chip-style layout `skills/<namespace>/<name>/SKILL.md`) shipping with 4 starter skills: `collibra/operating-model`, `collibra/cross-instance-migration`, `collibra/assessments`, `collibra/discovery-lineage`; external skills dir via `skillsDir` config or `COLLIBRA_MCP_SKILLS_DIR` (same-name external skills fully replace embedded ones)
+
+#### Context Specifications (Semantic Blueprint)
+- **`list_context_specifications`** / **`get_context_specification`** — browse Context Specifications (`/rest/semanticBlueprint/v1/contextSpecifications`), including the full mapping YAML
+- **`get_asset_by_id`** gained `context_specification_id` — also generates the asset's structured YAML context via `POST /rest/contextEngine/v1/contexts/generate`
+
+#### Transport & Validation
+- **Streamable HTTP transport** — run with `--http[=port]`, `COLLIBRA_MCP_HTTP_PORT`, or `"http": {"enabled": true, "port": 3399}`; stateless (one Server per request), binds to localhost only; stdio remains the default
+- **`validateOutput` config flag** — when true, every tool's `structuredContent` is validated against its `outputSchema` (ajv, warn-only to stderr)
+
+### Changed
+- **Markdown → HTML for RICH_TEXT attributes** — `create_asset`, `bulk_create_assets`, `add_business_term`, and `edit_asset` now detect Markdown values targeting RICH_TEXT string attribute types and convert them to HTML (via `marked`); already-HTML values and plain prose pass through unchanged; new `src/utils/markdown.ts` + attribute-type cache on `CollibraClient`
+- **Cursor pagination** — `restPaginate()` now transparently uses cursor pagination (`cursor`/`nextCursor`) for the endpoints where Collibra deprecated `offset` (`/assets`, `/attributes`, `/communities`, `/domains`, `/complexRelations`), with automatic offset fallback for older instances
+- **`get_asset_by_id`** gained `include_breadcrumb` (community/domain path via `/assets/{id}/breadcrumb`)
+- Server `instructions` now point the agent at `list_collibra_skills`
+- Tool count 71 → **94** canonical (+3 chip aliases = 97 advertised); write tools 25 → **31**; read-only mode exposes **63** canonical tools
+- Version bumped to **9.3.0**
+
+### Notes
+- Collibra AI tools (`discover_business_glossary`, `discover_data_assets`) intentionally NOT implemented (3rd-party AI / consumes Collibra Units)
+- New write tools (`edit_assessment`, `start_workflow_instance`, `complete_workflow_task`, `add_comment`, `add_mapping`, `remove_mapping`) are hidden in read-only mode
+- Credential-free smoke test: `node scripts/smoke-phase-c.mjs` (registration, schemas, markdown util, skills catalog); HTTP transport verified with a live initialize + tools/list round trip
+
+---
+
 ## 9.2.0 — Chip Parity: Data Contract Init, Richer edit_asset, Create Guards & Tool Toggles
 
 Brings the server to read/write parity-plus with Collibra's official [`chip`](https://github.com/collibra/chip) MCP server (Phases A + B).

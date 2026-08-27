@@ -48,7 +48,7 @@ export async function executeGetAssessment(args: any): Promise<ToolResult> {
       instance: instance_name,
       ...response,
     }, [
-      { tool: 'update_assessment', args: { instance_name, assessment_id, status: '<new status>' }, why: 'Edit the assessment status, content, owner, or assignees.' },
+      { tool: 'edit_assessment', args: { instance_name, assessment_id, operations: [] }, why: 'Edit the assessment (answers, status, owner, assignees, visibility) via typed operations.' },
       { tool: 'list_assessment_attachments', args: { instance_name, assessment_id }, why: 'List attached evidence files.' },
       { tool: 'retake_assessment', args: { instance_name, assessment_id }, why: 'Spawn a new iteration based on this one.' },
     ]);

@@ -53,6 +53,15 @@ export interface CollibraConfig {
   disabledTools?: string[];
   /** Optional non-Collibra sources (e.g. the public Star Wars API). */
   externalSources?: ExternalSourcesConfig;
+  /** Optional external skills directory (layout: <dir>/<namespace>/<name>/SKILL.md). */
+  skillsDir?: string;
+  /**
+   * Optional HTTP transport settings. When enabled the server listens on
+   * localhost (streamable HTTP) instead of stdio.
+   */
+  http?: { enabled?: boolean; port?: number };
+  /** When true, tool outputs are validated against their outputSchema (warn-only). */
+  validateOutput?: boolean;
 }
 
 // Asset Type types

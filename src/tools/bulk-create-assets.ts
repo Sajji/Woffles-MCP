@@ -154,14 +154,16 @@ export async function executeBulkCreateAssets(args: any): Promise<ToolResult> {
     }));
 
     // Fan all attributes across the batch into a single /attributes/bulk POST
-    const attrBody: { assetId: string; typeId: string; value: string }[] = [];
+    const attrBodyRaw: { assetId: string; typeId: string; value: string }[] = [];
     for (const { input, created } of createdById) {
       if (input.attributes && typeof input.attributes === 'object') {
         for (const [typeId, value] of Object.entries(input.attributes as Record<string, string>)) {
-          attrBody.push({ assetId: created.id, typeId, value });
+          attrBodyRaw.push({ assetId: created.id, typeId, value });
         }
       }
     }
+    // Markdown → HTML for values targeting RICH_TEXT attribute types
+    const { entries: attrBody } = await client.convertRichTextEntries(attrBodyRaw);
 
     let attrResults: any[] = [];
     let attrError: string | null = null;
