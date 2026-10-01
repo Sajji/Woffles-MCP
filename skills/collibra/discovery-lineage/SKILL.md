@@ -9,7 +9,7 @@ Find data assets, understand their business meaning, and trace where the data co
 ## Steps
 
 1. Start broad: **`search_assets_by_name`** (keyword) or **`search_catalog_columns`** (metadata filters: description, data type, steward, related business term).
-2. Popularity signal when the user is exploring: **`get_asset_view_stats`** (most_viewed).
+2. Popularity signal when the user is exploring: **`get_asset_view_stats`** (most_viewed, all-time), or for a date range **`get_content_usage`** (`view="top"`, `visit_type` Asset/Domain/Community/Dashboard/Diagram). For one asset's visit trend and top visitors use **`get_asset_usage`**.
 3. Drill in: **`get_asset_by_id`** (add `include_breadcrumb=true` for the community/domain path; `include_assignable_schema=true` when editing is planned).
 4. Business meaning:
    - Table → **`get_table_semantics`** (columns → data attributes → measures)

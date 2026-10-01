@@ -1,6 +1,6 @@
 # Tools Reference
 
-Complete reference for all 94 tools provided by the Collibra MCP Server (plus 3 chip-compatible aliases).
+Complete reference for all 97 tools provided by the Collibra MCP Server (plus 3 chip-compatible aliases).
 
 > **Chip-compatible aliases:** `list_asset_types`, `search_asset_keyword`, and `get_asset_details` are additive aliases for `get_asset_types`, `search_assets_by_name`, and `get_asset_by_id` respectively — for interoperability with the official Collibra [`chip`](https://github.com/collibra/chip) server. They behave identically to their canonical counterparts.
 
@@ -1496,6 +1496,73 @@ Navigation statistics: most-viewed assets (all users) or recently-viewed (servic
 | `instance_name` | Yes | Collibra instance name |
 | `mode` | No | `most_viewed` (default) or `recently_viewed` |
 | `limit` / `offset` | No | Pagination (default 25 / 0) |
+
+---
+
+## Usage Analytics
+
+Time-bounded usage and adoption data, matching Collibra's **Usage Analytics** app (`/apps/usage-analytics/usage` and `/users`). These tools call the **undocumented** internal APIs `/rest/usageAnalyticsUsage/v1` and `/rest/usageAnalyticsUsers/v1`, so they may change between Collibra releases. They require:
+
+- Usage Analytics enabled on the instance.
+- A user with Insights / Usage Analytics view permission.
+- **Session authentication.** These APIs reject Basic auth (403). The client logs in automatically via `POST /rest/2.0/auth/sessions` and sends the session cookie and `X-CSRF-TOKEN`.
+
+Every response includes `period`, `filters` (resolved values) and `lastRefreshed` (when Collibra last aggregated the analytics data).
+
+**Common parameters** (all three tools):
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `instance_name` | Yes | Collibra instance name |
+| `start_date` / `end_date` | No | `YYYY-MM-DD`, inclusive. Default: the 30 days ending yesterday |
+| `granularity` | No | `Day` (default), `Week` or `Month` |
+| `exclude_admin` / `exclude_disabled_users` | No | Default false |
+| `user_groups` / `user_roles` | No | Arrays of names or IDs. Names are matched case-insensitively |
+| `license_types` | No | Array of license types (e.g. `Creator`) |
+| `organizations` / `asset_types` | No | Arrays of community/domain or asset type names or IDs. Content and asset tools only |
+
+### get_content_usage
+
+Visits to assets, domains, communities, dashboards and diagrams.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `view` | No | `summary` (default): visits per type plus a previous-period comparison. `trend`: visits per bucket per type. `top`: most visited items. `filters`: valid filter values |
+| `visit_type` | No | For `top`: `Asset` (default), `Domain`, `Community`, `Dashboard` or `Diagram` |
+| `limit` | No | For `top` (default 10, max 100) |
+| `compare_previous_period` | No | For `summary` (default true) |
+| `enrich` | No | For `top` with `Asset`: add asset type, domain and community (default true) |
+
+### get_user_usage
+
+User adoption metrics.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `view` | No | `summary` (default): Active/Inactive/New counts plus a previous-period comparison. `top`: most active users. `usage_rate`: High/Medium/Low per bucket. `retention`: Acquired/Retained/Returning per bucket. `license_types`: users per license type per bucket |
+| `user_type` | No | For `license_types`: `Active` (default), `Inactive` or `New` |
+| `limit` | No | For `top` (default 10, max 100) |
+| `compare_previous_period` | No | For `summary` (default true) |
+
+### get_asset_usage
+
+Usage for a single asset:
+- All-time totals: visits, unique visitors and first visit date.
+- Visit trend over the date range.
+- Top visitors, with names resolved.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `asset_id` | One of | Asset UUID |
+| `asset_name` | One of | Exact asset name. If several assets match, the error lists the candidates |
+| `visitor_limit` | No | Top visitors (default 10, max 100) |
+
+**Example:** the top 5 assets visited by Consumers in Q3, by week:
+```
+get_content_usage(instance_name="Production", view="top", visit_type="Asset", limit=5,
+                  start_date="2026-07-01", end_date="2026-09-30", granularity="Week",
+                  user_groups=["Consumers"])
+```
 
 ---
 

@@ -51,6 +51,11 @@ export class CollibraClient {
   private relationTypesById: Map<string, any> | null = null;
   /** Lazily-built attribute-type cache, used for RICH_TEXT detection. */
   private attributeTypesById = new Map<string, any>();
+  /**
+   * Session cookie + CSRF token per instance/user, shared across client
+   * instances. Stored as a promise so concurrent callers share one login.
+   */
+  private static sessions = new Map<string, Promise<{ cookie: string; csrfToken: string }>>();
 
   constructor(instance: CollibraInstance) {
     this.instance = instance;
@@ -116,6 +121,83 @@ export class CollibraClient {
       throw new Error(
         `Failed to call Collibra REST API at ${url}: ${(error as Error).message}`
       );
+    }
+  }
+
+  private get sessionKey(): string {
+    return `${this.instance.baseUrl}|${this.instance.username}`;
+  }
+
+  /** Log in via POST /rest/2.0/auth/sessions and capture the session cookie + CSRF token. */
+  private async createSession(): Promise<{ cookie: string; csrfToken: string }> {
+    const url = `${this.instance.baseUrl}/rest/2.0/auth/sessions`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ username: this.instance.username, password: this.instance.password }),
+      agent: this.httpsAgent,
+    });
+    if (!response.ok) {
+      throw new Error(`Session login failed: ${response.status} ${response.statusText}`);
+    }
+    const setCookies: string[] = response.headers.raw()['set-cookie'] ?? [];
+    const cookie = setCookies.map((c) => c.split(';')[0]).join('; ');
+    const body = (await response.json().catch(() => ({}))) as { csrfToken?: string };
+    if (!cookie) throw new Error('Session login succeeded but no session cookie was returned.');
+    return { cookie, csrfToken: body.csrfToken ?? '' };
+  }
+
+  private getSession(forceNew = false): Promise<{ cookie: string; csrfToken: string }> {
+    const key = this.sessionKey;
+    let session = forceNew ? undefined : CollibraClient.sessions.get(key);
+    if (!session) {
+      session = this.createSession();
+      CollibraClient.sessions.set(key, session);
+      session.catch(() => CollibraClient.sessions.delete(key));
+    }
+    return session;
+  }
+
+  /**
+   * GET using a browser-style session (cookie + X-CSRF-TOKEN) instead of Basic
+   * auth. Required by internal app APIs such as Usage Analytics
+   * (`/rest/usageAnalytics*`), which reject Basic auth with 403. Logs in
+   * lazily, reuses the session, and re-authenticates once on 401/403.
+   */
+  async sessionRestCall<T>(endpoint: string): Promise<T> {
+    const url = `${this.instance.baseUrl}${endpoint}`;
+    const attempt = async (forceNew: boolean) => {
+      const { cookie, csrfToken } = await this.getSession(forceNew);
+      return fetch(url, {
+        method: 'GET',
+        headers: { Cookie: cookie, 'X-CSRF-TOKEN': csrfToken, Accept: 'application/json' },
+        agent: this.httpsAgent,
+      });
+    };
+
+    try {
+      let response = await attempt(false);
+      if (response.status === 401 || response.status === 403) {
+        response = await attempt(true);
+      }
+      if (!response.ok) {
+        const errorBody = await response.text().catch(() => '');
+        let detail = '';
+        try {
+          detail = JSON.parse(errorBody)?.userMessage ?? '';
+        } catch {
+          detail = errorBody.slice(0, 300);
+        }
+        if (response.status === 403) {
+          throw new Error(
+            `403 Forbidden — the authenticated user is likely missing the required Collibra permission (e.g. Insights/Usage Analytics view).${detail ? ` ${detail}` : ''}`,
+          );
+        }
+        throw new Error(`${response.status} ${response.statusText}${detail ? ` - ${detail}` : ''}`);
+      }
+      return (await response.json()) as T;
+    } catch (error) {
+      throw new Error(`Failed to call Collibra session API at ${url}: ${(error as Error).message}`);
     }
   }
 

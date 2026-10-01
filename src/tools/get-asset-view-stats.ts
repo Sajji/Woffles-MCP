@@ -8,7 +8,8 @@ export const getAssetViewStatsTool = {
   description:
     'Navigation statistics: the most viewed assets across all users (mode="most_viewed"), ' +
     'or the assets most recently viewed by the authenticated service account (mode="recently_viewed"). ' +
-    'A cheap signal for "which assets matter most" during discovery.',
+    'A cheap signal for "which assets matter most" during discovery. ' +
+    'For time-bounded analytics (date ranges, trends, domains/communities/dashboards, users) use get_content_usage / get_asset_usage / get_user_usage.',
   inputSchema: {
     type: 'object',
     properties: {

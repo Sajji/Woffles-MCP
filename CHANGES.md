@@ -1,5 +1,37 @@
 # Changelog
 
+## Unreleased — Usage Analytics
+
+Three read-only tools for Collibra's **Usage Analytics** app data (`/apps/usage-analytics`), so agents can answer "what's being used, by whom, and how is adoption trending?" for any date range. 97 canonical tools + 3 aliases.
+
+### Added
+- **`get_content_usage`**: visits to assets, domains, communities, dashboards and diagrams. Views:
+  - `summary`: totals per type, plus % change vs. the previous period.
+  - `trend`: visits per Day/Week/Month bucket.
+  - `top`: most visited items. Top assets include asset type, domain and community.
+  - `filters`: valid filter values.
+- **`get_user_usage`**: user adoption. Views:
+  - `summary`: Active/Inactive/New counts, plus % change vs. the previous period.
+  - `top`: most active users.
+  - `usage_rate`: High/Medium/Low users per bucket.
+  - `retention`: Acquired/Retained/Returning users per bucket.
+  - `license_types`: users per license type per bucket.
+- **`get_asset_usage`**: usage for one asset, looked up by UUID or exact name:
+  - All-time visits, unique visitors and first visit date.
+  - Visit trend over the date range.
+  - Top visitors, with names resolved.
+- All three tools share these options:
+  - `start_date` / `end_date` (default: the 30 days ending yesterday) and `granularity` (`Day`/`Week`/`Month`).
+  - `exclude_admin` / `exclude_disabled_users`.
+  - Filters by user group, role, license type, community/domain and asset type. Names are resolved to IDs automatically.
+  - Every response includes `lastRefreshed`.
+- **`CollibraClient.sessionRestCall`**: GET with session auth (cookie + `X-CSRF-TOKEN` from `POST /rest/2.0/auth/sessions`). It logs in when first needed, reuses the session, and logs in again on 401/403. This is needed because the internal Usage Analytics APIs (`/rest/usageAnalyticsUsage/v1`, `/rest/usageAnalyticsUsers/v1`) reject Basic auth.
+- `scripts/smoke-usage-analytics.mjs`: end-to-end check of every view against a live instance.
+
+### Notes
+- These APIs are undocumented and may change between Collibra releases. They need Usage Analytics enabled and Insights permission.
+- `get_asset_view_stats` is unchanged (all-time navigation stats). Its description now points to the new tools for time-bounded questions.
+
 ## 9.3.0 — Chip Parity Phase C: Workflows, Comments, Activities, Skills, HTTP Transport & More
 
 The largest single expansion of the tool surface: 23 new tools (94 canonical + 3 aliases), Markdown→HTML for rich-text writes, cursor pagination, an embedded skills catalog, context specifications (Semantic Blueprint), a streamable-HTTP transport, and optional output-schema validation. Excludes Collibra AI (`discover_*`) tools by design.

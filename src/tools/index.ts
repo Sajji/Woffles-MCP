@@ -86,6 +86,9 @@ import { findMappingsTool, executeFindMappings } from './find-mappings.js';
 import { addMappingTool, executeAddMapping } from './add-mapping.js';
 import { removeMappingTool, executeRemoveMapping } from './remove-mapping.js';
 import { getAssetViewStatsTool, executeGetAssetViewStats } from './get-asset-view-stats.js';
+import { getContentUsageTool, executeGetContentUsage } from './get-content-usage.js';
+import { getUserUsageTool, executeGetUserUsage } from './get-user-usage.js';
+import { getAssetUsageTool, executeGetAssetUsage } from './get-asset-usage.js';
 import { findComplexRelationsTool, executeFindComplexRelations } from './find-complex-relations.js';
 import { findUsersTool, executeFindUsers } from './find-users.js';
 import { findRatingsTool, executeFindRatings } from './find-ratings.js';
@@ -215,6 +218,9 @@ const allTools = [
   addMappingTool,
   removeMappingTool,
   getAssetViewStatsTool,
+  getContentUsageTool,
+  getUserUsageTool,
+  getAssetUsageTool,
   findComplexRelationsTool,
   findUsersTool,
   findRatingsTool,
@@ -336,6 +342,9 @@ export const toolExecutors: Record<string, (args: any) => Promise<string | ToolR
   add_mapping: executeAddMapping,
   remove_mapping: executeRemoveMapping,
   get_asset_view_stats: executeGetAssetViewStats,
+  get_content_usage: executeGetContentUsage,
+  get_user_usage: executeGetUserUsage,
+  get_asset_usage: executeGetAssetUsage,
   find_complex_relations: executeFindComplexRelations,
   find_users: executeFindUsers,
   find_ratings: executeFindRatings,
