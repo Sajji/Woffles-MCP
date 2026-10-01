@@ -22,7 +22,7 @@ export const getContentUsageTool = {
     'Usage Analytics for catalog content: how often assets, domains, communities, dashboards and diagrams were visited ' +
     'over a date range (same data as the Collibra "Usage Analytics > Usage" page). Views: ' +
     '"summary" = visit totals per content type with previous-period comparison; ' +
-    '"trend" = visits per Day/Week/Month bucket per content type; ' +
+    '"trend" = visits per Day/Week/Month/Quarter bucket per content type; ' +
     '"top" = most visited items of one visit_type (assets are enriched with type/domain/community); ' +
     '"filters" = valid values for user_groups/user_roles/license_types/organizations/asset_types. ' +
     'Defaults to the previous 30 days ending yesterday at Day granularity. ' +

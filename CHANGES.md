@@ -7,7 +7,7 @@ Three read-only tools for Collibra's **Usage Analytics** app data (`/apps/usage-
 ### Added
 - **`get_content_usage`**: visits to assets, domains, communities, dashboards and diagrams. Views:
   - `summary`: totals per type, plus % change vs. the previous period.
-  - `trend`: visits per Day/Week/Month bucket.
+  - `trend`: visits per Day/Week/Month/Quarter bucket.
   - `top`: most visited items. Top assets include asset type, domain and community.
   - `filters`: valid filter values.
 - **`get_user_usage`**: user adoption. Views:

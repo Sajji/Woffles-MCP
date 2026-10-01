@@ -1515,7 +1515,7 @@ Every response includes `period`, `filters` (resolved values) and `lastRefreshed
 |-----------|----------|-------------|
 | `instance_name` | Yes | Collibra instance name |
 | `start_date` / `end_date` | No | `YYYY-MM-DD`, inclusive. Default: the 30 days ending yesterday |
-| `granularity` | No | `Day` (default), `Week` or `Month` |
+| `granularity` | No | `Day` (default), `Week`, `Month` or `Quarter`. `get_user_usage` `usage_rate` does not support `Day` and uses `Week` instead |
 | `exclude_admin` / `exclude_disabled_users` | No | Default false |
 | `user_groups` / `user_roles` | No | Arrays of names or IDs. Names are matched case-insensitively |
 | `license_types` | No | Array of license types (e.g. `Creator`) |

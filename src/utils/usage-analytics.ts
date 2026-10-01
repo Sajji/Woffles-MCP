@@ -8,8 +8,8 @@ import { CollibraClient } from './collibra-client.js';
  */
 
 export type UaService = 'usage' | 'users';
-export type Granularity = 'Day' | 'Week' | 'Month';
-export const GRANULARITIES: Granularity[] = ['Day', 'Week', 'Month'];
+export type Granularity = 'Day' | 'Week' | 'Month' | 'Quarter';
+export const GRANULARITIES: Granularity[] = ['Day', 'Week', 'Month', 'Quarter'];
 export const VISIT_TYPES = ['Asset', 'Domain', 'Community', 'Dashboard', 'Diagram'] as const;
 export const USER_TYPES = ['Active', 'Inactive', 'New'] as const;
 
@@ -40,7 +40,7 @@ export const COMMON_UA_PROPERTIES = {
   granularity: {
     type: 'string',
     enum: GRANULARITIES,
-    description: 'Time bucket size for trends (default: Day).',
+    description: 'Time bucket size for trends (default: Day). get_user_usage view="usage_rate" does not support Day and uses Week instead.',
   },
   exclude_admin: {
     type: 'boolean',

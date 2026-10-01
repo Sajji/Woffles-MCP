@@ -126,9 +126,15 @@ export async function executeGetUserUsage(args: any): Promise<ToolResult> {
       if (view === 'license_types' && !USER_TYPES.includes(user_type)) {
         throw new Error(`user_type must be one of ${USER_TYPES.join(', ')} (got "${user_type}").`);
       }
+      let granularity = range.granularity;
+      if (view === 'usage_rate' && granularity === 'Day') {
+        granularity = 'Week';
+        period.granularity = 'Week';
+        warnings.push('usage_rate does not support Day granularity; Week was used instead.');
+      }
       const resp = await api.get('users', path, {
         ...dateParams,
-        granularity: range.granularity,
+        granularity,
         ...(view === 'license_types' ? { userType: user_type } : {}),
         ...filterParams,
       });

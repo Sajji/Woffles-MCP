@@ -18,7 +18,7 @@ export const getAssetUsageTool = {
   name: OPERATION,
   description:
     'Usage Analytics for a single asset: all-time totals (visits, unique visitors, first visit date), ' +
-    'visit trend per Day/Week/Month over the date range, and the top visitors with their names. ' +
+    'visit trend per Day/Week/Month/Quarter over the date range, and the top visitors with their names. ' +
     'Identify the asset by asset_id, or by exact asset_name (fails if ambiguous). ' +
     'Defaults to the previous 30 days ending yesterday at Day granularity. ' +
     'Uses undocumented internal APIs and requires Usage Analytics (Insights) permission.',
