@@ -70,7 +70,7 @@ export async function executeSearchStarWars(args: any): Promise<ToolResult> {
       instance: 'star-wars',
       operation: 'search_star_wars',
       data: { searchTerm: search_term, byResource: {} },
-      warnings: ['The Star Wars source is disabled in config.json (externalSources.starWars.enabled = false).'],
+      warnings: ['The Star Wars source is disabled. It is opt-in: set externalSources.starWars.enabled = true in config.json to use it.'],
       pretty: true,
     });
   }

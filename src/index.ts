@@ -8,8 +8,18 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import Ajv from 'ajv';
-import { loadConfig, getInstances, isReadOnly } from './config.js';
-import { tools, executeTool } from './tools/index.js';
+import { readFileSync } from 'fs';
+import { loadConfig, getInstances, isReadOnly, getPlaintextPasswordInstances, getConfiguredSecrets, getCompliancePosture, getComplianceWarnings, getAuditSettings } from './config.js';
+import { redactSecrets } from './utils/secrets.js';
+
+const PKG: { name: string; version: string } = (() => {
+  try {
+    const p = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8'));
+    return { name: p.name, version: p.version };
+  } catch {
+    return { name: 'collibra-mcp-server', version: '0.0.0' };
+  }
+})();
 
 // Initialize configuration (must happen before constructing the server so we
 // can publish the warning via the MCP `instructions` field).
@@ -19,6 +29,9 @@ try {
   console.error('✗ Failed to load configuration:', (error as Error).message);
   process.exit(1);
 }
+
+// Imported only after config validation: the registry reads config at import time.
+const { tools, executeTool } = await import('./tools/index.js');
 
 // ── Optional warn-only output validation (config `validateOutput: true`) ──
 const validateOutput = loadConfig().validateOutput === true;
@@ -51,12 +64,14 @@ function validateStructured(toolName: string, structured: unknown): void {
 function buildServer(): Server {
   const server = new Server(
     {
-      name: 'collibra-mcp-server',
-      version: '1.0.0',
+      name: PKG.name,
+      title: 'Woffles MCP Server for Collibra',
+      version: PKG.version,
     },
     {
       capabilities: {
         tools: {},
+        logging: {},
       },
       instructions:
         'Every tool requires an "instance_name" argument identifying a configured Collibra instance. ' +
@@ -79,7 +94,8 @@ function buildServer(): Server {
 
     try {
       const result = await executeTool(name, args || {});
-      const text = result.text;
+      const secrets = getConfiguredSecrets();
+      const text = redactSecrets(result.text, secrets);
 
       const response: any = {
         content: [
@@ -92,22 +108,25 @@ function buildServer(): Server {
 
       // Emit MCP structuredContent when the tool produced a structured payload.
       if (result.structured !== undefined) {
-        response.structuredContent = result.structured;
-        validateStructured(name, result.structured);
+        const json = JSON.stringify(result.structured);
+        const redacted = redactSecrets(json, secrets);
+        response.structuredContent = redacted === json ? result.structured : JSON.parse(redacted);
+        validateStructured(name, response.structuredContent);
       }
 
       return response;
     } catch (error) {
+      const text = JSON.stringify({
+        error: true,
+        message: (error as Error).message,
+        tool: name,
+        arguments: args,
+      }, null, 2);
       return {
         content: [
           {
             type: 'text',
-            text: JSON.stringify({
-              error: true,
-              message: (error as Error).message,
-              tool: name,
-              arguments: args,
-            }, null, 2),
+            text: redactSecrets(text, getConfiguredSecrets()),
           },
         ],
         isError: true,
@@ -124,9 +143,23 @@ try {
   instances.forEach(instance => {
     console.error(`  - ${instance.name}: ${instance.baseUrl}`);
     if (instance.insecure) {
-      console.error(`  ⚠ WARNING: TLS certificate verification is DISABLED for "${instance.name}" (insecure: true) — do not use in production`);
+      console.error(`  ⚠ WARNING: TLS certificate verification is DISABLED for "${instance.name}" (insecure: true) — do not use in production. Prefer tls.caFile.`);
     }
   });
+  const plaintext = getPlaintextPasswordInstances();
+  if (plaintext.length) {
+    console.error(
+      `  ⚠ WARNING: plaintext password in config.json for: ${plaintext.join(', ')}. ` +
+        'Use a secret reference instead: "${env:NAME}", "${file:/path}" or "${keychain:target}".',
+    );
+  }
+  const posture = getCompliancePosture();
+  if (posture.mode) {
+    console.error(`✓ Compliance mode: ${posture.mode} (audit: on${posture.audit.logReads ? ', including reads' : ''}; FIPS: ${posture.fips ? 'on' : 'off'})`);
+  }
+  for (const w of getComplianceWarnings()) console.error(`  ⚠ COMPLIANCE: ${w}`);
+  const audit = getAuditSettings();
+  if (audit.enabled) console.error(`✓ Audit log: ${audit.path}`);
 } catch (error) {
   console.error('✗ Failed to enumerate instances:', (error as Error).message);
   process.exit(1);

@@ -4,7 +4,17 @@ export interface CollibraInstance {
   baseUrl: string;
   username: string;
   password: string;
+  /** Development only: skip TLS certificate verification. Prefer `tls.caFile`. */
   insecure?: boolean;
+  /** How requests authenticate. Default: `{ type: 'basic' }`. OAuth is intentionally not supported. */
+  auth?: { type?: 'basic' | 'session' };
+  /** Transport security: custom CA bundle and/or mutual-TLS client certificate (PEM files). */
+  tls?: {
+    caFile?: string;
+    clientCertFile?: string;
+    clientKeyFile?: string;
+    clientKeyPassphrase?: string;
+  };
 }
 
 /**
@@ -62,6 +72,19 @@ export interface CollibraConfig {
   http?: { enabled?: boolean; port?: number };
   /** When true, tool outputs are validated against their outputSchema (warn-only). */
   validateOutput?: boolean;
+  /**
+   * Tamper-evident audit trail (hash-chained JSONL). Off by default; forced on
+   * by `complianceMode`. `path` defaults to `<config dir>/logs/audit.jsonl`.
+   */
+  audit?: { enabled?: boolean; path?: string; logReads?: boolean; maxBytes?: number };
+  /**
+   * Hardened deployment posture enforced at startup (see src/utils/compliance.ts).
+   * "fedramp": https + verified TLS, secret references only, no external
+   * sources, mandatory audit, FIPS check.
+   */
+  complianceMode?: 'fedramp';
+  /** Fail startup unless Node's crypto is in FIPS mode. */
+  requireFips?: boolean;
 }
 
 // Asset Type types

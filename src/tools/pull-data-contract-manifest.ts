@@ -1,6 +1,7 @@
 import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
+import { authFetch } from '../utils/auth.js';
 
 export const pullDataContractManifestTool = {
   name: 'pull_data_contract_manifest',
@@ -34,15 +35,12 @@ export async function executePullDataContractManifest(args: any): Promise<ToolRe
 
   try {
     const instance = getInstance(instance_name);
-    const fetch = (await import('node-fetch')).default;
-    const credentials = Buffer.from(`${instance.username}:${instance.password}`).toString('base64');
 
     const url = `${instance.baseUrl}/rest/dataProduct/v1/dataContracts/${encodeURIComponent(data_contract_id)}/activeVersion/manifest`;
 
-    const response = await fetch(url, {
+    const response = await authFetch(instance, url, {
       method: 'GET',
       headers: {
-        'Authorization': `Basic ${credentials}`,
         'Accept': 'text/plain, application/yaml, application/json',
       },
     });

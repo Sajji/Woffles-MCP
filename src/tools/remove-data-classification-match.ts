@@ -2,6 +2,7 @@ import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
+import { authFetch } from '../utils/auth.js';
 
 export const removeDataClassificationMatchTool = {
   name: 'remove_data_classification_match',
@@ -72,12 +73,9 @@ export async function executeRemoveDataClassificationMatch(args: any): Promise<T
 
     // DELETE the match
     const url = `${instance.baseUrl}/rest/catalog/1.0/dataClassification/classificationMatches/${classification_match_id}`;
-    const fetch = (await import('node-fetch')).default;
-    const credentials = Buffer.from(`${instance.username}:${instance.password}`).toString('base64');
-    const response = await fetch(url, {
+    const response = await authFetch(instance, url, {
       method: 'DELETE',
       headers: {
-        'Authorization': `Basic ${credentials}`,
         'Content-Type': 'application/json',
       },
     });

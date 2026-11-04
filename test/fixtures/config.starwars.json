@@ -1,0 +1,7 @@
+{
+  "readOnly": false,
+  "instances": [
+    { "name": "Test", "baseUrl": "https://collibra.invalid", "username": "test-user", "password": "test-password" }
+  ],
+  "externalSources": { "starWars": { "enabled": true } }
+}

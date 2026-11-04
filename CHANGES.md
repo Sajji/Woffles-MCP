@@ -1,5 +1,41 @@
 # Changelog
 
+## Unreleased — Platform Hygiene (Roadmap Tier A, batch 1)
+
+### Added
+- **Pluggable, OAuth-free auth layer** (`src/utils/auth.ts`) for FedRAMP and self-hosted (CPSH) customers, who can't use OAuth. Each instance sets `auth.type`:
+  - `basic` (default)
+  - `session`: REST session login with cookie + CSRF, shared across concurrent calls, with automatic re-login on 401/403
+- **TLS options** per instance: `tls.caFile` (custom or agency CA), `tls.clientCertFile` / `tls.clientKeyFile` / `tls.clientKeyPassphrase` (mutual TLS). TLS 1.2 is the minimum. Invalid `auth.type` values or mismatched cert/key pairs fail at startup.
+- **Secret references in config** (`src/utils/secrets.ts`): any value can be `${env:NAME}`, `${file:/path}` or `${keychain:target}` (Windows Credential Manager, macOS Keychain, Linux libsecret), so passwords no longer need to be stored in plaintext. Startup warns about instances that still use a plaintext password. Instance passwords are masked in all tool output and errors.
+- **Tamper-evident audit trail** (`src/utils/audit.ts`): hash-chained (SHA-256) JSONL with rotation, aligned with NIST 800-53 AU-2/3/9/11. Enable it with `"audit": {"enabled": true}`. It records every write (preview or applied), optionally reads, with user, instance, masked arguments, outcome and timing.
+- **`get_audit_log`** (read): browse and filter the audit trail, and verify the hash chain.
+- **`undo_write`** (write, preview/confirm): revert an applied write from its pre-write snapshot. It restores attribute values and asset properties for the update/edit tools, and deletes assets made by the create tools.
+- **`complianceMode: "fedramp"`** (`src/utils/compliance.ts`): startup refuses to run, listing every violation, unless:
+  - instances use https with verified TLS
+  - passwords are secret references
+  - external sources are off
+
+  Compliance mode forces the audit trail on, checks FIPS mode (`requireFips: true` makes a non-FIPS runtime fatal), and reports the posture in `get_instances` under `security`.
+- 99 canonical tools + 3 aliases. Write tools: 32.
+- **MCP tool annotations on every tool.** Each tool now has `title`, `readOnlyHint`, `destructiveHint`, `idempotentHint` and `openWorldHint`, matching chip. Hints come from one table (`src/tools/annotations.ts`), which is also now the single source of the read-only write-tool list. Chip aliases inherit their canonical tool's hints.
+- **Test harness:** vitest (`npm test`) with registry tests. They check for unique names, valid input schemas, an executor per tool, and annotations set on every tool (the equivalent of chip's `TestRegisterAll_AllToolsHaveProperAnnotations`). They also cover read-only mode and the external-source opt-in. Fixtures are in `test/fixtures/`, so no real credentials are needed.
+- **CI:** a GitHub Actions workflow (`.github/workflows/ci.yml`) runs build and test on Node 22.
+- `npm run typecheck` script.
+
+### Changed
+- **MCP SDK upgraded from 1.27 to 1.32.** The server now negotiates protocol `2025-11-25` and declares the `logging` capability.
+- `serverInfo` reports the real package name and version, plus a `title`. It was previously hardcoded to `1.0.0`.
+- **The Star Wars external source is now opt-in** (`externalSources.starWars.enabled: true`). This avoids unexpected calls to a public internet API in FedRAMP and restricted-egress deployments. When the source is disabled, `search_star_wars` is not advertised.
+- `@types/node` bumped to 22 to match the Node 22 runtime.
+
+### Fixed
+- `init_data_contract`, `push_data_contract_manifest`, `pull_data_contract_manifest` and `remove_data_classification_match` built their own Basic auth and **ignored the instance's TLS settings**, so they failed against self-signed or custom-CA instances. All four now go through the shared auth layer.
+- Config validation errors no longer echo the instance password.
+- Credentials are now only ever sent to the configured instance's own origin. Any authenticated request to another host, or with userinfo tricks in the URL, is refused.
+- A config that fails validation is no longer cached as if it were valid, and startup now fails cleanly (`✗ Failed to load configuration`) instead of with an uncaught stack trace.
+- Lineage tools now return an actionable explanation when the lineage service rejects the user mapping (401 "Unauthorized User Token") instead of a bare `401 Unauthorized`. Diagnosis on a 2026.10 tenant: Basic and session auth both get this response, and Collibra's hosted MCP fails the same way. The cause is lineage provisioning on the instance, not credentials, so the message points admins at the actual fix.
+
 ## Unreleased — Usage Analytics
 
 Three read-only tools for Collibra's **Usage Analytics** app data (`/apps/usage-analytics`), so agents can answer "what's being used, by whom, and how is adoption trending?" for any date range. 97 canonical tools + 3 aliases.

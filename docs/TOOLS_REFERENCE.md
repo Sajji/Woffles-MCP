@@ -1,6 +1,6 @@
 # Tools Reference
 
-Complete reference for all 97 tools provided by the Collibra MCP Server (plus 3 chip-compatible aliases).
+Complete reference for all 99 tools provided by the Collibra MCP Server (plus 3 chip-compatible aliases).
 
 > **Chip-compatible aliases:** `list_asset_types`, `search_asset_keyword`, and `get_asset_details` are additive aliases for `get_asset_types`, `search_assets_by_name`, and `get_asset_by_id` respectively — for interoperability with the official Collibra [`chip`](https://github.com/collibra/chip) server. They behave identically to their canonical counterparts.
 
@@ -176,7 +176,8 @@ wrapper: it can query non-Collibra REST APIs (here, the public Star Wars API) on
 or alongside every configured Collibra instance in a single call.
 
 Configure external sources via the optional `externalSources` block in `config.json`
-(see `config.example.json`). The Star Wars source is enabled by default.
+(see `config.example.json`). The Star Wars source is opt-in: it is disabled (and `search_star_wars`
+is not advertised) unless `externalSources.starWars.enabled` is `true`.
 
 ### search_star_wars
 
@@ -200,7 +201,7 @@ Federated search: look up a subject across **every configured Collibra instance 
 |-----------|----------|-------------|
 | `subject` | Yes | Subject to look up across all sources, e.g. "Luke Skywalker" |
 | `instance_names` | No | Restrict the Collibra fan-out to these instance names (default: all instances) |
-| `include_star_wars` | No | Include the Star Wars API source (default: true) |
+| `include_star_wars` | No | Include the Star Wars API source (default: true; ignored unless the source is enabled in config) |
 | `star_wars_resources` | No | Which Star Wars resource types to include (default: all) |
 | `limit` | No | Max hits per source (default: 10) |
 
@@ -1649,6 +1650,43 @@ List Context Specifications — definitions of how to extract governed metadata 
 Retrieve one Context Specification by UUID, including its full `mappingYaml`.
 
 **Related:** `get_asset_by_id` accepts `context_specification_id` to generate the asset's structured YAML context (`POST /rest/contextEngine/v1/contexts/generate`), and `include_breadcrumb` to return the community/domain path.
+
+---
+
+## Audit Trail & Undo
+
+Available when auditing is enabled (`"audit": {"enabled": true}` in config.json, or `complianceMode`). Entries live in a local hash-chained JSONL file (default `<config dir>/logs/audit.jsonl`), not in Collibra.
+
+### get_audit_log
+
+Read this server's own audit trail. Newest first. Each entry records the tool, the instance, the Collibra user, the arguments (secrets masked), preview vs. apply, the outcome and the duration.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `limit` | No | Max entries (default 20, max 500) |
+| `tool` | No | Only entries for this tool |
+| `instance_name` | No | Only entries for this instance |
+| `writes_only` | No | Only applied writes and undos |
+| `seq` | No | Return one entry, including its full pre-write snapshot |
+| `verify` | No | Also verify the hash chain (detects edited, deleted or reordered lines) |
+
+### undo_write *(write)*
+
+Revert an earlier applied write by its audit `seq`. It restores asset name, display name, status and attribute values from the pre-write snapshot for these tools:
+- `update_asset_description`
+- `update_asset_attribute`
+- `bulk_update_asset_descriptions`
+- `bulk_update_asset_attributes`
+- `edit_asset`
+
+It also deletes assets created by `create_asset`, `add_business_term` and `bulk_create_assets`.
+
+Not reverted: relations, tags, responsibilities, deletions, workflows, assessments and operating-model changes. The restore is diffed against the current state, so later edits to the same attributes are overwritten. Two-step: `confirm=false` (default) previews the exact actions; `confirm=true` applies them. An entry can only be undone once.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `seq` | Yes | Audit entry to revert |
+| `confirm` | No | `true` to apply (default: preview) |
 
 ---
 

@@ -1,6 +1,6 @@
-import fetch from 'node-fetch';
-import https from 'https';
+import type { RequestInit, Response } from 'node-fetch';
 import type { CollibraInstance } from '../types.js';
+import { authFetch, getAuthProvider, resolveAuthType, type AuthProvider } from './auth.js';
 import { toRichTextValue } from './markdown.js';
 
 /**
@@ -41,31 +41,36 @@ const CURSOR_CAPABLE_PATHS = new Set([
   '/rest/2.0/complexRelations',
 ]);
 
+/**
+ * The lineage gateway answers 401 "Unauthorized User Token" when it accepts
+ * the request but cannot map the user to a lineage-service token. Verified on
+ * a 2026.10 tenant: Basic and session auth both fail, and Collibra's hosted
+ * MCP fails identically, so the cause is instance provisioning, not the client.
+ */
+export const LINEAGE_UNAVAILABLE_MESSAGE =
+  'Technical lineage is not available for this user on this instance (lineage service returned 401 "Unauthorized User Token"). ' +
+  'Credentials are valid; the lineage service rejected the user mapping. Ask a Collibra admin to confirm that technical lineage is ' +
+  'provisioned for this environment (lineage harvester / Edge lineage capability has run and synced) and that this user has access ' +
+  'to the lineage data sources. Collibra\'s own MCP server fails the same way in this situation. Business lineage via relations ' +
+  '(get_asset_relations, find_traversal_path) still works.';
+
 export class CollibraClient {
   private instance: CollibraInstance;
-  private authHeader: string;
-  private httpsAgent: https.Agent | undefined;
+  private auth: AuthProvider;
   /** Set of endpoint prefixes already warned about, to avoid log spam. */
   private static clampWarned = new Set<string>();
   /** Lazily-built relation-type-by-id cache, used by getAssetRelations. */
   private relationTypesById: Map<string, any> | null = null;
   /** Lazily-built attribute-type cache, used for RICH_TEXT detection. */
   private attributeTypesById = new Map<string, any>();
-  /**
-   * Session cookie + CSRF token per instance/user, shared across client
-   * instances. Stored as a promise so concurrent callers share one login.
-   */
-  private static sessions = new Map<string, Promise<{ cookie: string; csrfToken: string }>>();
-
   constructor(instance: CollibraInstance) {
     this.instance = instance;
-    // Create Basic Auth header
-    const credentials = Buffer.from(`${instance.username}:${instance.password}`).toString('base64');
-    this.authHeader = `Basic ${credentials}`;
-    // Allow self-signed certs for explicitly insecure instances
-    if (instance.insecure) {
-      this.httpsAgent = new https.Agent({ rejectUnauthorized: false });
-    }
+    this.auth = getAuthProvider(instance, resolveAuthType(instance));
+  }
+
+  /** Send a request to this instance using its configured auth + TLS settings. */
+  private send(url: string, init: RequestInit = {}, provider: AuthProvider = this.auth): Promise<Response> {
+    return authFetch(this.instance, url, init, provider);
   }
 
   /**
@@ -96,13 +101,9 @@ export class CollibraClient {
     const url = `${this.instance.baseUrl}${endpoint}`;
     
     try {
-      const response = await fetch(url, {
+      const response = await this.send(url, {
         method: 'GET',
-        headers: {
-          'Authorization': this.authHeader,
-          'Content-Type': 'application/json',
-        },
-        agent: this.httpsAgent,
+        headers: { 'Content-Type': 'application/json' },
       });
 
       if (!response.ok) {
@@ -110,6 +111,12 @@ export class CollibraClient {
           throw new Error(
             `REST API call failed: 403 Forbidden — the authenticated user is likely missing a required Collibra permission or DGC scope for this operation.`,
           );
+        }
+        if (response.status === 401 && endpoint.startsWith('/technical_lineage_resource')) {
+          const body = await response.text().catch(() => '');
+          if (body.includes('Unauthorized User Token')) {
+            throw new Error(LINEAGE_UNAVAILABLE_MESSAGE);
+          }
         }
         throw new Error(
           `REST API call failed: ${response.status} ${response.statusText}`
@@ -124,40 +131,6 @@ export class CollibraClient {
     }
   }
 
-  private get sessionKey(): string {
-    return `${this.instance.baseUrl}|${this.instance.username}`;
-  }
-
-  /** Log in via POST /rest/2.0/auth/sessions and capture the session cookie + CSRF token. */
-  private async createSession(): Promise<{ cookie: string; csrfToken: string }> {
-    const url = `${this.instance.baseUrl}/rest/2.0/auth/sessions`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ username: this.instance.username, password: this.instance.password }),
-      agent: this.httpsAgent,
-    });
-    if (!response.ok) {
-      throw new Error(`Session login failed: ${response.status} ${response.statusText}`);
-    }
-    const setCookies: string[] = response.headers.raw()['set-cookie'] ?? [];
-    const cookie = setCookies.map((c) => c.split(';')[0]).join('; ');
-    const body = (await response.json().catch(() => ({}))) as { csrfToken?: string };
-    if (!cookie) throw new Error('Session login succeeded but no session cookie was returned.');
-    return { cookie, csrfToken: body.csrfToken ?? '' };
-  }
-
-  private getSession(forceNew = false): Promise<{ cookie: string; csrfToken: string }> {
-    const key = this.sessionKey;
-    let session = forceNew ? undefined : CollibraClient.sessions.get(key);
-    if (!session) {
-      session = this.createSession();
-      CollibraClient.sessions.set(key, session);
-      session.catch(() => CollibraClient.sessions.delete(key));
-    }
-    return session;
-  }
-
   /**
    * GET using a browser-style session (cookie + X-CSRF-TOKEN) instead of Basic
    * auth. Required by internal app APIs such as Usage Analytics
@@ -166,20 +139,13 @@ export class CollibraClient {
    */
   async sessionRestCall<T>(endpoint: string): Promise<T> {
     const url = `${this.instance.baseUrl}${endpoint}`;
-    const attempt = async (forceNew: boolean) => {
-      const { cookie, csrfToken } = await this.getSession(forceNew);
-      return fetch(url, {
-        method: 'GET',
-        headers: { Cookie: cookie, 'X-CSRF-TOKEN': csrfToken, Accept: 'application/json' },
-        agent: this.httpsAgent,
-      });
-    };
-
     try {
-      let response = await attempt(false);
-      if (response.status === 401 || response.status === 403) {
-        response = await attempt(true);
-      }
+      // Always session auth (these APIs reject Basic); re-login on 401/403 is handled by authFetch.
+      const response = await this.send(
+        url,
+        { method: 'GET', headers: { Accept: 'application/json' } },
+        getAuthProvider(this.instance, 'session'),
+      );
       if (!response.ok) {
         const errorBody = await response.text().catch(() => '');
         let detail = '';
@@ -211,14 +177,10 @@ export class CollibraClient {
     const url = `${this.instance.baseUrl}${endpoint}`;
 
     try {
-      const response = await fetch(url, {
+      const response = await this.send(url, {
         method,
-        headers: {
-          'Authorization': this.authHeader,
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
-        agent: this.httpsAgent,
       });
 
       if (!response.ok) {
@@ -250,17 +212,13 @@ export class CollibraClient {
     const url = `${this.instance.baseUrl}/graphql/knowledgeGraph/v1`;
     
     try {
-      const response = await fetch(url, {
+      const response = await this.send(url, {
         method: 'POST',
-        headers: {
-          'Authorization': this.authHeader,
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           query,
           variables: variables || {},
         }),
-        agent: this.httpsAgent,
       });
 
       if (!response.ok) {

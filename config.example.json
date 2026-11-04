@@ -3,6 +3,8 @@
   "_comment_toolToggles": "Optional per-tool enable/disable. When 'enabledTools' is a non-empty array, ONLY those tools are exposed (allowlist). Otherwise, any tool listed in 'disabledTools' is hidden (denylist). enabledTools takes precedence. Env overrides: COLLIBRA_ENABLED_TOOLS / COLLIBRA_DISABLED_TOOLS (comma-separated).",
   "enabledTools": [],
   "disabledTools": [],
+  "_comment_secrets": "Any value can be a secret reference instead of plaintext: ${env:NAME}, ${file:/run/secrets/name}, or ${keychain:target} (Windows Credential Manager generic credential, macOS Keychain service, Linux libsecret service).",
+  "_comment_instances": "auth.type: 'basic' (default) or 'session' (REST session login with cookie + CSRF; auto re-login). OAuth is not used, so this works for FedRAMP and self-hosted (CPSH). tls.caFile trusts a custom/agency CA (preferred over 'insecure'); tls.clientCertFile + tls.clientKeyFile enable mutual TLS.",
   "instances": [
     {
       "name": "Production",
@@ -11,16 +13,29 @@
       "password": "your-password"
     },
     {
+      "name": "SelfHosted",
+      "baseUrl": "https://collibra.agency.example",
+      "username": "svc-collibra-mcp",
+      "password": "${keychain:woffles/SelfHosted}",
+      "auth": { "type": "session" },
+      "tls": {
+        "caFile": "C:/certs/agency-root-ca.pem",
+        "clientCertFile": "C:/certs/mcp-client.pem",
+        "clientKeyFile": "C:/certs/mcp-client.key"
+      }
+    },
+    {
       "name": "Sandbox",
       "baseUrl": "https://192.168.x.x:5404",
       "username": "your-username",
       "password": "your-password",
       "insecure": true
-    }   
+    }
   ],
+  "_comment_externalSources": "Opt-in only. External sources call public internet APIs; leave disabled in FedRAMP / restricted-egress environments.",
   "externalSources": {
     "starWars": {
-      "enabled": true,
+      "enabled": false,
       "baseUrl": "https://www.swapi.tech/api"
     }
   },
@@ -29,5 +44,8 @@
   "_comment_http": "Optional: serve MCP over streamable HTTP on localhost instead of stdio. Also enabled by --http[=port] or COLLIBRA_MCP_HTTP_PORT.",
   "http": { "enabled": false, "port": 3399 },
   "_comment_validateOutput": "Optional: when true, tool outputs are checked against their outputSchema and mismatches are logged (warn-only).",
-  "validateOutput": false
+  "validateOutput": false,
+  "_comment_audit": "Optional tamper-evident audit trail (hash-chained JSONL) used by get_audit_log and undo_write. path defaults to <config dir>/logs/audit.jsonl. Forced on by complianceMode.",
+  "audit": { "enabled": false, "logReads": false },
+  "_comment_complianceMode": "Optional: set to \"fedramp\" to enforce https + verified TLS, secret references (no plaintext passwords), no external sources, and mandatory audit at startup. requireFips makes a non-FIPS Node runtime a startup error."
 }

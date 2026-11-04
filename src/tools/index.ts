@@ -1,4 +1,5 @@
-import { isReadOnly, isToolEnabledByConfig } from '../config.js';
+import { isReadOnly, isToolEnabledByConfig, getStarWarsSource } from '../config.js';
+import { WRITE_TOOL_NAMES, annotationsFor, humanizeToolName } from './annotations.js';
 import type { ToolResult } from '../types.js';
 import { getInstancesTool, executeGetInstances } from './get-instances.js';
 import { getAssetTypesTool, executeGetAssetTypes } from './get-asset-types.js';
@@ -94,42 +95,11 @@ import { findUsersTool, executeFindUsers } from './find-users.js';
 import { findRatingsTool, executeFindRatings } from './find-ratings.js';
 import { listCollibraSkillsTool, executeListCollibraSkills, loadCollibraSkillTool, executeLoadCollibraSkill } from './collibra-skills.js';
 import { listContextSpecificationsTool, executeListContextSpecifications, getContextSpecificationTool, executeGetContextSpecification } from './context-specifications.js';
+import { getAuditLogTool, executeGetAuditLog } from './get-audit-log.js';
+import { undoWriteTool, executeUndoWrite } from './undo-write.js';
+import { auditedExecute } from '../utils/audited-execute.js';
 
-// Write tools that are disabled when readOnly mode is enabled
-const WRITE_TOOL_NAMES = [
-  'update_asset_description',
-  'bulk_update_asset_descriptions',
-  'update_asset_attribute',
-  'bulk_update_asset_attributes',
-  'create_asset',
-  'add_business_term',
-  'bulk_create_assets',
-  'add_data_classification_match',
-  'remove_data_classification_match',
-  'push_data_contract_manifest',
-  'init_data_contract',
-  'create_assessment',
-  'update_assessment',
-  'edit_assessment',
-  'retake_assessment',
-  'create_community',
-  'create_domain',
-  'create_relation',
-  'bulk_create_relations',
-  'create_asset_type',
-  'create_relation_type',
-  'bulk_delete_assets',
-  'bulk_delete_relations',
-  'edit_asset',
-  'create_attribute_type',
-  'assign_attribute_to_asset_type',
-  'start_workflow_instance',
-  'complete_workflow_task',
-  'add_comment',
-  'add_mapping',
-  'remove_mapping',
-];
-
+// Write tools (hidden in readOnly mode) and their MCP annotation hints live in annotations.ts.
 const allTools = [
   getInstancesTool,
   getAssetTypesTool,
@@ -228,6 +198,8 @@ const allTools = [
   loadCollibraSkillTool,
   listContextSpecificationsTool,
   getContextSpecificationTool,
+  getAuditLogTool,
+  undoWriteTool,
 ];
 
 /**
@@ -246,11 +218,19 @@ const aliasTools = TOOL_ALIASES.map(({ alias, canonical }) => {
   return { ...base, name: alias, description: `[Alias for ${canonical}] ${base.description}` };
 });
 
-const registeredTools = [...allTools, ...aliasTools];
+// Aliases inherit the canonical tool's hints (same executor, same effect).
+const aliasCanonical = new Map(TOOL_ALIASES.map(({ alias, canonical }) => [alias, canonical]));
+
+export const registeredTools = [...allTools, ...aliasTools].map((t: any) => ({
+  ...t,
+  annotations: { ...annotationsFor(aliasCanonical.get(t.name) ?? t.name), title: humanizeToolName(t.name) },
+}));
 
 export const tools = registeredTools
   .filter(t => !(isReadOnly() && WRITE_TOOL_NAMES.includes(t.name)))
-  .filter(t => isToolEnabledByConfig(t.name));
+  .filter(t => isToolEnabledByConfig(t.name))
+  // Don't advertise the opt-in demo source when it's switched off.
+  .filter(t => t.name !== 'search_star_wars' || getStarWarsSource().enabled);
 // Tool executor map. Executors may return either:
 //   - a plain `string` (legacy: human-readable text only), or
 //   - a `ToolResult` ({ text, structured }) to also emit MCP `structuredContent`.
@@ -352,6 +332,8 @@ export const toolExecutors: Record<string, (args: any) => Promise<string | ToolR
   load_collibra_skill: executeLoadCollibraSkill,
   list_context_specifications: executeListContextSpecifications,
   get_context_specification: executeGetContextSpecification,
+  get_audit_log: executeGetAuditLog,
+  undo_write: executeUndoWrite,
 };
 
 // Register alias executors so chip-compatible tool names resolve to the same
@@ -384,6 +366,10 @@ export async function executeTool(toolName: string, args: any): Promise<ToolResu
     throw new Error(`Unknown tool: ${toolName}`);
   }
 
-  const result = await executor(args);
-  return typeof result === 'string' ? { text: result } : result;
+  const canonical = aliasCanonical.get(toolName) ?? toolName;
+  const inputSchema = registeredTools.find((t) => t.name === toolName)?.inputSchema;
+  return auditedExecute(canonical, args, inputSchema, WRITE_TOOL_NAMES.includes(canonical), async () => {
+    const result = await executor(args);
+    return typeof result === 'string' ? { text: result } : result;
+  });
 }

@@ -5,7 +5,7 @@ A [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server for Co
 ## Features
 
 - **Not just Collibra — a true multi-API federation layer.** A single MCP server can integrate *many* APIs, not only Collibra ones. It ships with the public [Star Wars API](https://www.swapi.tech) built in as a live proof point, so `search_subject` can answer a question from **every configured Collibra instance _and_ an external public API in one call**. Add your own REST APIs the same way. ([details below](#not-just-collibra-multi-api-federation))
-- **97 tools** covering discovery, governance, semantic traversal, lineage, asset creation, operating model management, operating model intelligence, API catalog traversal, data classification, data contracts, assessments, workflows, comments, activities, ratings, usage analytics, tags, mappings, Output Module exports, context specifications, skills, bulk operations, write operations, and multi-source federation (including the public Star Wars API)
+- **99 tools** covering discovery, governance, semantic traversal, lineage, asset creation, operating model management, operating model intelligence, API catalog traversal, data classification, data contracts, assessments, workflows, comments, activities, ratings, usage analytics, tags, mappings, Output Module exports, context specifications, skills, bulk operations, write operations, multi-source federation (including the opt-in public Star Wars API), and a tamper-evident audit trail with undo
 - **Multi-instance** support — connect to production, dev, and UAT simultaneously
 - **REST + GraphQL** — uses whichever Collibra API is best for each operation
 - **Full user name resolution** — responsibilities show real names and emails, not UUIDs
@@ -49,7 +49,7 @@ Two tools showcase the pattern:
 | `search_subject` | **Federated search** — fans one query across **all Collibra instances + the Star Wars API** in a single call, grouping hits by source and tagging each `collibra` or `starwars`. Per-source failures are isolated. |
 | `search_star_wars` | Searches only the Star Wars API (people, planets, starships, vehicles, species, films). |
 
-The Star Wars source is **enabled by default** and configured under the optional `externalSources` block in `config.json` (see [Configuration](#beyond-collibra-external-sources)). The same registration pattern extends to any additional public or internal REST API — Collibra is simply the first, richest integration, not the only one.
+The Star Wars source is **opt-in** (set `enabled: true` under the optional `externalSources` block in `config.json`; see [Configuration](#beyond-collibra-external-sources)). The same registration pattern extends to any additional public or internal REST API — Collibra is simply the first, richest integration, not the only one.
 
 ## Available Tools
 
@@ -264,12 +264,76 @@ Copy `config.example.json` to `config.json` and add your Collibra instances:
 
 You can add multiple instances and reference them by name when calling any tool.
 
+### Authentication & TLS (FedRAMP / Self-Hosted)
+
+Woffles does **not** use OAuth, so it works where OAuth isn't available, including FedRAMP and Collibra Platform Self-Hosted (CPSH). Each instance can set:
+
+| Setting | Values | Purpose |
+|---------|--------|---------|
+| `auth.type` | `basic` (default), `session` | `basic` sends HTTP Basic on every request. `session` logs in once via `POST /rest/2.0/auth/sessions`, reuses the session cookie and CSRF token, and logs in again automatically when the session expires. |
+| `tls.caFile` | PEM path | Trusts a custom or agency CA. Prefer this to `insecure`. |
+| `tls.clientCertFile` + `tls.clientKeyFile` (+ optional `tls.clientKeyPassphrase`) | PEM paths | Mutual TLS, for instances behind a PKI-authenticating proxy. |
+| `insecure` | `true` | Skips certificate verification. **Development only.** |
+
+TLS 1.2 is the minimum. Usage Analytics tools always use session auth, because those APIs reject Basic.
+
+### Keeping Credentials Out of `config.json`
+
+Any config value can be a **secret reference** instead of plaintext. The reference must be the whole value:
+
+| Reference | Source |
+|-----------|--------|
+| `${env:NAME}` | Environment variable |
+| `${file:/run/secrets/collibra_pw}` | File contents (one trailing newline trimmed). Works with Docker/Kubernetes secrets. |
+| `${keychain:target}` | OS credential store. **Windows:** a Credential Manager generic credential (`cmdkey /generic:target /user:svc /pass:...`). **macOS:** a Keychain generic password with service `target`. **Linux:** a libsecret item with `service=target` (`secret-tool store --label=... service target`). |
+
+References are resolved once at startup. If one can't be resolved, startup fails with a clear message that never includes the secret. The server warns at startup about any instance that still has a plaintext password. Instance passwords are also masked (`***`) in all tool output and error messages. For FedRAMP and CPSH deployments, use a dedicated least-privilege service account per instance.
+
+Credentials are only ever sent to the configured instance's own origin. A request to any other host is refused.
+
+### Audit Trail & Undo
+
+Enable a local, tamper-evident audit trail with `"audit": { "enabled": true }`. Optional keys:
+
+| Key | Default | Purpose |
+|-----|---------|---------|
+| `path` | `<config dir>/logs/audit.jsonl` | Log file location |
+| `logReads` | `false` (`true` in compliance mode) | Also record read tools |
+| `maxBytes` | 52428800 (50 MB) | Rotate the file at this size; the hash chain continues across files |
+
+Every write call is logged, preview or applied. Each entry records the time, instance, Collibra user, tool, arguments (secrets masked, long values truncated), outcome and duration. Each entry is SHA-256 chained to the previous one, so edits, deletions and reordering are detectable. `get_audit_log` with `verify=true` checks the chain.
+
+Before an applied update, the affected assets' properties and attributes are snapshotted, and created asset IDs are recorded. `undo_write` uses this to revert a write after a preview. Point a SIEM at the JSONL file for central retention. Each server process should have its own audit file.
+
+### Compliance Mode (FedRAMP)
+
+Set `"complianceMode": "fedramp"` to turn deployment rules into startup checks. The server refuses to start, listing every violation, unless:
+
+- every instance uses `https` and verifies certificates (no `insecure`; use `tls.caFile` for agency CAs)
+- every password is a secret reference (`${env:…}`, `${file:…}`, `${keychain:…}`), not plaintext
+- external (internet) sources are disabled
+
+Compliance mode also forces the audit trail on, including reads unless `audit.logReads` is `false`. `get_instances` reports the effective posture under `security`.
+
+**FIPS:** compliance mode checks whether Node's crypto runs in FIPS mode. A missing FIPS mode is a warning by default, or a startup error with `"requireFips": true`. The server's own cryptography (audit hash chain, TLS) uses FIPS-approved algorithms only (SHA-256, TLS 1.2+). FIPS mode needs a Node.js build with a FIPS-validated OpenSSL 3 provider, started with `node --enable-fips`. The standard Node.js installers do **not** include the FIPS provider; use a FIPS-enabled distribution such as Red Hat UBI Node.js images, or build OpenSSL's FIPS module and point `OPENSSL_CONF` at it.
+
+```json
+{
+  "name": "SelfHosted",
+  "baseUrl": "https://collibra.agency.example",
+  "username": "svc-collibra-mcp",
+  "password": "your-password",
+  "auth": { "type": "session" },
+  "tls": { "caFile": "C:/certs/agency-root-ca.pem" }
+}
+```
+
 ### `readOnly` Mode
 
 | Value | behavior |
 |-------|-----------|
 | `true` (default) | Write tools are **hidden from the AI** — they do not appear in the tool list and cannot be called |
-| `false` | All 97 tools are available, including the 31 write tools |
+| `false` | All 99 tools are available, including the 32 write tools |
 
 Set `"readOnly": false` only when you personally need to make changes, then switch back to `true` when done.
 
@@ -322,8 +386,9 @@ External sources are declared in the optional `externalSources` block of `config
 }
 ```
 
-The Star Wars source is **enabled by default** (omit the block to accept defaults; set
-`enabled: false` to turn it off). Two tools use it:
+The Star Wars source is **opt-in** (disabled unless `enabled: true` is set). Leave it off in
+FedRAMP or other restricted-egress environments, since it calls a public internet API. When it
+is off, `search_star_wars` is not advertised and `search_subject` searches Collibra only. Two tools use it:
 
 | Tool | What it does |
 |------|--------------|
@@ -339,7 +404,7 @@ registered the same way.
 |-------|-------------|
 | [INSTALL.md](INSTALL.md) | Full installation and MCP client configuration |
 | [docs/CLAUDE_DESKTOP_SETUP.md](docs/CLAUDE_DESKTOP_SETUP.md) | Claude Desktop integration step-by-step |
-| [docs/TOOLS_REFERENCE.md](docs/TOOLS_REFERENCE.md) | Detailed parameter reference for all 97 tools |
+| [docs/TOOLS_REFERENCE.md](docs/TOOLS_REFERENCE.md) | Detailed parameter reference for all 99 tools |
 
 ## Project Structure
 
@@ -349,7 +414,7 @@ registered the same way.
 │   ├── config.ts                         # Configuration loader
 │   ├── types.ts                          # TypeScript type definitions
 │   ├── tools/
-│   │   ├── index.ts                              # Tool registry (97 tools)
+│   │   ├── index.ts                              # Tool registry (99 tools)
 │   │   ├── get-asset-types.ts                    # Asset type definitions
 │   │   ├── get-communities.ts                    # Community hierarchy
 │   │   ├── get-domains.ts                        # Domain listing
@@ -423,7 +488,7 @@ registered the same way.
 │   │   ├── get-content-usage.ts                  # Usage Analytics: content visits (summary/trend/top)
 │   │   ├── get-user-usage.ts                     # Usage Analytics: user adoption (active/top/retention)
 │   │   └── get-asset-usage.ts                    # Usage Analytics: single-asset visits + top visitors
-│   │   # (tool registry index.ts registers all 97 tools)
+│   │   # (tool registry index.ts registers all 99 tools)
 │   └── utils/
 │       ├── collibra-client.ts            # REST + GraphQL client (Basic + session auth) with URL helpers
 │       ├── usage-analytics.ts            # Usage Analytics API helpers (dates, filters, pivots)

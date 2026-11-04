@@ -1,6 +1,7 @@
 import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
+import { authFetch } from '../utils/auth.js';
 
 export const pushDataContractManifestTool = {
   name: 'push_data_contract_manifest',
@@ -90,8 +91,6 @@ export async function executePushDataContractManifest(args: any): Promise<ToolRe
 
   try {
     const instance = getInstance(instance_name);
-    const fetch = (await import('node-fetch')).default;
-    const credentials = Buffer.from(`${instance.username}:${instance.password}`).toString('base64');
 
     const fields: Record<string, string> = {};
     if (manifest_id) fields['manifestId'] = manifest_id;
@@ -102,10 +101,9 @@ export async function executePushDataContractManifest(args: any): Promise<ToolRe
     const { body, contentType } = buildMultipartBody(manifest, fields);
     const url = `${instance.baseUrl}/rest/dataProduct/v1/dataContracts/addFromManifest`;
 
-    const response = await fetch(url, {
+    const response = await authFetch(instance, url, {
       method: 'POST',
       headers: {
-        'Authorization': `Basic ${credentials}`,
         'Content-Type': contentType,
       },
       body,
