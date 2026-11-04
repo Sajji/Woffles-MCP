@@ -9,7 +9,7 @@ export const getAttributeTypesTool = {
     'Returns attribute type IDs, names, and kinds (BOOLEAN, STRING, NUMERIC, DATE, SINGLE_VALUE_LIST, MULTI_VALUE_LIST, SCRIPT). ' +
     'Use this tool to discover the attribute type ID needed for update_asset_attribute. ' +
     'You can filter by name (e.g. "Personally Identifiable Information") and/or kind (e.g. "BOOLEAN"). ' +
-    'WORKFLOW: Call this tool to find the attribute type ID before calling update_asset_attribute or bulk_update_asset_attributes.',
+    'USAGE: Call this tool to find the attribute type ID before calling update_asset_attribute or bulk_update_asset_attributes.',
   inputSchema: {
     type: 'object',
     properties: {

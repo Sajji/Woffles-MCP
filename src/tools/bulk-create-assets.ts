@@ -33,7 +33,7 @@ export const bulkCreateAssetsTool = {
             asset_type_id: { type: 'string', description: 'UUID of the asset type.' },
             domain_id: { type: 'string', description: 'UUID of the target domain.' },
             display_name: { type: 'string', description: 'Optional display name.' },
-            status_id: { type: 'string', description: 'Optional UUID of the workflow status.' },
+            status_id: { type: 'string', description: 'Optional status UUID. Omit unless the user asked for a specific status; Collibra then applies the asset type\'s default.' },
             attributes: {
               type: 'object',
               description: 'Optional map of attribute type UUID → string value. Fanned out via /attributes/bulk after asset creation.',

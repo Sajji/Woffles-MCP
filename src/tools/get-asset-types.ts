@@ -7,7 +7,7 @@ export const getAssetTypesTool = {
   name: 'get_asset_types',
   description: 'Retrieve the complete list of Asset Types from a Collibra instance. ' +
     'Returns all asset types including their IDs, names, descriptions, parent types, and metadata. ' +
-    'WORKFLOW: Always call this tool FIRST before querying assets. Present the returned list of asset ' +
+    'USAGE: Always call this tool FIRST before querying assets. Present the returned list of asset ' +
     'type names to the user and ask them to select which asset type they want to explore. Then use ' +
     'the chosen name in query_assets as asset_type_name. If the user explicitly wants all asset types, ' +
     'proceed without filtering but use detail_level="summary" to avoid fetching large volumes of data.',

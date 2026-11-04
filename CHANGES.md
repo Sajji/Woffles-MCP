@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased — No Workflow Dependencies
+
+Woffles no longer starts, drives, or plans around Collibra workflows. Workflows configured on an instance still run as designed on the server; the MCP server just doesn't depend on them.
+
+### Removed
+- **Workflow tools:** `find_workflow_definitions`, `find_workflow_tasks`, `start_workflow_instance` and `complete_workflow_task`. Now 95 canonical tools + 3 aliases, with 30 write tools.
+- Workflow wording in tool descriptions, server instructions, skills and docs. For example, "asset workflow statuses" is now "asset statuses", and `get_activities` no longer lists a `WORKFLOW` category.
+
+### Changed
+- **`create_asset` no longer blocks on "required" attributes.** Collibra doesn't enforce an asset type's minimum occurrences when an asset is created, so Woffles doesn't either. The asset is created, and any missing required attributes are returned in `missingRequiredAttributes` with a warning. Before this change, a create on Sandbox was refused because Definition and Descriptive Example were missing, though Collibra itself would have accepted it.
+- **No initial status is chosen for you.**
+  - `plan_asset_creation` no longer recommends a status (it previously fell back to "Candidate"). It only resolves `preferred_status_name` when the user explicitly asks for a status.
+  - The create tools document that `status_id` should be omitted unless the user asked for one, so Collibra applies the asset type's default.
+  - This avoids steering creates into a status that starts an event workflow, such as "Simple Approval Process" on Business Term / Candidate.
+
+### Fixed
+- `create_asset`'s suggested next steps pointed at `add_business_term` with arguments that tool doesn't take. They now suggest `edit_asset` (pre-filled with the first missing required attribute, if any) and `create_relation`.
+
 ## Unreleased — Platform Hygiene (Roadmap Tier A, batch 1)
 
 ### Added

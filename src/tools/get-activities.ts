@@ -4,7 +4,7 @@ import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
 
 const CATEGORIES = [
-  'ATTRIBUTE', 'ATTACHMENT', 'RELATION', 'COMMENT', 'STATUS', 'WORKFLOW',
+  'ATTRIBUTE', 'ATTACHMENT', 'RELATION', 'COMMENT', 'STATUS',
   'RESPONSIBILITY', 'USER', 'USER_GROUP', 'ROLE', 'TAGS', 'OTHERS',
 ];
 
@@ -13,7 +13,7 @@ export const getActivitiesTool = {
   description:
     'Retrieve the Collibra activity stream (audit trail): who changed what and when. ' +
     'Filter by the resource the activity happened on (context_id — an asset/domain/community UUID), ' +
-    'the acting user, activity categories (ATTRIBUTE, RELATION, STATUS, WORKFLOW, …), ' +
+    'the acting user, activity categories (ATTRIBUTE, RELATION, STATUS, …), ' +
     'resource kinds, and a date range. Ideal for "what changed recently in this domain?" questions. ' +
     'Returns up to 100 activities per page, newest first.',
   inputSchema: {
@@ -39,7 +39,7 @@ export const getActivitiesTool = {
       resource_discriminators: {
         type: 'array',
         items: { type: 'string' },
-        description: 'Optional: Resource kinds the activities refer to (e.g. Asset, Domain, Community, Attribute, Relation, WorkflowInstance).',
+        description: 'Optional: Resource kinds the activities refer to (e.g. Asset, Domain, Community, Attribute, Relation).',
       },
       start_date: {
         type: 'string',

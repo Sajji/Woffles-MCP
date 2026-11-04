@@ -5,9 +5,9 @@ import { listSkills, loadSkill } from '../utils/skills.js';
 export const listCollibraSkillsTool = {
   name: 'list_collibra_skills',
   description:
-    'List the available Collibra skills: short Markdown guides documenting multi-step workflows for this server ' +
+    'List the available Collibra skills: short Markdown guides documenting multi-step tasks for this server ' +
     '(operating-model planning, cross-instance migration, assessments, discovery & lineage, …). ' +
-    'Call load_collibra_skill to read a guide BEFORE attempting the corresponding workflow. ' +
+    'Call load_collibra_skill to read a guide BEFORE attempting the corresponding task. ' +
     'Skills require no Collibra connection — this reads the local catalog. ' +
     'Add custom skills via the skillsDir config key or COLLIBRA_MCP_SKILLS_DIR (layout: <dir>/<namespace>/<name>/SKILL.md).',
   inputSchema: {
@@ -58,7 +58,7 @@ export const loadCollibraSkillTool = {
   name: 'load_collibra_skill',
   description:
     'Load a Collibra skill guide (Markdown) by namespace and name, as listed by list_collibra_skills. ' +
-    'Read the guide fully and follow its steps and rules when performing the corresponding workflow. ' +
+    'Read the guide fully and follow its steps and rules when performing the corresponding task. ' +
     'Optionally load one of the skill\'s reference files via the reference parameter.',
   inputSchema: {
     type: 'object',

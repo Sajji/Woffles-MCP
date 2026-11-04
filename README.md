@@ -5,14 +5,14 @@ A [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server for Co
 ## Features
 
 - **Not just Collibra — a true multi-API federation layer.** A single MCP server can integrate *many* APIs, not only Collibra ones. It ships with the public [Star Wars API](https://www.swapi.tech) built in as a live proof point, so `search_subject` can answer a question from **every configured Collibra instance _and_ an external public API in one call**. Add your own REST APIs the same way. ([details below](#not-just-collibra-multi-api-federation))
-- **99 tools** covering discovery, governance, semantic traversal, lineage, asset creation, operating model management, operating model intelligence, API catalog traversal, data classification, data contracts, assessments, workflows, comments, activities, ratings, usage analytics, tags, mappings, Output Module exports, context specifications, skills, bulk operations, write operations, multi-source federation (including the opt-in public Star Wars API), and a tamper-evident audit trail with undo
+- **95 tools** covering discovery, governance, semantic traversal, lineage, asset creation, operating model management, operating model intelligence, API catalog traversal, data classification, data contracts, assessments, comments, activities, ratings, usage analytics, tags, mappings, Output Module exports, context specifications, skills, bulk operations, write operations, multi-source federation (including the opt-in public Star Wars API), and a tamper-evident audit trail with undo
 - **Multi-instance** support — connect to production, dev, and UAT simultaneously
 - **REST + GraphQL** — uses whichever Collibra API is best for each operation
 - **Full user name resolution** — responsibilities show real names and emails, not UUIDs
 - **Inherited responsibilities** — see who is responsible at asset, domain, and community levels
 - **Semantic traversal** — trace Table → Column → Data Attribute → Business Term and back, or start from a Column or Measure directly
 - **Technical lineage** — upstream/downstream data flow analysis with transformation SQL/script retrieval
-- **Asset & term creation** — two-step `prepare` + `create` workflow for any asset type or business term
+- **Asset & term creation** — two-step `prepare` + `create` sequence for any asset type or business term
 - **Operating model intelligence** — cache the full operating model once (`refresh_operating_model`), then use `describe_asset_type`, `find_traversal_path`, `validate_against_model`, and `plan_asset_creation` for customer-agnostic guidance without extra API calls
 - **Bulk operations** — `bulk_create_assets`, `bulk_create_relations`, `bulk_delete_assets`, `bulk_delete_relations` replace N singleton calls with 1–2 API round trips; all with preview/confirm safety
 - **Compound asset editing** — `edit_asset` applies a list of typed ops (attribute updates, property changes, relation add/remove, tag add, responsibility assign/unassign) to a single asset in one tool call
@@ -66,7 +66,7 @@ The Star Wars source is **opt-in** (set `enabled: true` under the optional `exte
 |------|-------------|
 | `get_instances` | List the Collibra instances configured in `config.json` — call this first, every other tool requires an `instance_name` |
 | `get_asset_types` | List all asset type definitions (Data Set, Column, Table, etc.) |
-| `get_asset_statuses` | List all workflow statuses and their UUIDs (Candidate, Accepted, Deprecated, etc.) |
+| `get_asset_statuses` | List all asset statuses and their UUIDs |
 | `get_communities` | List communities with automatic hierarchy building |
 | `get_domains` | List domains, optionally filtered by community |
 | `get_domain_types` | List all domain types and their UUIDs (Glossary, Physical Data Dictionary, etc.) |
@@ -94,7 +94,7 @@ The Star Wars source is **opt-in** (set `enabled: true` under the optional `exte
 | Tool | Description |
 |------|-------------|
 | `prepare_create_asset` | Pre-flight check before creating an asset — resolves type/domain, checks for duplicates |
-| `create_asset` | Create any Collibra asset — enforces required attributes and gates on duplicate name *(write)* |
+| `create_asset` | Create any Collibra asset — gates on duplicate name and reports (does not block on) missing required attributes *(write)* |
 
 ### Business Term Creation
 
@@ -333,7 +333,7 @@ Compliance mode also forces the audit trail on, including reads unless `audit.lo
 | Value | behavior |
 |-------|-----------|
 | `true` (default) | Write tools are **hidden from the AI** — they do not appear in the tool list and cannot be called |
-| `false` | All 99 tools are available, including the 32 write tools |
+| `false` | All 95 tools are available, including the 30 write tools |
 
 Set `"readOnly": false` only when you personally need to make changes, then switch back to `true` when done.
 
@@ -404,7 +404,7 @@ registered the same way.
 |-------|-------------|
 | [INSTALL.md](INSTALL.md) | Full installation and MCP client configuration |
 | [docs/CLAUDE_DESKTOP_SETUP.md](docs/CLAUDE_DESKTOP_SETUP.md) | Claude Desktop integration step-by-step |
-| [docs/TOOLS_REFERENCE.md](docs/TOOLS_REFERENCE.md) | Detailed parameter reference for all 99 tools |
+| [docs/TOOLS_REFERENCE.md](docs/TOOLS_REFERENCE.md) | Detailed parameter reference for all 95 tools |
 
 ## Project Structure
 
@@ -414,7 +414,7 @@ registered the same way.
 │   ├── config.ts                         # Configuration loader
 │   ├── types.ts                          # TypeScript type definitions
 │   ├── tools/
-│   │   ├── index.ts                              # Tool registry (99 tools)
+│   │   ├── index.ts                              # Tool registry (95 tools)
 │   │   ├── get-asset-types.ts                    # Asset type definitions
 │   │   ├── get-communities.ts                    # Community hierarchy
 │   │   ├── get-domains.ts                        # Domain listing
@@ -461,7 +461,7 @@ registered the same way.
 │   │   ├── create-asset-type.ts                  # Create asset type in operating model (write)
 │   │   ├── create-relation-type.ts               # Create relation type in operating model (write)
 │   │   ├── get-api-catalog.ts                    # REST API catalog traversal (API → Version → Endpoint → Operation)
-│   │   ├── get-asset-statuses.ts                 # List workflow statuses
+│   │   ├── get-asset-statuses.ts                 # List asset statuses
 │   │   ├── get-domain-types.ts                   # List domain types
 │   │   ├── update-asset-description.ts           # Single description update
 │   │   ├── bulk-update-asset-descriptions.ts     # Bulk description update
@@ -488,7 +488,7 @@ registered the same way.
 │   │   ├── get-content-usage.ts                  # Usage Analytics: content visits (summary/trend/top)
 │   │   ├── get-user-usage.ts                     # Usage Analytics: user adoption (active/top/retention)
 │   │   └── get-asset-usage.ts                    # Usage Analytics: single-asset visits + top visitors
-│   │   # (tool registry index.ts registers all 99 tools)
+│   │   # (tool registry index.ts registers all 95 tools)
 │   └── utils/
 │       ├── collibra-client.ts            # REST + GraphQL client (Basic + session auth) with URL helpers
 │       ├── usage-analytics.ts            # Usage Analytics API helpers (dates, filters, pivots)

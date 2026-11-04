@@ -1,4 +1,4 @@
-# Operating Model Intelligence Workflow
+# Operating Model Intelligence Guide
 
 Plan and validate any Collibra structural work (creating assets, relations, or types) against the instance's actual operating model instead of guessing names and UUIDs.
 
@@ -22,5 +22,6 @@ Plan and validate any Collibra structural work (creating assets, relations, or t
 ## Rules
 
 - Call `plan_write_operation` when unsure whether to use a singleton, bulk, or `edit_asset` tool.
-- Required attributes are enforced by `create_asset` — supply them up front from step 4's output.
+- Supply the attributes step 4 marks as required when you have the values. `create_asset` does not block when they are missing (Collibra doesn't either); it reports them so they can be filled in later.
+- Don't set an initial status unless the user asked for one; omitting `status_id` lets Collibra apply the asset type's default.
 - The cache is per-instance; re-run step 1 after operating-model changes.

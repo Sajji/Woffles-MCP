@@ -84,6 +84,24 @@ describe('tool registry', () => {
     expect(advertised.has('edit_asset')).toBe(true);
   });
 
+  // Workflows differ per customer; the MCP server must not start, drive or plan around them.
+  it('has no workflow tools and no workflow wording in any tool name, description or schema', () => {
+    for (const t of registry.registeredTools) {
+      expect(JSON.stringify({ name: t.name, description: t.description, inputSchema: t.inputSchema }), t.name).not.toMatch(/workflow/i);
+    }
+  });
+
+  it('does not tell agents to default new assets to a particular status', () => {
+    for (const t of registry.registeredTools) {
+      expect(JSON.stringify({ description: t.description, inputSchema: t.inputSchema }), t.name).not.toMatch(/\bCandidate\b/);
+    }
+  });
+
+  it('advertises 95 canonical tools plus 3 chip aliases, 30 of them writes', () => {
+    expect(registry.registeredTools.length).toBe(98);
+    expect(hints.WRITE_TOOL_NAMES.length).toBe(30);
+  });
+
   it('hides the opt-in Star Wars demo tool by default', () => {
     expect(registry.tools.some((t) => t.name === 'search_star_wars')).toBe(false);
   });

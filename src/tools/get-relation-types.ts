@@ -8,7 +8,7 @@ export const getRelationTypesTool = {
   description: 'Retrieve the operating model of a Collibra instance — the full list of Relation Types ' +
     'that define how asset types relate to each other. Each relation type specifies a source asset type, ' +
     'a target asset type, a role (source→target label), and a co-role (target→source label). ' +
-    'WORKFLOW: Call this tool early to understand which asset types are connected and how, ' +
+    'USAGE: Call this tool early to understand which asset types are connected and how, ' +
     'so you can plan efficient traversal paths. For example, if a user asks "What data sets use this table?", ' +
     'the relation types will reveal that Tables relate to Columns, and Columns relate to Data Sets, ' +
     'so you should traverse Table → Columns → Data Sets rather than searching blindly. ' +

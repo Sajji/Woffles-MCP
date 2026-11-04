@@ -49,8 +49,6 @@ export const WRITE_TOOL_HINTS: Record<string, WriteHints> = {
   edit_asset: { destructive: true, idempotent: false },
   create_attribute_type: { destructive: false, idempotent: true },
   assign_attribute_to_asset_type: { destructive: false, idempotent: true },
-  start_workflow_instance: { destructive: false, idempotent: false },
-  complete_workflow_task: { destructive: true, idempotent: false },
   add_comment: { destructive: false, idempotent: false },
   add_mapping: { destructive: false, idempotent: true },
   remove_mapping: { destructive: true, idempotent: true },

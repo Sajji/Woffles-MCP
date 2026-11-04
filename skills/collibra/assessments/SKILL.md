@@ -1,4 +1,4 @@
-# Assessments Lifecycle Workflow
+# Assessments Lifecycle Guide
 
 Conduct, fill in, and submit Collibra assessments (e.g. AI use-case reviews, privacy impact assessments).
 

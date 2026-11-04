@@ -1,4 +1,4 @@
-# Data Discovery & Lineage Workflow
+# Data Discovery & Lineage Guide
 
 Find data assets, understand their business meaning, and trace where the data comes from and goes.
 

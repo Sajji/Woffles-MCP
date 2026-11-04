@@ -76,7 +76,7 @@ function buildServer(): Server {
       instructions:
         'Every tool requires an "instance_name" argument identifying a configured Collibra instance. ' +
         'Call get_instances first (no arguments) to discover the valid instance names before calling any other tool. ' +
-        'Call list_collibra_skills to discover workflow guides for multi-step tasks.' +
+        'Call list_collibra_skills to discover step-by-step guides for multi-step tasks.' +
         (isReadOnly() ? ' This server is running in read-only mode: write tools are disabled.' : ''),
     }
   );
