@@ -11,7 +11,7 @@ export const undoWriteTool = {
     'Supported: restoring asset names, display names, statuses and attribute values changed by update_asset_description, ' +
     'update_asset_attribute, bulk_update_asset_descriptions, bulk_update_asset_attributes and edit_asset; and deleting assets ' +
     'created by create_asset, add_business_term and bulk_create_assets. Not reverted: relations, tags, responsibilities, ' +
-    'deletions, assessments and operating-model changes. ' +
+    'deletions, workflows, assessments and operating-model changes. ' +
     'The restore is computed against the CURRENT state, so later edits made by anyone to the same attributes are overwritten ' +
     'with the snapshot values. Review the preview with the user first. ' +
     'Two-step safety: confirm=false (default) returns the exact list of changes without writing; confirm=true applies them. ' +

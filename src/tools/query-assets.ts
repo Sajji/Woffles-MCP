@@ -7,7 +7,7 @@ export const queryAssetsTool = {
   name: 'query_assets',
   description:
     'Query assets from a Collibra instance using GraphQL. ' +
-    'IMPORTANT: Before calling this tool you should have already called get_asset_types ' +
+    'IMPORTANT WORKFLOW: Before calling this tool you should have already called get_asset_types ' +
     'and presented those options to the user so they can pick an asset type. ' +
     'Pass the chosen type name as asset_type_name to filter results efficiently. ' +
     'If the user explicitly asks for all asset types, omit asset_type_name but use ' +

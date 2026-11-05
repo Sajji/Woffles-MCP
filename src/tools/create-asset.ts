@@ -11,8 +11,8 @@ export const createAssetTool = {
     'Use prepare_create_asset first to resolve the assetTypeId and domainId and check for duplicates. ' +
     'Optionally supply a map of attribute type UUID → value to set attributes at creation time. ' +
     'Use get_attribute_types to find attribute type UUIDs. ' +
-    'Attributes the asset type marks as required (minimum occurrences ≥ 1) are not enforced at creation, matching Collibra itself: ' +
-    'the asset is created and any missing ones are listed in missingRequiredAttributes so they can be filled in afterwards. ' +
+    'Enforces required attributes: if the asset type\'s own assignment declares mandatory attributes ' +
+    'that are not supplied, the call is rejected (with the list of missing attributes) before anything is created. ' +
     'Gates on duplicate name: by default a same-name asset in the same domain+type blocks creation; pass allow_duplicate=true to override. ' +
     'For creating 2 or more assets at once, prefer bulk_create_assets — it uses /assets/bulk and /attributes/bulk for far fewer round trips. ' +
     'Call plan_write_operation if unsure which tool to use.',
@@ -42,8 +42,8 @@ export const createAssetTool = {
       status_id: {
         type: 'string',
         description:
-          'Optional: UUID of the status to set on the asset at creation time. Omit it unless the user asked for a ' +
-          'specific status; Collibra then applies the asset type\'s default. ' +
+          'Optional: UUID of the workflow status to set on the asset at creation time ' +
+          '(e.g. Accepted, Candidate, Deprecated). ' +
           'Use get_asset_statuses to find valid status UUIDs for the target instance.',
       },
       attributes: {
@@ -79,18 +79,35 @@ export async function executeCreateAsset(args: any): Promise<ToolResult> {
     const instance = getInstance(instance_name);
     const client = new CollibraClient(instance);
 
-    // Collibra does not enforce an assignment's minimumOccurrences when an asset
-    // is created (it only flags incompleteness), so neither do we: report any
-    // missing "required" attributes after creating instead of blocking.
-    let missingRequired: { id: string; name: string }[] = [];
+    // ── Pre-flight: enforce required attributes declared by the asset type's
+    // own assignment. If any mandatory attribute is missing from `attributes`,
+    // reject before creating anything so we never leave an invalid asset.
     try {
       const assignments = await fetchAssetTypeAssignments(instance_name, asset_type_id);
       const provided = new Set(Object.keys((attributes as Record<string, string>) || {}));
-      missingRequired = assignments.attributeTypes
+      const missingRequired = assignments.attributeTypes
         .filter((a) => (a.minimumOccurrences ?? 0) >= 1 && !provided.has(a.id))
         .map((a) => ({ id: a.id, name: a.name }));
+      if (missingRequired.length > 0) {
+        return okWithNext(
+          {
+            error: true,
+            instance: instance_name,
+            message:
+              `Cannot create asset "${name}": the asset type requires ${missingRequired.length} attribute(s) that were not supplied. ` +
+              `Provide values for the missing attributes (keyed by their type UUID) in "attributes", then retry.`,
+            missingRequiredAttributes: missingRequired,
+          },
+          [
+            { tool: 'describe_asset_type', args: { instance_name, asset_type_id }, why: 'Inspect required/optional attributes and eligible statuses for this asset type.' },
+            { tool: 'get_attribute_types', args: { instance_name }, why: 'Look up attribute type UUIDs to fill in the required values.' },
+          ],
+          true,
+        );
+      }
     } catch {
-      // Assignment lookup unavailable (endpoint/permission): nothing to report.
+      // Assignment surface unavailable (e.g. endpoint/permission) — skip
+      // enforcement rather than block a legitimate create.
     }
 
     // ── Pre-flight: duplicate-name gate (unless allow_duplicate=true).
@@ -181,32 +198,16 @@ export async function executeCreateAsset(args: any): Promise<ToolResult> {
     if (createdAttributes.length > 0) {
       output.attributesCreated = createdAttributes;
     }
-    const warnings: string[] = [];
     if (attributeErrors.length > 0) {
       output.attributeErrors = attributeErrors;
-      warnings.push('Asset was created successfully but some attributes could not be set. See attributeErrors for details.');
+      output.warning =
+        'Asset was created successfully but some attributes could not be set. See attributeErrors for details.';
     }
-    if (missingRequired.length > 0) {
-      output.missingRequiredAttributes = missingRequired;
-      warnings.push(
-        `The asset type marks ${missingRequired.length} attribute(s) as required that were not supplied: ` +
-        `${missingRequired.map((a) => a.name).join(', ')}. The asset was created anyway; fill them in with edit_asset when the values are known.`,
-      );
-    }
-    if (warnings.length) output.warning = warnings.join(' ');
 
     return okWithNext(output, [
       { tool: 'get_asset_by_id', args: { instance_name, asset_id: assetId }, why: 'Verify the newly created asset.' },
-      {
-        tool: 'edit_asset',
-        args: { instance_name, asset_id: assetId, operations: [{ op: 'update_attribute', attribute_type_id: missingRequired[0]?.id ?? '<from get_attribute_types>', value: '<value>' }] },
-        why: missingRequired.length ? 'Fill in the attributes the asset type marks as required.' : 'Add or update attributes on the new asset.',
-      },
-      {
-        tool: 'create_relation',
-        args: { instance_name, source_asset_id: assetId, target_asset_id: '<business term UUID from search_assets_by_name>', relation_type_id: '<from get_relation_types>' },
-        why: 'Link the new asset to a business term or other asset.',
-      },
+      { tool: 'update_asset_attribute', args: { instance_name, asset_id: assetId, attribute_type_id: '<from get_attribute_types>', value: '<value>' }, why: 'Add or update attributes on the new asset.' },
+      { tool: 'add_business_term', args: { instance_name, asset_id: assetId, business_term_id: '<from search_assets_by_name>' }, why: 'Link a business term to the new asset.' },
     ], true);
 
   } catch (error) {

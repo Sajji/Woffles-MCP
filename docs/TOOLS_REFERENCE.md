@@ -1,6 +1,6 @@
 # Tools Reference
 
-Complete reference for all 95 tools provided by the Collibra MCP Server (plus 3 chip-compatible aliases).
+Complete reference for all 99 tools provided by the Collibra MCP Server (plus 3 chip-compatible aliases).
 
 > **Chip-compatible aliases:** `list_asset_types`, `search_asset_keyword`, and `get_asset_details` are additive aliases for `get_asset_types`, `search_assets_by_name`, and `get_asset_by_id` respectively — for interoperability with the official Collibra [`chip`](https://github.com/collibra/chip) server. They behave identically to their canonical counterparts.
 
@@ -81,7 +81,7 @@ Retrieve all domain types from a Collibra instance. Domain types define the kind
 
 ### get_asset_statuses
 
-Retrieve all asset statuses from a Collibra instance. Returns the `id` and `name` of every status. Use this when migrating assets cross-instance to map status names to the correct UUIDs before calling `create_asset` with `status_id`.
+Retrieve all asset workflow statuses from a Collibra instance. Returns the `id` and `name` of every status (e.g. Candidate, Accepted, Deprecated). Use this when migrating assets cross-instance to map status names to the correct UUIDs before calling `create_asset` with `status_id`.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
@@ -394,7 +394,7 @@ Search technical lineage transformations by name.
 
 ## Asset Creation
 
-Use the two-step `prepare` → `create` sequence. `prepare_create_asset` resolves names to IDs and catches duplicates before any write occurs.
+Use the two-step `prepare` → `create` workflow. `prepare_create_asset` resolves names to IDs and catches duplicates before any write occurs.
 
 ### prepare_create_asset
 
@@ -425,12 +425,12 @@ Create any Collibra asset with optional attribute values.
 | `name` | Yes | Asset name |
 | `asset_type_id` | Yes | UUID of the asset type |
 | `domain_id` | Yes | UUID of the target domain |
-| `status_id` | No | UUID of an initial status. Omit unless the user asked for a specific status; Collibra then applies the asset type's default. Use `get_asset_statuses` to find valid IDs. |
+| `status_id` | No | UUID of the initial workflow status (e.g. Candidate). Use `get_asset_statuses` to find valid IDs. |
 | `display_name` | No | Optional display name (defaults to `name`) |
 | `attributes` | No | Object mapping attribute type UUIDs to their values |
 | `allow_duplicate` | No | `false` (default) blocks creation when a same-name asset already exists in the same domain and type; set `true` to override |
 
-**Required attributes are not enforced at creation**, matching Collibra itself. If the asset type marks attributes as required (minimum occurrences ≥ 1) and they are not supplied, the asset is still created; the response lists them under `missingRequiredAttributes` with a warning, so they can be filled in later with `edit_asset`.
+**Required-attribute enforcement:** if the asset type's own assignment declares mandatory attributes that are not supplied in `attributes`, the call is rejected (with the list of missing attributes) before anything is created.
 
 **Returns:** New asset ID, name, Collibra URL, type, domain, and any attribute creation results.
 
@@ -1072,7 +1072,7 @@ Full description of a specific asset type from the cache, including on-demand as
 | `asset_type_id` | No* | UUID of the asset type (`*` provide this or `name`) |
 | `name` | No* | Asset type name — case-insensitive contains match |
 
-**Returns:** Parent/sub types, list of assignable attribute types (id, name, kind, description), assignable relation types (with direction, role/co-role label, and the other asset type), eligible statuses.
+**Returns:** Parent/sub types, list of assignable attribute types (id, name, kind, description), assignable relation types (with direction, role/co-role label, and the other asset type), eligible workflow statuses.
 
 ---
 
@@ -1118,9 +1118,9 @@ Produce a portable, executable plan for creating an asset that conforms to the i
 | `domain_id` | No* | UUID of the target domain (`*` provide this or `domain_name`) |
 | `domain_name` | No* | Domain name (case-insensitive contains match) |
 | `domain_type_id` | No | Domain type UUID hint when domain is not yet chosen |
-| `preferred_status_name` | No | Only when the user explicitly asked for a specific initial status: its name. Resolved to a UUID if eligible for the type. |
+| `preferred_status_name` | No | Preferred initial status name (e.g. `"Candidate"`) |
 
-**Returns:** Resolved asset type UUID, domain UUID, assignable attribute types, the requested status (only if `preferred_status_name` was given; no status is recommended otherwise), and a `nextAction` pointing at `prepare_create_asset` / `create_asset` with all resolved IDs.
+**Returns:** Resolved asset type UUID, domain UUID, assignable attribute types, recommended status, and a `nextAction` pointing at `prepare_create_asset` / `create_asset` with all resolved IDs.
 
 ---
 
@@ -1265,7 +1265,7 @@ Apply a list of typed edits to a single asset in one tool call. Attribute change
 
 ---
 
-## Common Recipes
+## Common Workflows
 
 ### Data Discovery
 ```
@@ -1382,6 +1382,58 @@ Answer edits are merged into the current content, so unedited questions keep the
 
 ---
 
+## Workflows
+
+### find_workflow_definitions
+
+List deployed workflow definitions (approval, review, onboarding processes).
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `instance_name` | Yes | Collibra instance name |
+| `name` | No | Filter by name (partial match) |
+| `limit` / `offset` | No | Pagination (default 100 / 0) |
+
+### find_workflow_tasks
+
+List open workflow tasks (the human to-do items generated by running workflows).
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `instance_name` | Yes | Collibra instance name |
+| `title` | No | Filter by task title |
+| `business_item_id` | No | UUID of the related asset/domain/community |
+| `user_id` | No | Tasks assigned to / claimable by this user |
+| `limit` / `offset` | No | Pagination (default 100 / 0) |
+
+### start_workflow_instance *(write)*
+
+Start a workflow against one or more business items. **The preview surfaces the start-form fields** so required `form_properties` can be supplied before confirming. Starting a workflow can create tasks and send notifications to real users.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `instance_name` | Yes | Collibra instance name |
+| `workflow_definition_id` | No* | UUID of the definition (*or `workflow_definition_name`) |
+| `workflow_definition_name` | No* | Exact definition name |
+| `business_item_ids` | No | UUIDs of the target resources (omit for global workflows) |
+| `business_item_type` | No | `ASSET` (default), `DOMAIN`, or `COMMUNITY` |
+| `form_properties` | No | Start-form values keyed by form property ID |
+| `send_notification` | No | Default: true |
+| `confirm` | No | `false` (default) = preview; `true` = start |
+
+### complete_workflow_task *(write)*
+
+Complete an open workflow task (e.g. approve/reject a review step). The preview surfaces the task-form fields.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `instance_name` | Yes | Collibra instance name |
+| `task_id` | Yes | UUID of the task (from find_workflow_tasks) |
+| `form_properties` | No | Task-form values keyed by form property ID |
+| `confirm` | No | `false` (default) = preview; `true` = complete |
+
+---
+
 ## Collaboration & Audit
 
 ### find_comments
@@ -1420,7 +1472,7 @@ The audit trail: who changed what and when.
 | `instance_name` | Yes | Collibra instance name |
 | `context_id` | No | UUID of the resource whose activities to fetch |
 | `performed_by_user_id` | No | Acting user UUID |
-| `categories` | No | e.g. `ATTRIBUTE`, `RELATION`, `STATUS`, `RESPONSIBILITY`, `TAGS` |
+| `categories` | No | e.g. `ATTRIBUTE`, `RELATION`, `STATUS`, `WORKFLOW`, `RESPONSIBILITY`, `TAGS` |
 | `resource_discriminators` | No | e.g. `Asset`, `Domain`, `Community` |
 | `start_date` / `end_date` | No | ISO 8601 date range |
 | `limit` / `offset` | No | Pagination (default 100 / 0) |
@@ -1579,11 +1631,11 @@ Run an Output Module TableViewConfig/ViewConfig JSON query and return the result
 
 ### list_collibra_skills
 
-List the available step-by-step guides (no Collibra connection needed). Embedded skills: `collibra/operating-model`, `collibra/cross-instance-migration`, `collibra/assessments`, `collibra/discovery-lineage`. Add your own via the `skillsDir` config key or `COLLIBRA_MCP_SKILLS_DIR` (layout: `<dir>/<namespace>/<name>/SKILL.md`); same-name external skills replace embedded ones.
+List the available workflow guides (no Collibra connection needed). Embedded skills: `collibra/operating-model`, `collibra/cross-instance-migration`, `collibra/assessments`, `collibra/discovery-lineage`. Add your own via the `skillsDir` config key or `COLLIBRA_MCP_SKILLS_DIR` (layout: `<dir>/<namespace>/<name>/SKILL.md`); same-name external skills replace embedded ones.
 
 ### load_collibra_skill
 
-Load a skill guide by `namespace` + `name` (optional `reference` file). Read it fully before attempting the corresponding task.
+Load a skill guide by `namespace` + `name` (optional `reference` file). Read it fully before attempting the corresponding workflow.
 
 ---
 
@@ -1629,7 +1681,7 @@ Revert an earlier applied write by its audit `seq`. It restores asset name, disp
 
 It also deletes assets created by `create_asset`, `add_business_term` and `bulk_create_assets`.
 
-Not reverted: relations, tags, responsibilities, deletions, assessments and operating-model changes. The restore is diffed against the current state, so later edits to the same attributes are overwritten. Two-step: `confirm=false` (default) previews the exact actions; `confirm=true` applies them. An entry can only be undone once.
+Not reverted: relations, tags, responsibilities, deletions, workflows, assessments and operating-model changes. The restore is diffed against the current state, so later edits to the same attributes are overwritten. Two-step: `confirm=false` (default) previews the exact actions; `confirm=true` applies them. An entry can only be undone once.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|

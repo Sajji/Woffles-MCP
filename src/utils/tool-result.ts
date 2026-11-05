@@ -20,7 +20,7 @@ export function okPretty(structured: unknown): ToolResult {
 /**
  * Attach `nextActions` to an existing structured payload without otherwise
  * changing its shape. Use this to retrofit legacy tools incrementally so the
- * agent gets next-step guidance while existing clients keep working.
+ * agent gets workflow guidance while existing clients keep working.
  */
 export function okWithNext(structured: Record<string, unknown>, nextActions: NextAction[], pretty = false): ToolResult {
   const merged = { ...structured, nextActions };

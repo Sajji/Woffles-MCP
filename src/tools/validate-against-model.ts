@@ -93,7 +93,7 @@ export async function executeValidateAgainstModel(args: any): Promise<ToolResult
         violations,
       },
       warnings: violations.length
-        ? ['Schema validation failed. Server may still apply additional constraints (assignments, permissions).']
+        ? ['Schema validation failed. Server may still apply additional constraints (assignments, permissions, workflow).']
         : [],
     });
   } catch (error) {

@@ -331,7 +331,7 @@ Claude will use: `get_asset_by_id`
 
 Claude will use: `get_communities` (to find Finance) then `get_domains`
 
-### Example 5: Multi-Step Question
+### Example 5: Complex Workflow
 ```
 "Find the asset called 'Customer Data', then show me what it's related to"
 ```

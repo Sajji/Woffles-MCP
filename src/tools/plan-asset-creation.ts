@@ -7,10 +7,9 @@ export const planAssetCreationTool = {
   description:
     'Produce a portable, executable plan for creating an asset that conforms to the target instance\'s ' +
     'operating model: resolves the asset type and target domain (by name or UUID), lists assignable ' +
-    'attribute types so the agent knows which keys are accepted, and emits a `nextAction` pointing at ' +
-    'prepare_create_asset/create_asset with the resolved UUIDs. Does not choose an initial status: omit status_id ' +
-    'on create so Collibra applies the asset type\'s default, unless the user named a status (preferred_status_name). ' +
-    'Does NOT write anything.',
+    'attribute types so the agent knows which keys are accepted, recommends an initial status from the ' +
+    'cached lifecycle, and emits a `nextAction` pointing at prepare_create_asset/create_asset with the ' +
+    'resolved UUIDs. Does NOT write anything.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -21,7 +20,7 @@ export const planAssetCreationTool = {
       domain_id: { type: 'string' },
       domain_name: { type: 'string' },
       domain_type_id: { type: 'string', description: 'Optional: domain type hint when domain not yet chosen.' },
-      preferred_status_name: { type: 'string', description: 'Optional: only when the user explicitly asked for a specific initial status, its name. Resolved to a UUID if it is eligible for the asset type.' },
+      preferred_status_name: { type: 'string', description: 'Optional: preferred initial status name (e.g. "Candidate").' },
     },
     required: ['instance_name', 'asset_name'],
   },
@@ -69,18 +68,20 @@ export async function executePlanAssetCreation(args: any): Promise<ToolResult> {
     // Fetch assignable attributes for this type (live, cache-supplemented)
     const assignments = await fetchAssetTypeAssignments(instance_name, assetType.id);
 
-    // Only resolve a status the user explicitly asked for. Never pick one:
-    // leaving status_id out lets Collibra apply the asset type's default.
-    const warnings: string[] = [];
-    let requestedStatus: { id: string; name: string } | undefined;
+    // Resolve initial status preference using the type's eligible statuses
+    // when available; fall back to the global list otherwise.
+    const eligibleStatuses = assignments.eligibleStatuses.length
+      ? assignments.eligibleStatuses
+      : snap.statuses.map((s) => ({ id: s.id, name: s.name }));
+    let status: { id: string; name: string } | undefined;
     if (preferred_status_name) {
-      const eligibleStatuses = assignments.eligibleStatuses.length
-        ? assignments.eligibleStatuses
-        : snap.statuses.map((s) => ({ id: s.id, name: s.name }));
-      requestedStatus = eligibleStatuses.find((s) => s.name.toLowerCase() === preferred_status_name.toLowerCase());
-      if (!requestedStatus) {
-        warnings.push(`Status "${preferred_status_name}" is not eligible for this asset type; omit status_id to use Collibra's default.`);
-      }
+      status = eligibleStatuses.find((s) => s.name.toLowerCase() === preferred_status_name.toLowerCase());
+    }
+    if (!status && assignments.defaultStatusId) {
+      status = eligibleStatuses.find((s) => s.id === assignments.defaultStatusId);
+    }
+    if (!status) {
+      status = eligibleStatuses.find((s) => /candidate/i.test(s.name)) || eligibleStatuses[0];
     }
 
     // Suggest a domain type using the type's eligible domain types when known.
@@ -99,7 +100,7 @@ export async function executePlanAssetCreation(args: any): Promise<ToolResult> {
       status: domain_id || domain_name ? 'ready_for_prepare' : 'needs_domain',
       resolved: {
         assetType: { id: assetType.id, name: assetType.name },
-        requestedStatus: requestedStatus ?? null,
+        statusSuggestion: status ? { id: status.id, name: status.name } : null,
         domainTypeSuggestion,
       },
       assignableAttributeTypes: assignments.attributeTypes,
@@ -132,7 +133,6 @@ export async function executePlanAssetCreation(args: any): Promise<ToolResult> {
       model: { snapshotHash: snap.snapshotHash, refreshedAt: snap.refreshedAt },
       data: { assetName: asset_name, plan },
       nextActions,
-      warnings,
     });
   } catch (error) {
     return errorEnvelope({ instance: instance_name, operation, message: (error as Error).message });

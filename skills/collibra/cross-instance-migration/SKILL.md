@@ -1,4 +1,4 @@
-# Cross-Instance Migration Guide
+# Cross-Instance Migration Workflow
 
 Copy or synchronize communities, domains, and assets between two configured Collibra instances idempotently.
 

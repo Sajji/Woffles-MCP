@@ -183,7 +183,7 @@ export async function executePrepareCreateAsset(args: any): Promise<ToolResult> 
     };
 
     return okWithNext(result, [
-      { tool: 'plan_asset_creation', args: { instance_name, asset_name, asset_type_id: resolvedTypeId, domain_id: resolvedDomainId }, why: 'Get assignable attributes for this type before writing.' },
+      { tool: 'plan_asset_creation', args: { instance_name, asset_name, asset_type_id: resolvedTypeId, domain_id: resolvedDomainId }, why: 'Get assignable attributes, eligible statuses, and default status for this type before writing.' },
       { tool: 'validate_against_model', args: { instance_name, proposal_type: 'asset', asset_type_id: resolvedTypeId }, why: 'Schema-check the proposed write against the cached model.' },
       { tool: 'bulk_create_assets', args: { instance_name, assets: [{ name: asset_name, asset_type_id: resolvedTypeId, domain_id: resolvedDomainId }], confirm: false }, why: 'Preview then confirm the create with bulk_create_assets (works for single or multiple assets).' },
     ], true);

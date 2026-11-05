@@ -6,11 +6,10 @@ import { CollibraClient } from '../utils/collibra-client.js';
 export const getAssetStatusesTool = {
   name: 'get_asset_statuses',
   description:
-    'Retrieve all asset statuses from a Collibra instance. ' +
-    'Returns the id and name of every status. ' +
-    'Use this tool when migrating assets cross-instance to map source status names to ' +
-    'the correct status UUIDs on the target, or when the user explicitly asks for a specific status. ' +
-    'Otherwise omit status_id on create so Collibra applies the asset type\'s default.',
+    'Retrieve all asset workflow statuses from a Collibra instance. ' +
+    'Returns the id and name of every status (e.g. Candidate, Accepted, Deprecated). ' +
+    'Use this tool when migrating assets cross-instance to map Dev status names to ' +
+    'the correct status UUIDs in Prod before calling create_asset with status_id.',
   inputSchema: {
     type: 'object',
     properties: {

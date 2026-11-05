@@ -74,6 +74,10 @@ import { assignAttributeToAssetTypeTool, executeAssignAttributeToAssetType } fro
 import { searchStarWarsTool, executeSearchStarWars } from './search-star-wars.js';
 import { searchSubjectTool, executeSearchSubject } from './search-subject.js';
 import { searchCatalogColumnsTool, executeSearchCatalogColumns } from './search-catalog-columns.js';
+import { findWorkflowDefinitionsTool, executeFindWorkflowDefinitions } from './find-workflow-definitions.js';
+import { findWorkflowTasksTool, executeFindWorkflowTasks } from './find-workflow-tasks.js';
+import { startWorkflowInstanceTool, executeStartWorkflowInstance } from './start-workflow-instance.js';
+import { completeWorkflowTaskTool, executeCompleteWorkflowTask } from './complete-workflow-task.js';
 import { findCommentsTool, executeFindComments } from './find-comments.js';
 import { addCommentTool, executeAddComment } from './add-comment.js';
 import { getActivitiesTool, executeGetActivities } from './get-activities.js';
@@ -171,6 +175,10 @@ const allTools = [
   searchStarWarsTool,
   searchSubjectTool,
   searchCatalogColumnsTool,
+  findWorkflowDefinitionsTool,
+  findWorkflowTasksTool,
+  startWorkflowInstanceTool,
+  completeWorkflowTaskTool,
   findCommentsTool,
   addCommentTool,
   getActivitiesTool,
@@ -301,6 +309,10 @@ export const toolExecutors: Record<string, (args: any) => Promise<string | ToolR
   search_star_wars: executeSearchStarWars,
   search_subject: executeSearchSubject,
   search_catalog_columns: executeSearchCatalogColumns,
+  find_workflow_definitions: executeFindWorkflowDefinitions,
+  find_workflow_tasks: executeFindWorkflowTasks,
+  start_workflow_instance: executeStartWorkflowInstance,
+  complete_workflow_task: executeCompleteWorkflowTask,
   find_comments: executeFindComments,
   add_comment: executeAddComment,
   get_activities: executeGetActivities,

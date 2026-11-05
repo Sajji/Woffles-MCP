@@ -5,7 +5,7 @@ import { loadConfig } from '../config.js';
 
 /**
  * Skill catalog loader. Skills are short Markdown guides documenting
- * multi-step Collibra tasks for the connecting LLM, laid out chip-style:
+ * multi-step Collibra workflows for the connecting LLM, laid out chip-style:
  *   <dir>/<namespace>/<name>/SKILL.md   (+ optional references/*.md)
  * Embedded skills ship in <package root>/skills; an external directory
  * (config `skillsDir` or COLLIBRA_MCP_SKILLS_DIR) is merged on top —
