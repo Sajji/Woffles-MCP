@@ -205,7 +205,7 @@ export async function executeCreateAsset(args: any): Promise<ToolResult> {
 
   return okWithNext(output, [
     { tool: 'get_asset_by_id', args: { instance_name, asset_id: assetId }, why: 'Verify the newly created asset.' },
-    { tool: 'update_asset_attribute', args: { instance_name, asset_id: assetId, attribute_type_id: '<from get_attribute_types>', new_value: '<value>' }, why: 'Add or update attributes on the new asset.' },
+    { tool: 'edit_asset', args: { instance_name, asset_id: assetId, operations: [{ op: 'update_attribute', attribute_type_id: '<from get_attribute_types>', value: '<value>' }] }, why: 'Add or update attributes on the new asset.' },
     { tool: 'create_relation', args: { instance_name, source_asset_id: assetId, target_asset_id: '<business term id from search_assets_by_name>', relation_type_id: '<from get_relation_types>' }, why: 'Link a business term (or any related asset) to the new asset.' },
   ], true);
 }

@@ -6,9 +6,9 @@ export const getAttributeTypesTool = {
   name: 'get_attribute_types',
   description: 'Retrieve attribute types from a Collibra instance. ' +
     'Returns attribute type IDs, names, and kinds (BOOLEAN, STRING, NUMERIC, DATE, SINGLE_VALUE_LIST, MULTI_VALUE_LIST, SCRIPT). ' +
-    'Use this tool to discover the attribute type ID needed for update_asset_attribute. ' +
+    'Use this tool to discover the attribute type ID needed for edit_asset (update_attribute) or bulk_update_asset_attributes. ' +
     'You can filter by name (e.g. "Personally Identifiable Information") and/or kind (e.g. "BOOLEAN"). ' +
-    'WORKFLOW: Call this tool to find the attribute type ID before calling update_asset_attribute or bulk_update_asset_attributes.',
+    'WORKFLOW: Call this tool to find the attribute type ID before calling edit_asset or bulk_update_asset_attributes.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -84,6 +84,6 @@ export async function executeGetAttributeTypes(args: any): Promise<ToolResult> {
     ...((response.results || []).length === Math.min(limit, 1000) ? { nextOffset: offset + (response.results || []).length } : {}),
   }, [
     { tool: 'validate_against_model', args: { instance_name, proposal_type: 'attribute', attribute_type_id: '<pick from attributeTypes>' }, why: 'Schema-validate an attribute write before calling update_asset_attribute.' },
-    { tool: 'update_asset_attribute', args: { instance_name, asset_id: '<asset>', attribute_type_id: '<pick from attributeTypes>', new_value: '<value>' }, why: 'Write the attribute once you have the UUID.' },
+    { tool: 'edit_asset', args: { instance_name, asset_id: '<asset>', operations: [{ op: 'update_attribute', attribute_type_id: '<pick from attributeTypes>', value: '<value>' }] }, why: 'Write the attribute once you have the UUID.' },
   ], true);
 }

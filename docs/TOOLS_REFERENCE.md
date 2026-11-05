@@ -1,8 +1,28 @@
 # Tools Reference
 
-Complete reference for all 99 tools provided by the Collibra MCP Server (plus 3 chip-compatible aliases).
+Complete reference for the tools provided by the Collibra MCP Server: 83 advertised tools, 3 chip-compatible aliases, and 18 legacy tools that remain callable (see below).
 
 > **Chip-compatible aliases:** `list_asset_types`, `search_asset_keyword`, and `get_asset_details` are additive aliases for `get_asset_types`, `search_assets_by_name`, and `get_asset_by_id` respectively — for interoperability with the official Collibra [`chip`](https://github.com/collibra/chip) server. They behave identically to their canonical counterparts.
+
+## Consolidated tools and legacy names
+
+Overlapping tools were consolidated. The legacy names below are **still callable** with their original arguments — existing prompts, scripts and skills keep working — but they are not advertised in `tools/list` (this keeps every client's context smaller). Set `"listLegacyTools": true` in `config.json` to advertise them again; they are then marked `[Legacy — prefer …]`.
+
+| Legacy tool | Use instead |
+|---|---|
+| `get_lineage_upstream`, `get_lineage_downstream` | `get_lineage` with `direction` |
+| `get_table_semantics`, `get_column_semantics`, `get_business_term_data`, `get_measure_data` | `get_asset_semantics` (detects the asset kind) |
+| `update_asset_attribute`, `update_asset_description` | `edit_asset` (op `update_attribute`) |
+| `bulk_update_asset_descriptions` | `bulk_update_asset_attributes` (Description type `00000000-0000-0000-0000-000000003114`) |
+| `create_asset`, `add_business_term` | `bulk_create_assets` (single-element array works) |
+| `prepare_add_business_term`, `plan_asset_creation` | `prepare_create_asset` (now also returns required attributes, eligible statuses and a suggested status) |
+| `update_assessment` | `edit_assessment` (new op `set_review_domain`) |
+| `get_assessment_by_review` | `get_assessment` with `assessment_review_id` |
+| `init_data_contract` | `push_data_contract_manifest` with `mode: "init"` |
+| `search_star_wars` | `search_subject` |
+| `plan_write_operation` | the tool descriptions (bulk tools for many items, `edit_asset` for many changes to one asset) |
+
+The legacy sections further down are kept for reference.
 
 ---
 
@@ -256,7 +276,20 @@ Discover attribute types available in a Collibra instance. Use this to find the 
 
 These tools traverse the Collibra operating model using well-known relationship types to connect physical data to business meaning.
 
-### get_table_semantics
+### get_asset_semantics
+
+Business meaning of a physical asset, or the physical data behind a business asset. Detects the kind from the asset's type hierarchy (subtypes such as Database View count as Table) and runs the matching traversal; the result includes `kind`.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `instance_name` | Yes | Collibra instance name |
+| `asset_id` | Yes | UUID of a Table, Column, Business Term or Measure (or subtype) |
+
+**Returns:** Table → columns with data attributes and measures; Column → data attributes, business terms, measures and parent table; Business Term / Measure → data attributes → columns → tables.
+
+---
+
+### get_table_semantics *(legacy — use `get_asset_semantics`)*
 
 Discover the business meaning of a database Table by following: **Table → Columns → Data Attributes → Measures**.
 
@@ -338,7 +371,22 @@ Get details about a single technical lineage entity.
 
 ---
 
-### get_lineage_upstream
+### get_lineage
+
+Traverse lineage from an entity. `direction: "upstream"` = what flows INTO it; `"downstream"` = what it flows INTO.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `instance_name` | Yes | Collibra instance name |
+| `entity_id` | Yes | Technical lineage entity ID |
+| `direction` | Yes | `upstream` or `downstream` |
+| `entity_type` | No | Filter results by entity type (e.g. `Column`, `Table`) |
+| `limit` | No | Max results (default: 20, max: 100) |
+| `cursor` | No | Pagination cursor from previous response |
+
+---
+
+### get_lineage_upstream *(legacy — use `get_lineage`)*
 
 Get upstream lineage — what data flows INTO an entity.
 

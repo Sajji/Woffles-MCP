@@ -217,11 +217,6 @@ export async function executeSearchSubject(args: any): Promise<ToolResult> {
     warnings,
     nextActions: [
       {
-        tool: 'search_star_wars',
-        args: { search_term: subject },
-        why: 'Drill into only the Star Wars API results for this subject.',
-      },
-      {
         tool: 'search_assets_by_name',
         args: { instance_name: '<instance from sources>', search_term: subject },
         why: 'Run a richer, filterable search against a single Collibra instance.',

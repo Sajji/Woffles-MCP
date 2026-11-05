@@ -130,7 +130,7 @@ export async function executeGetColumnSemantics(args: any): Promise<ToolResult> 
     dataAttributes: enrichedDAs,
   }, [
     { tool: 'get_asset_by_id', args: { instance_name, asset_id: column_asset_id }, why: 'Get full column asset detail.' },
-    { tool: 'get_table_semantics', args: { instance_name, table_asset_id: '<parentTable.id>' }, why: 'See semantics for the whole parent table.' },
-    { tool: 'get_business_term_data', args: { instance_name, term_asset_id: '<businessTerm id from dataAttributes>' }, why: 'Drill into a linked business term.' },
+    { tool: 'get_asset_semantics', args: { instance_name, asset_id: '<parentTable.id>' }, why: 'See semantics for the whole parent table.' },
+    { tool: 'get_asset_semantics', args: { instance_name, asset_id: '<businessTerm id from dataAttributes>' }, why: 'Drill into a linked business term.' },
   ], true);
 }

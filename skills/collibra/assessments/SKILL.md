@@ -19,7 +19,7 @@ Conduct, fill in, and submit Collibra assessments (e.g. AI use-case reviews, pri
 
 ## Rules
 
-- Prefer `edit_assessment` over the deprecated `update_assessment` (raw JSON, no preview).
+- Use `edit_assessment` for all edits (typed operations with preview). To look an assessment up from its Assessment Review asset, use `get_assessment` with `assessment_review_id`.
 - ITEMS (choice) questions take `items: [...]`, not `value`.
 - ASSETS / USERORGROUPS / ATTACHMENTS answer types are not supported — tell the user to fill those in the Collibra UI.
 - Resolve owner/assignee UUIDs with `find_users` first.

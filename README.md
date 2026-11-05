@@ -5,7 +5,7 @@ A [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server for Co
 ## Features
 
 - **Not just Collibra — a true multi-API federation layer.** A single MCP server can integrate *many* APIs, not only Collibra ones. It ships with the public [Star Wars API](https://www.swapi.tech) built in as a live proof point, so `search_subject` can answer a question from **every configured Collibra instance _and_ an external public API in one call**. Add your own REST APIs the same way. ([details below](#not-just-collibra-multi-api-federation))
-- **99 tools** covering discovery, governance, semantic traversal, lineage, asset creation, operating model management, operating model intelligence, API catalog traversal, data classification, data contracts, assessments, workflows, comments, activities, ratings, usage analytics, tags, mappings, Output Module exports, context specifications, skills, bulk operations, write operations, multi-source federation (including the opt-in public Star Wars API), and a tamper-evident audit trail with undo
+- **83 advertised tools** (plus 18 legacy names kept callable — see [Consolidated tools](docs/TOOLS_REFERENCE.md#consolidated-tools-and-legacy-names)) covering discovery, governance, semantic traversal, lineage, asset creation, operating model management, operating model intelligence, API catalog traversal, data classification, data contracts, assessments, workflows, comments, activities, ratings, usage analytics, tags, mappings, Output Module exports, context specifications, skills, bulk operations, write operations, multi-source federation (including the opt-in public Star Wars API), and a tamper-evident audit trail with undo
 - **Multi-instance** support — connect to production, dev, and UAT simultaneously
 - **REST + GraphQL** — uses whichever Collibra API is best for each operation
 - **Full user name resolution** — responsibilities show real names and emails, not UUIDs
@@ -13,7 +13,7 @@ A [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server for Co
 - **Semantic traversal** — trace Table → Column → Data Attribute → Business Term and back, or start from a Column or Measure directly
 - **Technical lineage** — upstream/downstream data flow analysis with transformation SQL/script retrieval
 - **Asset & term creation** — two-step `prepare` + `create` workflow for any asset type or business term
-- **Operating model intelligence** — cache the full operating model once (`refresh_operating_model`), then use `describe_asset_type`, `find_traversal_path`, `validate_against_model`, and `plan_asset_creation` for customer-agnostic guidance without extra API calls
+- **Operating model intelligence** — cache the full operating model once (`refresh_operating_model`), then use `describe_asset_type`, `find_traversal_path`, and `validate_against_model` for customer-agnostic guidance without extra API calls; `prepare_create_asset` plans creates live from the applicable assignment
 - **Bulk operations** — `bulk_create_assets`, `bulk_create_relations`, `bulk_delete_assets`, `bulk_delete_relations` replace N singleton calls with 1–2 API round trips; all with preview/confirm safety
 - **Compound asset editing** — `edit_asset` applies a list of typed ops (attribute updates, property changes, relation add/remove, tag add, responsibility assign/unassign) to a single asset in one tool call
 - **Data classification** — search data classes, add/remove classification matches on assets
@@ -47,7 +47,7 @@ Two tools showcase the pattern:
 | Tool | What it does |
 |------|--------------|
 | `search_subject` | **Federated search** — fans one query across **all Collibra instances + the Star Wars API** in a single call, grouping hits by source and tagging each `collibra` or `starwars`. Per-source failures are isolated. |
-| `search_star_wars` | Searches only the Star Wars API (people, planets, starships, vehicles, species, films). |
+| `search_star_wars` | Searches only the Star Wars API (people, planets, starships, vehicles, species, films). *(legacy — use `search_subject`)* |
 
 The Star Wars source is **opt-in** (set `enabled: true` under the optional `externalSources` block in `config.json`; see [Configuration](#beyond-collibra-external-sources)). The same registration pattern extends to any additional public or internal REST API — Collibra is simply the first, richest integration, not the only one.
 
@@ -58,7 +58,7 @@ The Star Wars source is **opt-in** (set `enabled: true` under the optional `exte
 | Tool | Description |
 |------|-------------|
 | `search_subject` | Federated search across **every Collibra instance + the Star Wars API** in one call; results grouped by source, per-source failures isolated |
-| `search_star_wars` | Search the public Star Wars API only (people, planets, starships, vehicles, species, films) |
+| `search_star_wars` | Search the public Star Wars API only (people, planets, starships, vehicles, species, films) *(legacy — use `search_subject`)* |
 
 ### Discovery & Navigation
 
@@ -94,14 +94,14 @@ The Star Wars source is **opt-in** (set `enabled: true` under the optional `exte
 | Tool | Description |
 |------|-------------|
 | `prepare_create_asset` | Pre-flight check before creating an asset — resolves type/domain, checks for duplicates |
-| `create_asset` | Create any Collibra asset — enforces required attributes and gates on duplicate name *(write)* |
+| `create_asset` | Create any Collibra asset — enforces required attributes and gates on duplicate name *(write)* *(legacy — use `bulk_create_assets`)* |
 
 ### Business Term Creation
 
 | Tool | Description |
 |------|-------------|
-| `prepare_add_business_term` | Pre-flight check before adding a business term — resolves domain, checks for duplicates |
-| `add_business_term` | Create a Business Term with optional definition and attributes *(write)* |
+| `prepare_add_business_term` | Pre-flight check before adding a business term — resolves domain, checks for duplicates *(legacy — use `prepare_create_asset`)* |
+| `add_business_term` | Create a Business Term with optional definition and attributes *(write)* *(legacy — use `bulk_create_assets`)* |
 
 ### Operating Model Management
 
@@ -128,7 +128,7 @@ The Star Wars source is **opt-in** (set `enabled: true` under the optional `exte
 
 | Tool | Description |
 |------|-------------|
-| `init_data_contract` | Initialize a data contract governing a Data Product Port, with an optional initial manifest — the first step in creating a contract *(write)* |
+| `init_data_contract` | Initialize a data contract governing a Data Product Port, with an optional initial manifest — the first step in creating a contract *(write)* *(legacy — use `push_data_contract_manifest` (mode init))* |
 | `list_data_contract` | List data contracts with cursor-based pagination |
 | `pull_data_contract_manifest` | Download the active manifest for a data contract |
 | `push_data_contract_manifest` | Upload a new data contract manifest version *(write)* |
@@ -137,10 +137,11 @@ The Star Wars source is **opt-in** (set `enabled: true` under the optional `exte
 
 | Tool | Description |
 |------|-------------|
-| `get_table_semantics` | Trace Table → Columns → Data Attributes → Measures |
-| `get_business_term_data` | Trace Business Term → Data Attributes → Columns → Tables |
-| `get_column_semantics` | Trace Column → Data Attributes → Business Terms / Measures |
-| `get_measure_data` | Trace Measure → Data Attributes → Columns → Tables |
+| `get_asset_semantics` | Business meaning of a Table / Column / Business Term / Measure — detects the asset kind and runs the matching traversal |
+| `get_table_semantics` | Trace Table → Columns → Data Attributes → Measures *(legacy — use `get_asset_semantics`)* |
+| `get_business_term_data` | Trace Business Term → Data Attributes → Columns → Tables *(legacy — use `get_asset_semantics`)* |
+| `get_column_semantics` | Trace Column → Data Attributes → Business Terms / Measures *(legacy — use `get_asset_semantics`)* |
+| `get_measure_data` | Trace Measure → Data Attributes → Columns → Tables *(legacy — use `get_asset_semantics`)* |
 
 ### Technical Lineage
 
@@ -148,8 +149,9 @@ The Star Wars source is **opt-in** (set `enabled: true` under the optional `exte
 |------|-------------|
 | `search_lineage_entities` | Find lineage entities by name, type, or DGC asset UUID |
 | `get_lineage_entity` | Get details about a single lineage entity |
-| `get_lineage_upstream` | Upstream data flow — what feeds into an entity (filterable by type, paginated) |
-| `get_lineage_downstream` | Downstream data flow — where an entity's data goes (filterable by type, paginated) |
+| `get_lineage` | Lineage traversal from an entity — `direction` upstream (what feeds it) or downstream (what it feeds) |
+| `get_lineage_upstream` | Upstream data flow — what feeds into an entity (filterable by type, paginated) *(legacy — use `get_lineage`)* |
+| `get_lineage_downstream` | Downstream data flow — where an entity's data goes (filterable by type, paginated) *(legacy — use `get_lineage`)* |
 | `get_lineage_transformation` | Fetch the SQL or script body for a lineage transformation |
 | `search_lineage_transformations` | Search lineage transformations by name |
 
@@ -159,12 +161,12 @@ The Star Wars source is **opt-in** (set `enabled: true` under the optional `exte
 |------|-------------|
 | `list_assessments` | List assessments — filter by assetId (e.g. AI Use Case UUID), status, templateId, name, or date range |
 | `get_assessment` | Full assessment details: Q&A content, owner, assignees, status, template, dates, and review asset link |
-| `get_assessment_by_review` | Reverse lookup — find an assessment by its associated Assessment Review asset UUID |
+| `get_assessment_by_review` | Reverse lookup — find an assessment by its associated Assessment Review asset UUID *(legacy — use `get_assessment`)* |
 | `list_assessment_templates` | Browse available templates — filter by name, status, or assetTypeId |
 | `get_assessment_template` | Full template details: version, assetType, retakePermission policy, notification settings |
 | `list_assessment_attachments` | List file attachments for an assessment (IDs, filenames, upload metadata) |
 | `create_assessment` | Create a new assessment linked to an asset, with optional initial Q&A answers *(write)* |
-| `update_assessment` | Update status, answers, owner, assignees, or visibility of an assessment *(write)* |
+| `update_assessment` | Update status, answers, owner, assignees, or visibility of an assessment *(write)* *(legacy — use `edit_assessment`)* |
 | `retake_assessment` | Start a new revision of a submitted assessment *(write)* |
 
 ### Operating Model Intelligence
@@ -178,10 +180,10 @@ Cache the operating model once and use these tools for customer-agnostic guidanc
 | `describe_asset_type` | Full description of an asset type: sub-types, assignable attributes, relation types, eligible statuses |
 | `describe_domain_type` | Describe a domain type and its overlapping asset type families |
 | `resolve_model_term` | Fuzzy-resolve a free-text term against all model elements; returns ranked candidates with UUIDs |
-| `plan_asset_creation` | Plan an asset creation: resolves type + domain, lists assignable attributes, emits a `nextAction` |
+| `plan_asset_creation` | Plan an asset creation: resolves type + domain, lists assignable attributes, emits a `nextAction` *(legacy — use `prepare_create_asset`)* |
 | `find_traversal_path` | Find the shortest relation-type path between two asset types in the cached model |
 | `validate_against_model` | Pre-flight a proposed write against the cached model; returns violations before any API call |
-| `plan_write_operation` | Decision helper — returns the recommended tool (single/bulk/edit_asset) given the kind and count of writes |
+| `plan_write_operation` | Decision helper — returns the recommended tool (single/bulk/edit_asset) given the kind and count of writes *(legacy — use `the` tool descriptions)* |
 
 ### Bulk Operations
 
@@ -197,13 +199,13 @@ Cache the operating model once and use these tools for customer-agnostic guidanc
 
 | Tool | Description |
 |------|-------------|
-| `update_asset_description` | Update a single asset's description (preview → confirm) |
-| `bulk_update_asset_descriptions` | Update descriptions for multiple assets at once |
-| `update_asset_attribute` | Update any attribute on an asset by type ID (preview → confirm) |
+| `update_asset_description` | Update a single asset's description (preview → confirm) *(legacy — use `edit_asset`)* |
+| `bulk_update_asset_descriptions` | Update descriptions for multiple assets at once *(legacy — use `bulk_update_asset_attributes`)* |
+| `update_asset_attribute` | Update any attribute on an asset by type ID (preview → confirm) *(legacy — use `edit_asset`)* |
 | `bulk_update_asset_attributes` | Update any attribute across multiple assets at once |
-| `create_asset` | Create any Collibra asset with optional attribute values |
+| `create_asset` | Create any Collibra asset with optional attribute values *(legacy — use `bulk_create_assets`)* |
 | `bulk_create_assets` | Create multiple assets in one bulk call |
-| `add_business_term` | Create a Business Term with optional definition and attributes |
+| `add_business_term` | Create a Business Term with optional definition and attributes *(legacy — use `bulk_create_assets`)* |
 | `create_community` | Create or find a community / sub-community (idempotent) |
 | `create_domain` | Create or find a domain inside a community (idempotent) |
 | `create_relation` | Create a typed relationship between two assets (idempotent) |
@@ -214,10 +216,10 @@ Cache the operating model once and use these tools for customer-agnostic guidanc
 | `assign_attribute_to_asset_type` | Assign an attribute type to an asset type (idempotent) |
 | `add_data_classification_match` | Associate a data class with an asset |
 | `remove_data_classification_match` | Remove a classification match (preview → confirm) |
-| `init_data_contract` | Initialize a data contract governing a Data Product Port (optional initial manifest) |
+| `init_data_contract` | Initialize a data contract governing a Data Product Port (optional initial manifest) *(legacy — use `push_data_contract_manifest` (mode init))* |
 | `push_data_contract_manifest` | Upload a new data contract manifest version |
 | `create_assessment` | Create a new assessment linked to an asset or template |
-| `update_assessment` | Update status, answers, owner, assignees, or visibility |
+| `update_assessment` | Update status, answers, owner, assignees, or visibility *(legacy — use `edit_assessment`)* |
 | `retake_assessment` | Start a new revision of a submitted assessment |
 | `edit_asset` | Multi-op edit on a single asset (attribute updates, property changes, relation ops, tag add, responsibility assign/unassign) |
 | `bulk_delete_assets` | Delete multiple assets permanently (preview → confirm) |
@@ -333,7 +335,7 @@ Compliance mode also forces the audit trail on, including reads unless `audit.lo
 | Value | behavior |
 |-------|-----------|
 | `true` (default) | Write tools are **hidden from the AI** — they do not appear in the tool list and cannot be called |
-| `false` | All 99 tools are available, including the 32 write tools |
+| `false` | All tools are available (83 advertised + 18 legacy), including the 32 write tools |
 
 Set `"readOnly": false` only when you personally need to make changes, then switch back to `true` when done.
 
@@ -392,7 +394,7 @@ is off, `search_star_wars` is not advertised and `search_subject` searches Colli
 
 | Tool | What it does |
 |------|--------------|
-| `search_star_wars` | Searches only the Star Wars API (people, planets, starships, vehicles, species, films) |
+| `search_star_wars` | Searches only the Star Wars API (people, planets, starships, vehicles, species, films) *(legacy — use `search_subject`)* |
 | `search_subject` | Federated search: fans out across **all Collibra instances + the Star Wars API** in one call, grouping results by source. A failure in one source never blocks the others. |
 
 This pattern is designed to be extended — additional public or internal REST APIs can be
@@ -404,7 +406,7 @@ registered the same way.
 |-------|-------------|
 | [INSTALL.md](INSTALL.md) | Full installation and MCP client configuration |
 | [docs/CLAUDE_DESKTOP_SETUP.md](docs/CLAUDE_DESKTOP_SETUP.md) | Claude Desktop integration step-by-step |
-| [docs/TOOLS_REFERENCE.md](docs/TOOLS_REFERENCE.md) | Detailed parameter reference for all 99 tools |
+| [docs/TOOLS_REFERENCE.md](docs/TOOLS_REFERENCE.md) | Detailed parameter reference for all tools, including the legacy-name mapping |
 
 ## Project Structure
 
@@ -414,7 +416,7 @@ registered the same way.
 │   ├── config.ts                         # Configuration loader
 │   ├── types.ts                          # TypeScript type definitions
 │   ├── tools/
-│   │   ├── index.ts                              # Tool registry (99 tools)
+│   │   ├── index.ts                              # Tool registry (101 tools, 18 legacy-hidden)
 │   │   ├── get-asset-types.ts                    # Asset type definitions
 │   │   ├── get-communities.ts                    # Community hierarchy
 │   │   ├── get-domains.ts                        # Domain listing
@@ -488,7 +490,7 @@ registered the same way.
 │   │   ├── get-content-usage.ts                  # Usage Analytics: content visits (summary/trend/top)
 │   │   ├── get-user-usage.ts                     # Usage Analytics: user adoption (active/top/retention)
 │   │   └── get-asset-usage.ts                    # Usage Analytics: single-asset visits + top visitors
-│   │   # (tool registry index.ts registers all 99 tools)
+│   │   # (tool registry index.ts registers all 101 tools)
 │   └── utils/
 │       ├── collibra-client.ts            # REST + GraphQL client (Basic + session auth) with URL helpers
 │       ├── usage-analytics.ts            # Usage Analytics API helpers (dates, filters, pivots)

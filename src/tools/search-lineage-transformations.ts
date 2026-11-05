@@ -8,7 +8,7 @@ export const searchLineageTransformationsTool = {
   name: 'search_lineage_transformations',
   description:
     'Search for transformations in the technical lineage graph by name. ' +
-    'Normally, transformation IDs are obtained from get_lineage_upstream or get_lineage_downstream results. ' +
+    'Normally, transformation IDs are obtained from get_lineage results. ' +
     'Use this tool to search by name when you need to find a transformation directly. ' +
     'Use get_lineage_transformation with the returned ID to retrieve the full SQL/script logic.',
   inputSchema: {

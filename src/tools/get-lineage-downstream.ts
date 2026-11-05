@@ -1,8 +1,5 @@
-import { okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { clientFor } from './_context.js';
-
-const LINEAGE_BASE = '/technical_lineage_resource/rest/lineageGraphRead/v1';
+import { executeGetLineage } from './get-lineage.js';
 
 export const getLineageDownstreamTool = {
   name: 'get_lineage_downstream',
@@ -44,27 +41,7 @@ export const getLineageDownstreamTool = {
   },
 };
 
+/** Legacy name — same as get_lineage with direction="downstream". */
 export async function executeGetLineageDownstream(args: any): Promise<ToolResult> {
-  const { instance_name, entity_id, cursor, entity_type, limit = 20 } = args;
-
-  const { client } = clientFor(instance_name);
-
-  const params = new URLSearchParams();
-  if (cursor) params.append('cursor', cursor);
-  if (entity_type) params.append('type', entity_type);
-  params.append('limit', String(Math.min(limit, 100)));
-
-  const endpoint = `${LINEAGE_BASE}/entities/${encodeURIComponent(entity_id)}/downstream${params.toString() ? '?' + params.toString() : ''}`;
-  const response = await client.restCall<any>(endpoint);
-
-  return okWithNext({
-    ...response, // API fields first; our keys below take precedence
-    instance: instance_name,
-    entityId: entity_id,
-    direction: 'downstream',
-  }, [
-    { tool: 'get_lineage_entity', args: { instance_name, entity_id: '<id from results>' }, why: 'Inspect a downstream entity in detail.' },
-    { tool: 'get_lineage_downstream', args: { instance_name, entity_id: '<id from results>' }, why: 'Continue traversing further downstream.' },
-    { tool: 'get_lineage_transformation', args: { instance_name, transformation_id: '<transformation id from edges>' }, why: 'Inspect a transformation between nodes.' },
-  ]);
+  return executeGetLineage({ ...args, direction: 'downstream' });
 }

@@ -12,7 +12,7 @@ export const bulkUpdateAssetAttributesTool = {
     '1) Call with confirm=false (default) to PREVIEW current vs. proposed values for every asset. ' +
     '2) Call again with confirm=true to APPLY all changes at once via the /attributes/bulk endpoint. ' +
     'Use get_attribute_types first to find the attribute type ID. ' +
-    'For updating a single asset, prefer update_asset_attribute instead.',
+    'Works for one asset too; for several different changes to a single asset, prefer edit_asset.',
   inputSchema: {
     type: 'object',
     properties: {

@@ -41,7 +41,7 @@ export const editAssetTool = {
     'Supported ops: update_attribute, add_attribute, remove_attribute, update_property, add_relation, remove_relation, ' +
     'add_tag, set_responsibility, remove_responsibility. ' +
     'Internally batches attribute changes via /attributes/bulk and relation changes via /relations/bulk — ' +
-    'one tool call replaces what would otherwise be many singleton calls (update_asset_attribute, create_relation, …). ' +
+    'one tool call replaces what would otherwise be many single-purpose calls (attribute updates, create_relation, …). ' +
     'add_tag appends a free-text tag without replacing existing ones. set_responsibility/remove_responsibility assign or ' +
     'unassign a user or group to a resource role (e.g. Steward, Owner) by username, email, or UUID; remove only affects ' +
     'directly-assigned responsibilities, not inherited ones. ' +

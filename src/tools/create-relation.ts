@@ -12,8 +12,7 @@ export const createRelationTool = {
     'Use get_relation_types to find the relation_type_id. ' +
     'Use get_asset_relations on the source asset to verify what relations already exist before calling this tool. ' +
     'Returns the relation id regardless of whether it was newly created or already existed. ' +
-    'For creating 2 or more relations at once, prefer bulk_create_relations — it uses /relations/bulk for one round trip. ' +
-    'Call plan_write_operation if unsure which tool to use.',
+    'For creating 2 or more relations at once, prefer bulk_create_relations — it uses /relations/bulk for one round trip.',
   inputSchema: {
     type: 'object',
     properties: {

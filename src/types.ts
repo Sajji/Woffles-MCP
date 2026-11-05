@@ -78,6 +78,11 @@ export interface CollibraConfig {
   /** When true, tool outputs are validated against their outputSchema (warn-only). */
   validateOutput?: boolean;
   /**
+   * Also advertise legacy (superseded) tools in tools/list. They are always
+   * callable; by default they are hidden to keep the advertised surface small.
+   */
+  listLegacyTools?: boolean;
+  /**
    * Tamper-evident audit trail (hash-chained JSONL). Off by default; forced on
    * by `complianceMode`. `path` defaults to `<config dir>/logs/audit.jsonl`.
    */

@@ -1,4 +1,4 @@
-import { isReadOnly, isToolEnabledByConfig, getStarWarsSource, getToolToggles } from '../config.js';
+import { isReadOnly, isToolEnabledByConfig, getStarWarsSource, getToolToggles, loadConfig } from '../config.js';
 import { normalizeInputSchema, validateToolArgs } from '../utils/validation.js';
 import { WRITE_TOOL_NAMES, annotationsFor, humanizeToolName } from './annotations.js';
 import type { ToolResult } from '../types.js';
@@ -19,6 +19,8 @@ import { bulkUpdateAssetAttributesTool, executeBulkUpdateAssetAttributes } from 
 import { getRelationTypesTool, executeGetRelationTypes } from './get-relation-types.js';
 import { getTableSemanticsTool, executeGetTableSemantics } from './get-table-semantics.js';
 import { getBusinessTermDataTool, executeGetBusinessTermData } from './get-business-term-data.js';
+import { getLineageTool, executeGetLineage } from './get-lineage.js';
+import { getAssetSemanticsTool, executeGetAssetSemantics } from './get-asset-semantics.js';
 import { getLineageUpstreamTool, executeGetLineageUpstream } from './get-lineage-upstream.js';
 import { getLineageDownstreamTool, executeGetLineageDownstream } from './get-lineage-downstream.js';
 import { getLineageEntityTool, executeGetLineageEntity } from './get-lineage-entity.js';
@@ -125,8 +127,10 @@ const TOOL_DEFINITIONS: Array<[any, Executor]> = [
   [updateAssetAttributeTool, executeUpdateAssetAttribute],
   [bulkUpdateAssetAttributesTool, executeBulkUpdateAssetAttributes],
   [getRelationTypesTool, executeGetRelationTypes],
+  [getAssetSemanticsTool, executeGetAssetSemantics],
   [getTableSemanticsTool, executeGetTableSemantics],
   [getBusinessTermDataTool, executeGetBusinessTermData],
+  [getLineageTool, executeGetLineage],
   [getLineageUpstreamTool, executeGetLineageUpstream],
   [getLineageDownstreamTool, executeGetLineageDownstream],
   [getLineageEntityTool, executeGetLineageEntity],
@@ -269,8 +273,41 @@ function unavailableReason(name: string): string | null {
   return null;
 }
 
+/**
+ * Legacy tools, superseded by a consolidated tool (value = what to use instead).
+ * They remain fully callable — existing prompts, scripts and skills keep
+ * working — but are not advertised in tools/list, keeping the surface (and
+ * every client's context) smaller. Set `"listLegacyTools": true` in config.json
+ * to advertise them again.
+ */
+export const LEGACY_TOOLS: Record<string, string> = {
+  update_asset_description: 'edit_asset (op update_attribute, Description type 00000000-0000-0000-0000-000000003114)',
+  update_asset_attribute: 'edit_asset (op update_attribute)',
+  bulk_update_asset_descriptions: 'bulk_update_asset_attributes (attribute_type_id 00000000-0000-0000-0000-000000003114)',
+  create_asset: 'bulk_create_assets (single-element array)',
+  add_business_term: 'bulk_create_assets (asset_type_id 00000000-0000-0000-0000-000000011001)',
+  prepare_add_business_term: 'prepare_create_asset (asset_type_name "Business Term")',
+  plan_asset_creation: 'prepare_create_asset',
+  get_lineage_upstream: 'get_lineage (direction "upstream")',
+  get_lineage_downstream: 'get_lineage (direction "downstream")',
+  get_table_semantics: 'get_asset_semantics',
+  get_column_semantics: 'get_asset_semantics',
+  get_business_term_data: 'get_asset_semantics',
+  get_measure_data: 'get_asset_semantics',
+  update_assessment: 'edit_assessment',
+  get_assessment_by_review: 'get_assessment (assessment_review_id)',
+  init_data_contract: 'push_data_contract_manifest (mode "init")',
+  search_star_wars: 'search_subject',
+  plan_write_operation: 'the tool descriptions (bulk_* for many items, edit_asset for many changes to one asset)',
+};
+
+const listLegacy = () => loadConfig().listLegacyTools === true;
+
 export const tools = registeredTools
   .filter(t => unavailableReason(t.name) === null)
+  // Legacy tools stay callable but are only advertised on request.
+  .filter(t => !(t.name in LEGACY_TOOLS) || listLegacy())
+  .map(t => (t.name in LEGACY_TOOLS ? { ...t, description: `[Legacy — prefer ${LEGACY_TOOLS[t.name]}] ${t.description}` } : t))
   // Don't advertise the opt-in demo source when it's switched off.
   .filter(t => t.name !== 'search_star_wars' || getStarWarsSource().enabled);
 // Tool executor map (canonical names; aliases are added below). Executors may

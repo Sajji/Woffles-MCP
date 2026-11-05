@@ -75,7 +75,7 @@ export async function executeDescribeDomainType(args: any): Promise<ToolResult> 
       note: 'likelyAssetTypes is a name-overlap heuristic. Authoritative assignability is enforced server-side at asset creation time.',
     },
     nextActions: [
-      { tool: 'plan_asset_creation', args: { instance_name, asset_name: '<name>', asset_type_name: '<type>', domain_type_id: target.id }, why: 'Plan an asset under this domain type.' },
+      { tool: 'prepare_create_asset', args: { instance_name, asset_name: '<name>', asset_type_name: '<type>', domain_name: '<domain of this type>'}, why: 'Plan an asset under this domain type.' },
     ],
   });
 }

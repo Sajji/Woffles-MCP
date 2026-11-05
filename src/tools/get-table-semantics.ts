@@ -134,7 +134,7 @@ export async function executeGetTableSemantics(args: any): Promise<ToolResult> {
     columns: columnDetails,
   }, [
     { tool: 'get_asset_by_id', args: { instance_name, asset_id: table_asset_id }, why: 'Get full table asset detail.' },
-    { tool: 'get_column_semantics', args: { instance_name, column_asset_id: '<column id from columns>' }, why: 'Drill into a specific column.' },
-    { tool: 'get_lineage_downstream', args: { instance_name, entity_id: '<dgc entity id>' }, why: 'Trace downstream lineage from this table.' },
+    { tool: 'get_asset_semantics', args: { instance_name, asset_id: '<column id from columns>' }, why: 'Drill into a specific column.' },
+    { tool: 'get_lineage', args: { instance_name, entity_id: '<dgc entity id>', direction: 'downstream' }, why: 'Trace downstream lineage from this table.' },
   ]);
 }

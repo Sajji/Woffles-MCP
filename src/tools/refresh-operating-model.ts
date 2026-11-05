@@ -9,7 +9,7 @@ export const refreshOperatingModelTool = {
     '(asset types, domain types, attribute types, relation types, statuses) to a local cache. ' +
     'Run this once per session (or when the model is expected to have changed). Other model-aware ' +
     'tools (get_operating_model_summary, describe_asset_type, describe_domain_type, ' +
-    'resolve_model_term, plan_asset_creation, find_traversal_path, validate_against_model) read ' +
+    'resolve_model_term, find_traversal_path, validate_against_model) read ' +
     'from this cache to give consistent, customer-agnostic guidance. Returns counts and a snapshot hash; ' +
     'pass `force=true` to refresh even if a recent cache exists.',
   inputSchema: {

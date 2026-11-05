@@ -58,7 +58,7 @@ export async function executeGetAssetTypes(args: any): Promise<ToolResult> {
     };
     return okWithNext(structured, [
       { tool: 'describe_asset_type', args: { instance_name, name: '<pick from assetTypes>' }, why: 'See assignable attributes, relations, and eligible statuses for an asset type.' },
-      { tool: 'plan_asset_creation', args: { instance_name, asset_name: '<name>', asset_type_name: '<pick from assetTypes>', domain_name: '<domain>' }, why: 'Plan a creation that conforms to the operating model.' },
+      { tool: 'prepare_create_asset', args: { instance_name, asset_name: '<name>', asset_type_name: '<pick from assetTypes>', domain_name: '<domain>' }, why: 'Plan a creation that conforms to the operating model.' },
       { tool: 'refresh_operating_model', args: { instance_name }, why: 'Cache the full model so subsequent model-aware tools work offline.' },
     ]);
 

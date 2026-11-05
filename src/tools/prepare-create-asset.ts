@@ -2,13 +2,16 @@ import { okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { narrowToExact } from '../utils/resolve.js';
 import { clientFor } from './_context.js';
+import { attrKindFromDiscriminator } from '../utils/collibra-client.js';
+import { fetchApplicableAssignment } from '../utils/operating-model-cache.js';
 
 export const prepareCreateAssetTool = {
   name: 'prepare_create_asset',
   description:
-    'Pre-flight check before calling bulk_create_assets. ' +
-    'Resolves the asset type (by name or UUID) and domain (by name or UUID), hydrates the available attribute schema, ' +
-    'and checks for duplicate asset names. ' +
+    'Pre-flight check and creation plan before calling bulk_create_assets (works for any asset type, including Business Terms). ' +
+    'Resolves the asset type (by name or UUID) and domain (by name or UUID), checks for duplicate asset names, and — from the ' +
+    'operating-model assignment that applies in that domain — returns requiredAttributes, assignableAttributes, eligibleStatuses ' +
+    'and a suggestedStatus, plus a ready-to-fill bulk_create_assets call. ' +
     'Returns a status of "ready" when both assetTypeId and domainId are resolved, ' +
     '"incomplete" when required information is missing, ' +
     '"needs_clarification" when the type or domain name matches multiple candidates (returns up to 20 options), ' +
@@ -41,6 +44,10 @@ export const prepareCreateAssetTool = {
         type: 'string',
         description: 'Optional: Name of the target domain to search for. Provide this or domain_id.',
       },
+      preferred_status_name: {
+        type: 'string',
+        description: 'Optional: status to suggest if eligible (otherwise the type\'s default / a Candidate status).',
+      },
     },
     required: ['instance_name', 'asset_name'],
   },
@@ -52,7 +59,7 @@ export const prepareCreateAssetTool = {
 };
 
 export async function executePrepareCreateAsset(args: any): Promise<ToolResult> {
-  const { instance_name, asset_name, asset_type_id, asset_type_name, domain_id, domain_name } = args;
+  const { instance_name, asset_name, asset_type_id, asset_type_name, domain_id, domain_name, preferred_status_name } = args;
 
   const { client } = clientFor(instance_name);
 
@@ -173,7 +180,6 @@ export async function executePrepareCreateAsset(args: any): Promise<ToolResult> 
 
   // --- All good ---
   result.status = 'ready';
-  result.instructions = 'Call bulk_create_assets with the resolved assetTypeId and domainId below. Pass assets as a single-element array for one asset, or extend the array for a batch.';
   result.resolved = {
     assetTypeId: resolvedTypeId,
     assetTypeName: resolvedTypeName,
@@ -181,9 +187,51 @@ export async function executePrepareCreateAsset(args: any): Promise<ToolResult> 
     domainName: resolvedDomainName,
   };
 
+  // Creation plan from the assignment that applies in this domain (live — no
+  // cached model needed): assignable/required attributes and a status to use.
+  const assignment = await fetchApplicableAssignment(instance_name, resolvedTypeId, resolvedDomainId).catch(() => null);
+  const exampleAttributes: Record<string, string> = {};
+  if (assignment) {
+    const attrs = assignment.attributeTypes.map((t) => ({
+      id: t.id,
+      name: t.name,
+      kind: attrKindFromDiscriminator(t.kind) ?? t.kind,
+      required: (t.minimumOccurrences ?? 0) >= 1,
+    }));
+    result.requiredAttributes = attrs.filter((a) => a.required);
+    result.assignableAttributes = attrs;
+    const statuses = assignment.eligibleStatuses;
+    const status =
+      (preferred_status_name && statuses.find((s) => s.name.toLowerCase() === String(preferred_status_name).toLowerCase())) ||
+      statuses.find((s) => s.id === assignment.defaultStatusId) ||
+      statuses.find((s) => /candidate/i.test(s.name)) ||
+      statuses[0];
+    result.suggestedStatus = status ?? null;
+    result.eligibleStatuses = statuses;
+    for (const a of result.requiredAttributes) exampleAttributes[a.id] = `<${a.name}>`;
+  } else {
+    result.warnings = ['Could not determine the applicable assignment; attribute and status guidance is unavailable.'];
+  }
+  result.instructions =
+    'Call bulk_create_assets with the resolved assetTypeId and domainId' +
+    (result.requiredAttributes?.length ? ', and values for every requiredAttributes entry (keyed by attribute type UUID)' : '') +
+    '. Pass a single-element array for one asset, or extend the array for a batch.';
+
   return okWithNext(result, [
-    { tool: 'plan_asset_creation', args: { instance_name, asset_name, asset_type_id: resolvedTypeId, domain_id: resolvedDomainId }, why: 'Get assignable attributes, eligible statuses, and default status for this type before writing.' },
-    { tool: 'validate_against_model', args: { instance_name, proposal_type: 'asset', asset_type_id: resolvedTypeId }, why: 'Schema-check the proposed write against the cached model.' },
-    { tool: 'bulk_create_assets', args: { instance_name, assets: [{ name: asset_name, asset_type_id: resolvedTypeId, domain_id: resolvedDomainId }], confirm: false }, why: 'Preview then confirm the create with bulk_create_assets (works for single or multiple assets).' },
+    {
+      tool: 'bulk_create_assets',
+      args: {
+        instance_name,
+        assets: [{
+          name: asset_name,
+          asset_type_id: resolvedTypeId,
+          domain_id: resolvedDomainId,
+          ...(result.suggestedStatus ? { status_id: result.suggestedStatus.id } : {}),
+          ...(Object.keys(exampleAttributes).length ? { attributes: exampleAttributes } : {}),
+        }],
+        confirm: false,
+      },
+      why: 'Preview then confirm the create with bulk_create_assets (works for single or multiple assets).',
+    },
   ], true);
 }

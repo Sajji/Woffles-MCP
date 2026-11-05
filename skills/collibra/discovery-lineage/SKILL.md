@@ -11,13 +11,13 @@ Find data assets, understand their business meaning, and trace where the data co
 1. Start broad: **`search_assets_by_name`** (keyword) or **`search_catalog_columns`** (metadata filters: description, data type, steward, related business term).
 2. Popularity signal when the user is exploring: **`get_asset_view_stats`** (most_viewed, all-time), or for a date range **`get_content_usage`** (`view="top"`, `visit_type` Asset/Domain/Community/Dashboard/Diagram). For one asset's visit trend and top visitors use **`get_asset_usage`**.
 3. Drill in: **`get_asset_by_id`** (add `include_breadcrumb=true` for the community/domain path; `include_assignable_schema=true` when editing is planned).
-4. Business meaning:
-   - Table → **`get_table_semantics`** (columns → data attributes → measures)
-   - Column → **`get_column_semantics`** (data attributes → business terms / measures)
-   - Business Term → **`get_business_term_data`** (reverse: term → columns/tables)
+4. Business meaning: **`get_asset_semantics`** — detects the asset kind automatically:
+   - Table → columns → data attributes → measures
+   - Column → data attributes → business terms / measures (+ parent table)
+   - Business Term / Measure → data attributes → columns → tables
 5. Technical lineage:
    - **`search_lineage_entities`** to find the lineage node for a DGC asset
-   - **`get_lineage_upstream`** / **`get_lineage_downstream`** for sources/consumers
+   - **`get_lineage`** with `direction: "upstream"` (sources) or `"downstream"` (consumers)
    - **`get_lineage_transformation`** for the SQL behind an edge
 6. Trust signals: **`find_ratings`**, **`find_comments`**, and **`get_activities`** (recent changes) on the asset.
 

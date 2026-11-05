@@ -314,8 +314,8 @@ export async function executeGetAssetById(args: any): Promise<ToolResult> {
     }) as Record<string, unknown>;
     return okWithNext(structured, [
       { tool: 'get_asset_relations', args: { instance_name, asset_id }, why: 'Paginate through related assets beyond the first page.' },
-      { tool: 'update_asset_description', args: { instance_name, asset_id, new_description: '<new description>' }, why: 'Edit the description.' },
-      { tool: 'update_asset_attribute', args: { instance_name, asset_id, attribute_type_id: '<from get_attribute_types>', new_value: '<value>' }, why: 'Edit attributes.' },
+      { tool: 'edit_asset', args: { instance_name, asset_id, operations: [{ op: 'update_attribute', attribute_type_id: '00000000-0000-0000-0000-000000003114', value: '<new description>' }] }, why: 'Edit the description.' },
+      { tool: 'edit_asset', args: { instance_name, asset_id, operations: [{ op: 'update_attribute', attribute_type_id: '<from get_attribute_types>', value: '<value>' }] }, why: 'Edit attributes.' },
       { tool: 'find_traversal_path', args: { instance_name, source_asset_type_name: '<this asset type>', target_asset_type_name: '<desired type>' }, why: 'Plan navigation to a different asset type using the operating model.' },
     ]);
 

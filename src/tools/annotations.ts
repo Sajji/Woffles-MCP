@@ -32,7 +32,7 @@ export const WRITE_TOOL_HINTS: Record<string, WriteHints> = {
   bulk_create_assets: { destructive: false, idempotent: false },
   add_data_classification_match: { destructive: false, idempotent: false },
   remove_data_classification_match: { destructive: true, idempotent: true },
-  push_data_contract_manifest: { destructive: true, idempotent: true },
+  push_data_contract_manifest: { destructive: true, idempotent: false }, // mode=init creates a contract
   init_data_contract: { destructive: false, idempotent: true },
   create_assessment: { destructive: false, idempotent: false },
   update_assessment: { destructive: true, idempotent: true },

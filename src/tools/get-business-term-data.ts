@@ -136,6 +136,6 @@ export async function executeGetBusinessTermData(args: any): Promise<ToolResult>
   }, [
     { tool: 'get_asset_by_id', args: { instance_name, asset_id: term_asset_id }, why: 'Get full term detail including attributes and direct relations.' },
     { tool: 'get_asset_relations', args: { instance_name, asset_id: term_asset_id }, why: 'See all relations from this business term.' },
-    { tool: 'get_column_semantics', args: { instance_name, column_asset_id: '<column id from dataAttributes>' }, why: 'Drill into a specific column linked to this term.' },
+    { tool: 'get_asset_semantics', args: { instance_name, asset_id: '<column id from dataAttributes>' }, why: 'Drill into a specific column linked to this term.' },
   ]);
 }

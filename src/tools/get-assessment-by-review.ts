@@ -1,7 +1,5 @@
-import { okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { clientFor } from './_context.js';
-import { ASSESSMENTS_BASE } from '../utils/assessments.js';
+import { executeGetAssessment } from './get-assessment.js';
 
 export const getAssessmentByReviewTool = {
   name: 'get_assessment_by_review',
@@ -31,21 +29,7 @@ export const getAssessmentByReviewTool = {
   },
 };
 
+/** Legacy name — same as get_assessment with assessment_review_id. */
 export async function executeGetAssessmentByReview(args: any): Promise<ToolResult> {
-  const { instance_name, assessment_review_id } = args;
-
-  const { client } = clientFor(instance_name);
-
-  const endpoint = `${ASSESSMENTS_BASE}/assessments/by/assessmentReview/${encodeURIComponent(assessment_review_id)}`;
-  const response = await client.restCall<any>(endpoint);
-
-  return okWithNext({
-    ...response, // API fields first; our keys below take precedence
-    instance: instance_name,
-    lookedUpBy: 'assessmentReviewId',
-    assessmentReviewId: assessment_review_id,
-  }, [
-    { tool: 'get_assessment', args: { instance_name, assessment_id: '<id from response>' }, why: 'Fetch the assessment by its own id for canonical detail.' },
-    { tool: 'edit_assessment', args: { instance_name, assessment_id: '<id from response>', operations: [{ op: 'set_status', value: '<new status>' }] }, why: 'Edit the assessment.' },
-  ]);
+  return executeGetAssessment(args);
 }

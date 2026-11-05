@@ -93,6 +93,6 @@ export async function executeGetDomains(args: any): Promise<ToolResult> {
     allDomains: response.results || [],
   }) as Record<string, unknown>, [
     { tool: 'prepare_create_asset', args: { instance_name, asset_name: '<name>', asset_type_name: '<type>', domain_id: '<pick from allDomains>' }, why: 'Pre-flight check before creating an asset in a chosen domain.' },
-    { tool: 'plan_asset_creation', args: { instance_name, asset_name: '<name>', asset_type_name: '<type>', domain_id: '<pick from allDomains>' }, why: 'Build a model-conformant creation plan including attributes and status.' },
+    { tool: 'prepare_create_asset', args: { instance_name, asset_name: '<name>', asset_type_name: '<type>', domain_id: '<pick from allDomains>' }, why: 'Build a model-conformant creation plan including attributes and status.' },
   ]);
 }

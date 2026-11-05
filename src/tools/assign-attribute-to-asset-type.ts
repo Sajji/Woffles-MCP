@@ -247,8 +247,8 @@ export async function executeAssignAttributeToAssetType(args: any): Promise<Tool
         why: 'Confirm the attribute now appears in the asset type\'s assignable attributes.',
       },
       {
-        tool: 'update_asset_attribute',
-        args: { instance_name, asset_id: '<asset>', attribute_type_id, new_value: '<value>' },
+        tool: 'bulk_update_asset_attributes',
+        args: { instance_name, attribute_type_id, updates: [{ asset_id: '<asset>', new_value: '<value>' }] },
         why: 'Set the attribute value on assets of this type now that it is assignable.',
       },
     ],

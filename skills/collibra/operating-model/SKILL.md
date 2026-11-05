@@ -14,13 +14,13 @@ Plan and validate any Collibra structural work (creating assets, relations, or t
 2. **`get_operating_model_summary`** — cheap digest to prime context: type families, attribute kinds, statuses.
 3. **`resolve_model_term`** — fuzzy-resolve every user-supplied term ("dataset", "steward", "approved") to concrete model elements with UUIDs. Never guess UUIDs.
 4. **`describe_asset_type`** — full schema for the chosen type: assignable attributes (required vs optional), relation types, eligible statuses.
-5. **`plan_asset_creation`** — resolves type + domain and emits a `nextAction` with the exact `create_asset` arguments.
+5. **`prepare_create_asset`** — resolves type + domain, checks for duplicates, and returns the required attributes, eligible statuses and a ready-to-fill `bulk_create_assets` call.
 6. **`validate_against_model`** — pre-flight the proposed write; fix violations before touching the API.
-7. Execute with **`create_asset`** / **`bulk_create_assets`** / **`create_relation`** (all preview/confirm).
+7. Execute with **`bulk_create_assets`** (one or many assets) / **`create_relation`** / **`bulk_create_relations`** (all preview/confirm).
 8. **`find_traversal_path`** — when you must navigate between asset types (e.g. Table → Business Term), get the relation chain instead of brute-forcing `get_asset_relations`.
 
 ## Rules
 
-- Call `plan_write_operation` when unsure whether to use a singleton, bulk, or `edit_asset` tool.
-- Required attributes are enforced by `create_asset` — supply them up front from step 4's output.
+- Use bulk tools for many items, and `edit_asset` for several changes to one asset.
+- Required attributes are enforced by `bulk_create_assets` — supply them up front from step 5's `requiredAttributes`.
 - The cache is per-instance; re-run step 1 after operating-model changes.

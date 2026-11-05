@@ -23,4 +23,4 @@ Copy or synchronize communities, domains, and assets between two configured Coll
 
 - Never copy UUIDs across instances — always resolve names on the target.
 - Statuses and attribute types must be mapped by NAME (get_asset_statuses / get_attribute_types on the target).
-- Prefer bulk tools; use `plan_write_operation` if unsure.
+- Prefer bulk tools (`bulk_create_assets`, `bulk_create_relations`, `bulk_update_asset_attributes`); use `edit_asset` for several changes to one asset.

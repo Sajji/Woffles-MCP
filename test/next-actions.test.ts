@@ -41,7 +41,7 @@ function suggestions(): { file: string; line: number; tool: string; keys: string
 
 describe('nextActions suggestions', () => {
   it('reference real tools with valid argument names', async () => {
-    const { registeredTools } = await import('../src/tools/index.js');
+    const { registeredTools, LEGACY_TOOLS } = await import('../src/tools/index.js');
     const schemas = new Map(registeredTools.map((t: any) => [t.name, t.inputSchema]));
     const problems: string[] = [];
     const found = suggestions();
@@ -52,6 +52,8 @@ describe('nextActions suggestions', () => {
         problems.push(`${s.file}:${s.line} unknown tool "${s.tool}"`);
         continue;
       }
+      // Suggestions must point at advertised tools, not hidden legacy ones.
+      if (s.tool in LEGACY_TOOLS) problems.push(`${s.file}:${s.line} suggests legacy "${s.tool}" (use ${LEGACY_TOOLS[s.tool]})`);
       const props = Object.keys(schema.properties ?? {});
       const unknown = s.keys.filter((k) => !props.includes(k));
       const missing = (schema.required ?? []).filter((r: string) => r !== 'instance_name' && !s.keys.includes(r));

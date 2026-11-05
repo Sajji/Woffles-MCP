@@ -44,8 +44,8 @@ export async function executeGetLineageEntity(args: any): Promise<ToolResult> {
     instance: instance_name,
     entityId: entity_id,
   }, [
-    { tool: 'get_lineage_downstream', args: { instance_name, entity_id }, why: 'Walk the lineage graph downstream from this entity.' },
-    { tool: 'get_lineage_upstream', args: { instance_name, entity_id }, why: 'Walk the lineage graph upstream from this entity.' },
+    { tool: 'get_lineage', args: { instance_name, entity_id, direction: 'downstream' }, why: 'Walk the lineage graph downstream from this entity.' },
+    { tool: 'get_lineage', args: { instance_name, entity_id, direction: 'upstream' }, why: 'Walk the lineage graph upstream from this entity.' },
     { tool: 'get_asset_by_id', args: { instance_name, asset_id: '<dgcAssetId from response, if present>' }, why: 'Cross over to the catalog asset linked to this lineage entity.' },
   ]);
 }

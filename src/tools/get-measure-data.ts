@@ -125,6 +125,6 @@ export async function executeGetMeasureData(args: any): Promise<ToolResult> {
     dataAttributes: enrichedDAs,
   }, [
     { tool: 'get_asset_by_id', args: { instance_name, asset_id: measure_asset_id }, why: 'Get full measure asset detail.' },
-    { tool: 'get_column_semantics', args: { instance_name, column_asset_id: '<column id from dataAttributes.columns>' }, why: 'Drill into a linked column.' },
+    { tool: 'get_asset_semantics', args: { instance_name, asset_id: '<column id from dataAttributes.columns>' }, why: 'Drill into a linked column.' },
   ], true);
 }

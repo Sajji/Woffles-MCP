@@ -106,7 +106,7 @@ export async function executeCreateDomain(args: any): Promise<ToolResult> {
     },
   }, [
     { tool: 'prepare_create_asset', args: { instance_name, asset_name: '<asset name>', asset_type_id: '<asset type id>', domain_id: created.id }, why: 'Begin creating assets inside the new domain.' },
-    { tool: 'plan_asset_creation', args: { instance_name, asset_name: '<asset name>', asset_type_id: '<asset type id>', domain_id: created.id }, why: 'See assignable attributes and eligible statuses for the new domain.' },
+    { tool: 'prepare_create_asset', args: { instance_name, asset_name: '<asset name>', asset_type_id: '<asset type id>', domain_id: created.id }, why: 'See assignable attributes and eligible statuses for the new domain.' },
     { tool: 'get_domains', args: { instance_name, community_id: created.community?.id }, why: 'List domains in the community to confirm visibility.' },
   ], true);
 }

@@ -25,7 +25,7 @@ export const bulkCreateAssetsTool = {
       },
       assets: {
         type: 'array',
-        description: 'Array of assets to create. Each entry mirrors the input of create_asset.',
+        description: 'Array of assets to create (one or many).',
         minItems: 1,
         items: {
           type: 'object',

@@ -3,11 +3,12 @@ import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { authFetch } from '../utils/auth.js';
 import { buildMultipartBody } from '../utils/multipart.js';
+import { executeInitDataContract } from './init-data-contract.js';
 
 export const pushDataContractManifestTool = {
   name: 'push_data_contract_manifest',
   description:
-    'Upload a new version of a data contract manifest to Collibra. ' +
+    'Upload a new version of a data contract manifest to Collibra, or (mode="init") create a new data contract for a Data Product Port. ' +
     'If the manifest adheres to the Open Data Contract Standard (ODCS), the manifest_id and version ' +
     'are parsed automatically from the file content. ' +
     'Use force=true to overwrite an existing version with the same version value. ' +
@@ -20,9 +21,30 @@ export const pushDataContractManifestTool = {
         type: 'string',
         description: 'The name of the Collibra instance (as defined in config.json)',
       },
+      mode: {
+        type: 'string',
+        enum: ['push', 'init'],
+        default: 'push',
+        description:
+          'push (default): upload a manifest version to a data contract (manifest required). ' +
+          'init: create a NEW data contract governing a Data Product Port (governed_asset_id required; manifest optional — ' +
+          'Collibra generates one from the port when omitted).',
+      },
+      governed_asset_id: {
+        type: 'string',
+        description: 'mode=init only: UUID of the Data Product Port asset the new contract governs.',
+      },
+      name: {
+        type: 'string',
+        description: 'mode=init only (optional): name for the new data contract.',
+      },
+      domain_id: {
+        type: 'string',
+        description: 'mode=init only (optional): UUID of the domain for the new data contract.',
+      },
       manifest: {
         type: 'string',
-        description: 'The full content of the data contract manifest file (typically YAML)',
+        description: 'The full content of the data contract manifest file (typically YAML). Required for mode=push.',
       },
       manifest_id: {
         type: 'string',
@@ -43,7 +65,7 @@ export const pushDataContractManifestTool = {
         default: true,
       },
     },
-    required: ['instance_name', 'manifest'],
+    required: ['instance_name'],
   },
   outputSchema: {
     type: 'object',
@@ -53,7 +75,11 @@ export const pushDataContractManifestTool = {
 };
 
 export async function executePushDataContractManifest(args: any): Promise<ToolResult> {
-  const { instance_name, manifest, manifest_id, version, force = false, active = true } = args;
+  const { instance_name, mode = 'push', manifest, manifest_id, version, force = false, active = true } = args;
+
+  // mode=init: create a new data contract for a Data Product Port (formerly init_data_contract).
+  if (mode === 'init') return executeInitDataContract(args);
+  if (!manifest) throw new Error('manifest is required for mode=push (use mode=init to create a new data contract).');
 
   const instance = getInstance(instance_name);
 

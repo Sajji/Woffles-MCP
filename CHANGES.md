@@ -1,5 +1,54 @@
 # Changelog
 
+## Unreleased — Tool consolidation (Review plan, Phase 4)
+
+Overlapping tools were merged into fewer, broader tools. **No tool was removed.** The 18 superseded ("legacy") names are still callable with their original arguments, but `tools/list` no longer shows them. Add `"listLegacyTools": true` to `config.json` to show them again; they are then labelled `[Legacy — prefer …]`. The mapping is in `docs/TOOLS_REFERENCE.md` under "Consolidated tools and legacy names".
+
+### Added
+- **`get_lineage`**, with `direction` set to `upstream` or `downstream`. It replaces `get_lineage_upstream` and `get_lineage_downstream`, which now call it.
+- **`get_asset_semantics`.** It works out the asset kind by walking up the asset type hierarchy, so subtypes such as Database View count as Table, then runs the Table, Column, Business Term or Measure traversal. It replaces the four separate semantics tools. Asset types it doesn't support return a clear error.
+
+### Changed
+- **`prepare_create_asset`** is now the single tool for planning asset creation, for any asset type including Business Terms. It reads the assignment that applies to the target domain directly from Collibra, so no cached operating model is needed, and returns:
+  - `requiredAttributes`
+  - `assignableAttributes`
+  - `eligibleStatuses`
+  - `suggestedStatus` (honours `preferred_status_name`)
+  - a ready-to-fill `bulk_create_assets` call
+
+  It replaces `plan_asset_creation` and `prepare_add_business_term`.
+- **`get_assessment`** also accepts `assessment_review_id`, replacing `get_assessment_by_review`.
+- **`edit_assessment`** has a new `set_review_domain` operation. With it, `edit_assessment` covers everything `update_assessment` did. Replacing every answer at once is done with one `set_answer` operation per question.
+- **`push_data_contract_manifest`** has a new `mode` parameter: `push` (the default) or `init`. `init` does what `init_data_contract` did. Its annotation is now `idempotentHint: false`, because `init` creates a contract.
+- **Hidden, but still callable:**
+  - `update_asset_description` and `update_asset_attribute`: use `edit_asset`
+  - `bulk_update_asset_descriptions`: use `bulk_update_asset_attributes`
+  - `create_asset` and `add_business_term`: use `bulk_create_assets`
+  - `search_star_wars`: use `search_subject`
+  - `plan_write_operation`: its advice is now in the tool descriptions
+- **References to hidden tools were updated to the replacements in:**
+  - tool descriptions
+  - `nextActions` suggestions
+  - the embedded skills (`operating-model`, `discovery-lineage`, `assessments`, `cross-instance-migration`)
+  - README and TOOLS_REFERENCE
+
+  `test/next-actions.test.ts` now fails if a suggestion points at a hidden tool.
+- **What's listed:**
+  - 101 tools are registered and 83 are listed, plus the 3 chip aliases
+  - with writes enabled, the listed count drops from 102 to 86
+  - in read-only mode, it drops from 70 to 61
+- **Deviations from the plan, with reasons:**
+  - `get_domain_types`, `get_asset_statuses` and `get_asset_view_stats` stay listed. The tools that would replace them need a cached operating model or Usage Analytics, and Usage Analytics isn't available on every instance (for example, Sandbox).
+  - The asset-creation planner kept was `prepare_create_asset` rather than `plan_asset_creation`, because it works without the cache.
+
+### Tests
+- `test/consolidation.test.ts` checks that:
+  - legacy tools are hidden but still callable, and listed when `listLegacyTools` is on
+  - `get_lineage` routes by direction
+  - `get_asset_semantics` detects subtypes and rejects unsupported asset types
+  - `get_assessment` works with an Assessment Review ID
+  - `push_data_contract_manifest` handles `init` mode and requires a manifest in `push` mode
+
 ## Unreleased — Internal consolidation (Review plan, Phase 3)
 
 No tools were added, removed or renamed, and `tools/list` is unchanged. Results were compared before and after on Production and Sandbox across 80 read calls: every successful result is identical.

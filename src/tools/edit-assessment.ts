@@ -19,11 +19,11 @@ export const editAssessmentTool = {
     'set_answer (answer a question by question_id: TEXT/HTML/EXPRESSION/NUMBER/BOOLEAN/DATE via value, or ITEMS via items; ' +
     'supply answer_type for a not-yet-answered question — an already-answered question\'s type is inferred), ' +
     'set_status (DRAFT, SUBMITTED, OBSOLETE), set_name, set_owner (user UUID), ' +
-    'set_assignees (replace the assignee list), set_visibility (visible to everyone true/false). ' +
+    'set_assignees (replace the assignee list), set_visibility (visible to everyone true/false), set_review_domain (domain of the Assessment Review asset). ' +
     'ASSETS/USERORGROUPS/ATTACHMENTS answer types are not supported. ' +
     'Answer edits are merged into the current content, so unedited questions keep their answers. ' +
     'Two-step safety: confirm=false (default) previews every resolved op; confirm=true applies. ' +
-    'Prefer this over update_assessment (deprecated) for all assessment edits.',
+    'Use this for all assessment edits.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -42,7 +42,7 @@ export const editAssessmentTool = {
           properties: {
             op: {
               type: 'string',
-              enum: ['set_answer', 'set_status', 'set_name', 'set_owner', 'set_assignees', 'set_visibility'],
+              enum: ['set_answer', 'set_status', 'set_name', 'set_owner', 'set_assignees', 'set_visibility', 'set_review_domain'],
             },
             question_id: { type: 'string', description: 'For set_answer: the question UUID (from get_assessment content).' },
             value: {
@@ -73,6 +73,7 @@ export const editAssessmentTool = {
               },
             },
             visible: { type: 'boolean', description: 'For set_visibility: true = visible to everyone.' },
+            domain_id: { type: 'string', description: 'For set_review_domain: UUID of the domain for the Assessment Review asset.' },
           },
           required: ['op'],
         },
@@ -260,6 +261,15 @@ export async function executeEditAssessment(args: any): Promise<ToolResult> {
           }
           body.isVisibleToEveryone = raw.visible;
           resolvedOps.push({ op: raw.op, current: assessment.isVisibleToEveryone ?? null, proposed: raw.visible });
+          break;
+        }
+        case 'set_review_domain': {
+          if (typeof raw.domain_id !== 'string' || !raw.domain_id) {
+            resolvedOps.push({ op: raw.op, raw, error: 'set_review_domain requires domain_id (UUID of the domain for the Assessment Review asset).' });
+            break;
+          }
+          body.assessmentReviewDomain = { id: raw.domain_id };
+          resolvedOps.push({ op: raw.op, current: assessment.assessmentReviewDomain?.id ?? null, proposed: raw.domain_id });
           break;
         }
         default:

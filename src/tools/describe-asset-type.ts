@@ -92,7 +92,7 @@ export async function executeDescribeAssetType(args: any): Promise<ToolResult> {
       eligibleDomainTypes: assignments.eligibleDomainTypes,
     },
     nextActions: [
-      { tool: 'plan_asset_creation', args: { instance_name, asset_type_id: target.id, asset_name: '<name>', domain_name: '<domain>' }, why: 'Plan a create that respects this type.' },
+      { tool: 'prepare_create_asset', args: { instance_name, asset_type_id: target.id, asset_name: '<name>', domain_name: '<domain>' }, why: 'Plan a create that respects this type.' },
       { tool: 'find_traversal_path', args: { instance_name, source_asset_type_name: target.name, target_asset_type_name: '<target>' }, why: 'Find relation paths from this type.' },
     ],
   });

@@ -74,7 +74,7 @@ export async function executeSearchLineageEntities(args: any): Promise<ToolResul
     },
   }, [
     { tool: 'get_lineage_entity', args: { instance_name, entity_id: '<id from results>' }, why: 'Inspect a matching entity in detail.' },
-    { tool: 'get_lineage_downstream', args: { instance_name, entity_id: '<id from results>' }, why: 'Walk downstream from a match.' },
-    { tool: 'get_lineage_upstream', args: { instance_name, entity_id: '<id from results>' }, why: 'Walk upstream from a match.' },
+    { tool: 'get_lineage', args: { instance_name, entity_id: '<id from results>', direction: 'downstream' }, why: 'Walk downstream from a match.' },
+    { tool: 'get_lineage', args: { instance_name, entity_id: '<id from results>', direction: 'upstream' }, why: 'Walk upstream from a match.' },
   ]);
 }
