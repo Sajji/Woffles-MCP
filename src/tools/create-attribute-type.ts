@@ -1,7 +1,7 @@
 import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
-import { CollibraClient, attrKindFromDiscriminator } from '../utils/collibra-client.js';
+import { CollibraClient, attrKindFromDiscriminator, clearModelCaches } from '../utils/collibra-client.js';
 
 const VALID_KINDS = [
   'STRING',
@@ -169,6 +169,7 @@ export async function executeCreateAttributeType(args: any): Promise<ToolResult>
     if (public_id) body.publicId = public_id;
 
     const created = await client.restCallWithBody<any>('/rest/2.0/attributeTypes', 'POST', body);
+    clearModelCaches(instance); // new type must be visible to cached lookups immediately
 
     return okWithNext(
       {

@@ -46,20 +46,11 @@ export async function executeRemoveDataClassificationMatch(args: any): Promise<T
     const instance = getInstance(instance_name);
     const client = new CollibraClient(instance);
 
-    // Fetch the match first so we can show what will be deleted
-    let matchDetails: any = null;
-    try {
-      const matchResp = await client.restCall<any>(
-        `/rest/catalog/1.0/dataClassification/classificationMatches?limit=1&offset=0`,
-      );
-      // Try to find the specific match if a direct GET by ID endpoint is available
-      const directMatch = await client.restCall<any>(
-        `/rest/catalog/1.0/dataClassification/classificationMatches/${classification_match_id}`,
-      ).catch(() => null);
-      matchDetails = directMatch;
-    } catch {
-      // Not critical — proceed with just the ID
-    }
+    // Fetch the match first so we can show what will be deleted (best effort:
+    // the preview still works with just the ID if the lookup is unavailable).
+    const matchDetails: any = await client
+      .restCall<any>(`/rest/catalog/1.0/dataClassification/classificationMatches/${encodeURIComponent(classification_match_id)}`)
+      .catch(() => null);
 
     if (!confirm) {
       return okPretty({
@@ -72,7 +63,7 @@ export async function executeRemoveDataClassificationMatch(args: any): Promise<T
     }
 
     // DELETE the match
-    const url = `${instance.baseUrl}/rest/catalog/1.0/dataClassification/classificationMatches/${classification_match_id}`;
+    const url = `${instance.baseUrl}/rest/catalog/1.0/dataClassification/classificationMatches/${encodeURIComponent(classification_match_id)}`;
     const response = await authFetch(instance, url, {
       method: 'DELETE',
       headers: {

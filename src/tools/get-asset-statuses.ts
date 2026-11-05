@@ -1,4 +1,4 @@
-import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
+import { ok, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';

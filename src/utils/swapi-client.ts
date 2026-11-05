@@ -61,6 +61,8 @@ export class SwapiClient {
       response = await fetch(url, {
         method: 'GET',
         headers: { Accept: 'application/json' },
+        // A hung public API must not stall the tool (or a federated search) indefinitely.
+        signal: AbortSignal.timeout(15_000),
       });
     } catch (error) {
       throw new Error(`Failed to call Star Wars API at ${url}: ${(error as Error).message}`);

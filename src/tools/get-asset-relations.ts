@@ -1,6 +1,6 @@
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
-import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
+import { ok, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 
 export const getAssetRelationsTool = {
@@ -43,14 +43,15 @@ export const getAssetRelationsTool = {
   },
 };
 
-function buildRelationsQuery(assetId: string, limit: number, offset: number): string {
+/** All inputs are GraphQL variables — never spliced into the query text. */
+function buildRelationsQuery(): string {
   return `
-    {
-      assets(where: { id: { eq: "${assetId}" } }, limit: 1) {
+    query AssetRelations($id: UUID!, $limit: Int!, $offset: Int!) {
+      assets(where: { id: { eq: $id } }, limit: 1) {
         id
         displayName
         fullName
-        outgoingRelations(limit: ${limit}, offset: ${offset}) {
+        outgoingRelations(limit: $limit, offset: $offset) {
           type {
             source {
               name
@@ -72,7 +73,7 @@ function buildRelationsQuery(assetId: string, limit: number, offset: number): st
             displayName
           }
         }
-        incomingRelations(limit: ${limit}, offset: ${offset}) {
+        incomingRelations(limit: $limit, offset: $offset) {
           type {
             source {
               name
@@ -106,8 +107,11 @@ export async function executeGetAssetRelations(args: any): Promise<ToolResult> {
     const instance = getInstance(instance_name);
     const client = new CollibraClient(instance);
 
-    const query = buildRelationsQuery(asset_id, relation_limit, relation_offset);
-    const response = await client.graphqlQuery<{ data: { assets: any[] } }>(query);
+    const response = await client.graphqlQuery<{ data: { assets: any[] } }>(buildRelationsQuery(), {
+      id: asset_id,
+      limit: relation_limit,
+      offset: relation_offset,
+    });
 
     const asset = response.data.assets[0];
 

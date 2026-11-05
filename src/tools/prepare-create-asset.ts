@@ -91,7 +91,7 @@ export async function executePrepareCreateAsset(args: any): Promise<ToolResult> 
       }
     } else if (resolvedTypeId) {
       try {
-        const typeResp = await client.restCall<any>(`/rest/2.0/assetTypes/${resolvedTypeId}`);
+        const typeResp = await client.restCall<any>(`/rest/2.0/assetTypes/${encodeURIComponent(resolvedTypeId)}`);
         resolvedTypeName = typeResp.name;
       } catch {
         result.status = 'incomplete';
@@ -129,7 +129,7 @@ export async function executePrepareCreateAsset(args: any): Promise<ToolResult> 
       }
     } else if (resolvedDomainId) {
       try {
-        const domainResp = await client.restCall<any>(`/rest/2.0/domains/${resolvedDomainId}`);
+        const domainResp = await client.restCall<any>(`/rest/2.0/domains/${encodeURIComponent(resolvedDomainId)}`);
         resolvedDomainName = domainResp.name;
       } catch {
         result.status = 'incomplete';
@@ -157,7 +157,7 @@ export async function executePrepareCreateAsset(args: any): Promise<ToolResult> 
 
     // --- Duplicate check ---
     const dupResp = await client.restCall<any>(
-      `/rest/2.0/assets?name=${encodeURIComponent(asset_name)}&nameMatchMode=EXACT&domainId=${resolvedDomainId}&typeId=${resolvedTypeId}&limit=5&offset=0`,
+      `/rest/2.0/assets?name=${encodeURIComponent(asset_name)}&nameMatchMode=EXACT&domainId=${encodeURIComponent(resolvedDomainId)}&typeId=${encodeURIComponent(resolvedTypeId)}&limit=5&offset=0`,
     );
     const duplicates: any[] = dupResp.results || [];
     if (duplicates.length > 0) {

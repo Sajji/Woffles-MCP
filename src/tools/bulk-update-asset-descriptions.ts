@@ -71,9 +71,9 @@ export async function executeBulkUpdateAssetDescriptions(args: any): Promise<Too
     const lookups = await Promise.all(
       updates.map(async (u: any) => {
         const [asset, attributesResponse] = await Promise.all([
-          client.restCall<any>(`/rest/2.0/assets/${u.asset_id}`),
+          client.restCall<any>(`/rest/2.0/assets/${encodeURIComponent(u.asset_id)}`),
           client.restCall<any>(
-            `/rest/2.0/attributes?assetId=${u.asset_id}&typeIds=${DESCRIPTION_TYPE_ID}&limit=1`
+            `/rest/2.0/attributes?assetId=${encodeURIComponent(u.asset_id)}&typeIds=${DESCRIPTION_TYPE_ID}&limit=1`
           ),
         ]);
 

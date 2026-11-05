@@ -10,6 +10,30 @@ export function ok(structured: unknown): ToolResult {
 }
 
 /**
+ * Decide whether a tool result represents a failure, across the several error
+ * shapes tools emit:
+ *   - `{ error: true, message }` / `{ success: false }`
+ *   - `{ error: "<message>" }`
+ *   - envelope `{ errors: [...], data: null }`
+ *   - applied writes with `errors[]` and nothing applied
+ * Results marked `status: "partial"` (some writes applied, some failed) are NOT
+ * failures: the caller must see what was applied and must not blindly retry.
+ * Returns the failure message, or undefined for a success.
+ */
+export function failureMessage(result: ToolResult): string | undefined {
+  const s = result.structured as any;
+  if (!s || typeof s !== 'object' || Array.isArray(s)) return undefined;
+  if (s.status === 'partial') return undefined;
+  if (s.error === true || s.success === false) return String(s.message ?? s.errors?.[0]?.error ?? s.errors?.[0] ?? 'tool reported an error');
+  if (typeof s.error === 'string' && s.error) return s.error;
+  if (Array.isArray(s.errors) && s.errors.length && s.data == null && !(s.appliedActions?.length > 0)) {
+    const first = s.errors[0];
+    return typeof first === 'string' ? first : String(first?.error ?? first?.message ?? JSON.stringify(first));
+  }
+  return undefined;
+}
+
+/**
  * Same as {@link ok} but pretty-prints the text block (2-space indent).
  * Use for write tools / previews where readability matters.
  */

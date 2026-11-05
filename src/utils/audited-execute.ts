@@ -6,17 +6,9 @@ import type { ToolResult } from '../types.js';
 import { getAuditLog, getConfiguredSecrets, getInstance } from '../config.js';
 import { CollibraClient } from './collibra-client.js';
 import { redactSecrets } from './secrets.js';
+import { failureMessage } from './tool-result.js';
 import { sanitizeArgs, type AssetSnapshot } from './audit.js';
 import { affectedAssetIds, createdAssetIds, isApplyCall, MAX_SNAPSHOT_ASSETS, snapshotAssets } from './write-snapshots.js';
-
-function resultFailed(result: ToolResult): string | undefined {
-  const s = result.structured as any;
-  if (!s || typeof s !== 'object') return undefined;
-  if (s.error === true || s.success === false) return String(s.message ?? s.errors?.[0] ?? 'tool reported an error');
-  if (typeof s.error === 'string' && s.error) return s.error;
-  if (Array.isArray(s.errors) && s.errors.length && s.data == null) return String(s.errors[0]);
-  return undefined;
-}
 
 export async function auditedExecute(
   tool: string,
@@ -79,7 +71,7 @@ export async function auditedExecute(
     throw error;
   }
 
-  const failure = resultFailed(result);
+  const failure = failureMessage(result);
   const structured = result.structured as any;
   instanceName ??= typeof structured?.instance === 'string' ? structured.instance : null;
   const created = apply && !failure ? createdAssetIds(tool, structured) : [];

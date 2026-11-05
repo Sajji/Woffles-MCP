@@ -1,7 +1,8 @@
-import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
+import { ok, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
+import { chunk, mapLimit } from '../utils/concurrency.js';
 
 export const getApiCatalogTool = {
   name: 'get_api_catalog',
@@ -31,8 +32,9 @@ export const getApiCatalogTool = {
       },
       limit: {
         type: 'number',
-        description: 'Maximum number of top-level REST API assets to return (default: 50).',
-        default: 50,
+        description: 'Maximum number of top-level REST API assets to return (default: 20, max 50).',
+        default: 20,
+        maximum: 50,
       },
     },
     required: ['instance_name'],
@@ -44,49 +46,46 @@ export const getApiCatalogTool = {
   },
 };
 
-// ── GraphQL query builder ─────────────────────────────────────────────────────
-function buildApiCatalogQuery(nameFilter: string | undefined, limit: number): string {
-  const nameCondition = nameFilter
-    ? `, name: { contains: "${nameFilter.replace(/"/g, '')}" }`
-    : '';
-  const whereClause = `where: { type: { name: { eq: "REST API" } }${nameCondition} }`;
+// ── GraphQL queries ───────────────────────────────────────────────────────────
+// Collibra rejects queries whose potential node count (the product of nested
+// list limits) exceeds 100,000. One query nesting API → version → endpoint →
+// operation can never fit, so the tree is fetched in stages, and relations are
+// filtered by role server-side so unrelated relations don't consume the limits.
+// Role names are fixed constants; all user input travels as variables.
+// Every attribute counts twice (value + nested type), so ATTRS ≈ 60 nodes;
+// batch sizes below keep each query at roughly 60K nodes or fewer.
+const ATTRS = `
+  stringAttributes(limit: 15)    { type { name } stringValue }
+  multiValueAttributes(limit: 5) { type { name } stringValues }
+  booleanAttributes(limit: 10)   { type { name } booleanValue }`;
 
-  return `
-    {
-      assets(limit: ${limit}, ${whereClause}) {
-        id
-        fullName
-        displayName
-        stringAttributes     { type { name } stringValue }
-        multiValueAttributes { type { name } stringValues }
-        outgoingRelations(limit: 50) {
-          type { role }
-          target {
-            id fullName displayName
-            stringAttributes { type { name } stringValue }
-            outgoingRelations(limit: 100) {
-              type { role }
-              target {
-                id fullName displayName
-                stringAttributes     { type { name } stringValue }
-                multiValueAttributes { type { name } stringValues }
-                booleanAttributes    { type { name } booleanValue }
-                outgoingRelations(limit: 200) {
-                  type { role }
-                  target {
-                    id fullName displayName
-                    stringAttributes  { type { name } stringValue }
-                    booleanAttributes { type { name } booleanValue }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
+const byRole = (role: string, limit: number) => `
+  outgoingRelations(where: { type: { role: { eq: "${role}" } } }, limit: ${limit}) {
+    type { role }
+    target { id fullName displayName ${ATTRS} }
+  }`;
+
+/** Children (by relation role) of a batch of parent assets. */
+const childrenQuery = (role: string, parents: number, children: number) => `
+  query Children($ids: [UUID!]!) {
+    assets(where: { id: { in: $ids } }, limit: ${parents}) {
+      id
+      ${byRole(role, children)}
     }
-  `;
-}
+  }`;
+
+/** Stage 1: the API assets themselves (≤ 50 × 60 nodes). */
+const API_LIST_QUERY = `
+  query ApiCatalog($where: AssetFilter!, $limit: Int!) {
+    assets(where: $where, limit: $limit) { id fullName displayName ${ATTRS} }
+  }`;
+
+/** Stages 2–4: versions of ≤ 10 APIs, endpoints of 1 version, operations of ≤ 20 endpoints. */
+const STAGES = {
+  versions:   { role: 'has version',   batch: 10, children: 50 },   // 10 × 50 × 60  ≈ 30K
+  endpoints:  { role: 'exposes',       batch: 1,  children: 500 },  //  1 × 500 × 60 ≈ 30K
+  operations: { role: 'has operation', batch: 20, children: 50 },   // 20 × 50 × 60  ≈ 60K
+} as const;
 
 // ── Attribute extraction helpers ──────────────────────────────────────────────
 // In Collibra's GraphQL: STRING and SINGLE_VALUE_LIST attributes both appear
@@ -180,15 +179,38 @@ function shapeApi(apiAsset: any, includeOperations: boolean, baseUrl: string) {
 
 // ── Tool executor ─────────────────────────────────────────────────────────────
 export async function executeGetApiCatalog(args: any): Promise<ToolResult> {
-  const { instance_name, api_name, include_operations = true, limit = 50 } = args;
+  const { instance_name, api_name, include_operations = true, limit = 20 } = args;
 
   try {
     const instance = getInstance(instance_name);
     const client   = new CollibraClient(instance);
 
-    const query    = buildApiCatalogQuery(api_name, limit);
-    const response = await client.graphqlQuery<{ data: { assets: any[] } }>(query);
-    const rawApis  = response.data?.assets ?? [];
+    // Stage 1: API assets (name filter is a case-insensitive "contains" on the display name).
+    const where: any = { type: { name: { eq: 'REST API' } } };
+    if (api_name) where.displayName = { contains: api_name };
+    const listResp = await client.graphqlQuery<{ data: { assets: any[] } }>(API_LIST_QUERY, { where, limit });
+    const rawApis = listResp.data?.assets ?? [];
+
+    /**
+     * Attach each parent's role-filtered relations as `outgoingRelations`, in
+     * node-budgeted batches. Returns the child assets for the next stage.
+     */
+    const expand = async (parents: any[], stage: (typeof STAGES)[keyof typeof STAGES]): Promise<any[]> => {
+      const byId = new Map<string, any>(parents.map((p) => [p.id, p]));
+      const query = childrenQuery(stage.role, stage.batch, stage.children);
+      await mapLimit(chunk([...byId.keys()], stage.batch), 4, async (ids) => {
+        const resp = await client.graphqlQuery<{ data: { assets: any[] } }>(query, { ids });
+        for (const a of resp.data?.assets ?? []) {
+          const parent = byId.get(a.id);
+          if (parent) parent.outgoingRelations = a.outgoingRelations ?? [];
+        }
+      });
+      return parents.flatMap((p) => (p.outgoingRelations ?? []).map((r: any) => r.target).filter(Boolean));
+    };
+
+    const versions = await expand(rawApis, STAGES.versions);
+    const endpoints = await expand(versions, STAGES.endpoints);
+    if (include_operations) await expand(endpoints, STAGES.operations);
 
     const apis = rawApis.map(a => shapeApi(a, include_operations, instance.baseUrl));
 
@@ -211,7 +233,7 @@ export async function executeGetApiCatalog(args: any): Promise<ToolResult> {
       apis,
     }, [
       { tool: 'get_asset_by_id', args: { instance_name, asset_id: '<API or endpoint asset id from apis>' }, why: 'Drill into a specific API/endpoint asset.' },
-      { tool: 'query_assets', args: { instance_name, asset_type_name: 'API' }, why: 'Browse all API assets generically.' },
+      { tool: 'query_assets', args: { instance_name, asset_type_name: 'REST API' }, why: 'Browse all REST API assets generically.' },
     ], true);
 
   } catch (error) {

@@ -77,15 +77,92 @@ export const LINEAGE_UNAVAILABLE_MESSAGE =
   'to the lineage data sources. Collibra\'s own MCP server fails the same way in this situation. Business lineage via relations ' +
   '(get_asset_relations, find_traversal_path) still works.';
 
+/** How long operating-model lookups (relation/attribute types) are reused. */
+const MODEL_CACHE_TTL_MS = 10 * 60 * 1000;
+
+/**
+ * Operating-model caches shared by every client of the same instance. Tools
+ * construct a new CollibraClient per call, so per-object caches were always
+ * empty; keeping them per instance (with a TTL) makes them effective.
+ */
+interface InstanceCaches {
+  relationTypes: { at: number; map: Promise<Map<string, any>> } | null;
+  attributeTypes: Map<string, { at: number; type: any | null }>;
+}
+const instanceCaches = new Map<string, InstanceCaches>();
+
+function cachesFor(instance: CollibraInstance): InstanceCaches {
+  const key = `${instance.name}|${instance.baseUrl}`;
+  let c = instanceCaches.get(key);
+  if (!c) {
+    c = { relationTypes: null, attributeTypes: new Map() };
+    instanceCaches.set(key, c);
+  }
+  return c;
+}
+
+/** Drop cached operating-model lookups (all instances, or one). Used after model writes and by tests. */
+export function clearModelCaches(instance?: CollibraInstance): void {
+  if (instance) instanceCaches.delete(`${instance.name}|${instance.baseUrl}`);
+  else instanceCaches.clear();
+}
+
+/**
+ * Build a descriptive error from a failed response. Uses Collibra's
+ * `userMessage` when the body is JSON, and explains HTML bodies (typically a
+ * login page or a feature that isn't available on this instance/version).
+ */
+async function errorFromResponse(response: Response, context: string): Promise<CollibraHttpError> {
+  const body = await response.text().catch(() => '');
+  const contentType = response.headers.get('content-type') ?? '';
+  let detail = '';
+  if (/json/i.test(contentType) || body.trimStart().startsWith('{')) {
+    try {
+      const parsed = JSON.parse(body);
+      detail = parsed.userMessage ?? parsed.message ?? parsed.titleMessage ?? '';
+    } catch {
+      detail = body.slice(0, 300);
+    }
+  } else if (/html/i.test(contentType) || /^\s*</.test(body)) {
+    detail = 'the server returned an HTML page instead of JSON — the endpoint may not exist on this Collibra version, or the session is not authorized';
+  } else {
+    detail = body.slice(0, 300);
+  }
+  const status = `${response.status} ${response.statusText}`.trim();
+  if (response.status === 403) {
+    return new CollibraHttpError(
+      `${context}: 403 Forbidden — the authenticated user is likely missing a required Collibra permission or DGC scope for this operation.${detail ? ` ${detail}` : ''}`,
+      403,
+    );
+  }
+  return new CollibraHttpError(`${context}: ${status}${detail ? ` - ${detail}` : ''}`, response.status);
+}
+
+/**
+ * Parse a successful response as JSON. A 200 with an HTML body (e.g. an SSO or
+ * login page, or an app route that doesn't exist on this version) gets a clear
+ * message instead of "Unexpected token '<'".
+ */
+async function parseJson<T>(response: Response): Promise<T> {
+  const text = await response.text();
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    if (/^\s*</.test(text)) {
+      throw new CollibraHttpError(
+        'The server returned an HTML page instead of JSON — the endpoint may not exist on this Collibra version, or the session is not authorized.',
+        response.status,
+      );
+    }
+    throw new CollibraHttpError(`Invalid JSON in response: ${text.slice(0, 200)}`, response.status);
+  }
+}
+
 export class CollibraClient {
   private instance: CollibraInstance;
   private auth: AuthProvider;
   /** Set of endpoint prefixes already warned about, to avoid log spam. */
   private static clampWarned = new Set<string>();
-  /** Lazily-built relation-type-by-id cache, used by getAssetRelations. */
-  private relationTypesById: Map<string, any> | null = null;
-  /** Lazily-built attribute-type cache, used for RICH_TEXT detection. */
-  private attributeTypesById = new Map<string, any>();
   constructor(instance: CollibraInstance) {
     this.instance = instance;
     this.auth = getAuthProvider(instance, resolveAuthType(instance));
@@ -130,25 +207,16 @@ export class CollibraClient {
       });
 
       if (!response.ok) {
-        if (response.status === 403) {
-          throw new CollibraHttpError(
-            `REST API call failed: 403 Forbidden — the authenticated user is likely missing a required Collibra permission or DGC scope for this operation.`,
-            403,
-          );
-        }
         if (response.status === 401 && endpoint.startsWith('/technical_lineage_resource')) {
-          const body = await response.text().catch(() => '');
+          const body = await response.clone().text().catch(() => '');
           if (body.includes('Unauthorized User Token')) {
             throw new CollibraHttpError(LINEAGE_UNAVAILABLE_MESSAGE, 401);
           }
         }
-        throw new CollibraHttpError(
-          `REST API call failed: ${response.status} ${response.statusText}`,
-          response.status,
-        );
+        throw await errorFromResponse(response, 'REST API call failed');
       }
 
-      return await response.json() as T;
+      return await parseJson<T>(response);
     } catch (error) {
       throw wrapError(`Failed to call Collibra REST API at ${url}`, error);
     }
@@ -170,22 +238,9 @@ export class CollibraClient {
         getAuthProvider(this.instance, 'session'),
       );
       if (!response.ok) {
-        const errorBody = await response.text().catch(() => '');
-        let detail = '';
-        try {
-          detail = JSON.parse(errorBody)?.userMessage ?? '';
-        } catch {
-          detail = errorBody.slice(0, 300);
-        }
-        if (response.status === 403) {
-          throw new CollibraHttpError(
-            `403 Forbidden — the authenticated user is likely missing the required Collibra permission (e.g. Insights/Usage Analytics view).${detail ? ` ${detail}` : ''}`,
-            403,
-          );
-        }
-        throw new CollibraHttpError(`${response.status} ${response.statusText}${detail ? ` - ${detail}` : ''}`, response.status);
+        throw await errorFromResponse(response, 'Session API call failed');
       }
-      return (await response.json()) as T;
+      return await parseJson<T>(response);
     } catch (error) {
       throw wrapError(`Failed to call Collibra session API at ${url}`, error);
     }
@@ -208,17 +263,7 @@ export class CollibraClient {
       });
 
       if (!response.ok) {
-        const errorBody = await response.text().catch(() => '');
-        if (response.status === 403) {
-          throw new CollibraHttpError(
-            `REST API call failed: 403 Forbidden — the authenticated user is likely missing a required Collibra permission or DGC scope for this operation.${errorBody ? ` - ${errorBody}` : ''}`,
-            403,
-          );
-        }
-        throw new CollibraHttpError(
-          `REST API call failed: ${response.status} ${response.statusText}${errorBody ? ` - ${errorBody}` : ''}`,
-          response.status,
-        );
+        throw await errorFromResponse(response, 'REST API call failed');
       }
 
       const text = await response.text();
@@ -246,12 +291,10 @@ export class CollibraClient {
       });
 
       if (!response.ok) {
-        throw new Error(
-          `GraphQL query failed: ${response.status} ${response.statusText}`
-        );
+        throw await errorFromResponse(response, 'GraphQL query failed');
       }
 
-      const result = await response.json() as any;
+      const result = await parseJson<any>(response);
       
       if (result.errors) {
         throw new Error(
@@ -261,43 +304,8 @@ export class CollibraClient {
 
       return result as T;
     } catch (error) {
-      throw new Error(
-        `Failed to execute GraphQL query at ${url}: ${(error as Error).message}`
-      );
+      throw wrapError(`Failed to execute GraphQL query at ${url}`, error);
     }
-  }
-
-  /**
-   * Execute a paginated GraphQL query and return all results
-   */
-  async graphqlQueryPaginated<T extends { data: { assets: any[] } }>(
-    query: string,
-    limit: number = 100
-  ): Promise<any[]> {
-    let offset = 0;
-    let allAssets: any[] = [];
-    let hasMore = true;
-
-    while (hasMore) {
-      // Replace the limit and offset in the query
-      const paginatedQuery = query
-        .replace(/limit:\s*\d+/i, `limit: ${limit}`)
-        .replace(/offset:\s*null/i, `offset: ${offset}`);
-
-      const response = await this.graphqlQuery<T>(paginatedQuery);
-      const assets = response.data.assets;
-
-      allAssets = allAssets.concat(assets);
-
-      // Check if there are more results
-      if (assets.length < limit) {
-        hasMore = false;
-      } else {
-        offset += limit;
-      }
-    }
-
-    return allAssets;
   }
 
   /**
@@ -450,15 +458,18 @@ export class CollibraClient {
    * on 404/permission errors so callers can degrade gracefully.
    */
   async getAttributeType(typeId: string): Promise<any | null> {
-    if (this.attributeTypesById.has(typeId)) return this.attributeTypesById.get(typeId);
-    let type: any | null = null;
+    const cache = cachesFor(this.instance).attributeTypes;
+    const hit = cache.get(typeId);
+    if (hit && Date.now() - hit.at < MODEL_CACHE_TTL_MS) return hit.type;
     try {
-      type = await this.restCall<any>(`/rest/2.0/attributeTypes/${encodeURIComponent(typeId)}`);
-    } catch {
-      type = null;
+      const type = await this.restCall<any>(`/rest/2.0/attributeTypes/${encodeURIComponent(typeId)}`);
+      cache.set(typeId, { at: Date.now(), type });
+      return type;
+    } catch (err) {
+      // Cache a definitive "does not exist"; never cache transient/permission failures.
+      if (isNotFound(err)) cache.set(typeId, { at: Date.now(), type: null });
+      return null;
     }
-    this.attributeTypesById.set(typeId, type);
-    return type;
   }
 
   /** True when the attribute type is a RICH_TEXT string attribute. */
@@ -492,13 +503,20 @@ export class CollibraClient {
    * of this client instance since the operating model rarely changes mid-run.
    */
   async getRelationTypeMap(): Promise<Map<string, any>> {
-    if (this.relationTypesById) return this.relationTypesById;
-    const types = await this.restPaginate<any>('/rest/2.0/relationTypes', {
-      sortField: 'ROLE',
-      sortOrder: 'ASC',
+    const caches = cachesFor(this.instance);
+    if (caches.relationTypes && Date.now() - caches.relationTypes.at < MODEL_CACHE_TTL_MS) {
+      return caches.relationTypes.map;
+    }
+    // Store the promise so concurrent callers share one fetch; drop it on failure.
+    const map = this.restPaginate<any>('/rest/2.0/relationTypes', { sortField: 'ROLE', sortOrder: 'ASC' }).then(
+      (types) => new Map(types.map((t) => [t.id, t])),
+    );
+    const entry = { at: Date.now(), map };
+    caches.relationTypes = entry;
+    map.catch(() => {
+      if (caches.relationTypes === entry) caches.relationTypes = null;
     });
-    this.relationTypesById = new Map(types.map((t) => [t.id, t]));
-    return this.relationTypesById;
+    return map;
   }
 
   /** Generate the Collibra UI URL for an asset */

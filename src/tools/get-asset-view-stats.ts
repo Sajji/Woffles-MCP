@@ -51,7 +51,7 @@ export async function executeGetAssetViewStats(args: any): Promise<ToolResult> {
     const client = new CollibraClient(instance);
 
     const qp = new URLSearchParams({ limit: String(Math.min(limit, 1000)), offset: String(offset) });
-    const resp = await client.restCall<any>(`/rest/2.0/navigation/${mode}?${qp.toString()}`);
+    const resp = await client.restCall<any>(`/rest/2.0/navigation/${encodeURIComponent(mode)}?${qp.toString()}`);
     const results: any[] = resp.results || [];
 
     const entries = results.map((e) => {

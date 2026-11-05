@@ -1,4 +1,5 @@
-import { isReadOnly, isToolEnabledByConfig, getStarWarsSource } from '../config.js';
+import { isReadOnly, isToolEnabledByConfig, getStarWarsSource, getToolToggles } from '../config.js';
+import { normalizeInputSchema, validateToolArgs } from '../utils/validation.js';
 import { WRITE_TOOL_NAMES, annotationsFor, humanizeToolName } from './annotations.js';
 import type { ToolResult } from '../types.js';
 import { getInstancesTool, executeGetInstances } from './get-instances.js';
@@ -221,14 +222,45 @@ const aliasTools = TOOL_ALIASES.map(({ alias, canonical }) => {
 // Aliases inherit the canonical tool's hints (same executor, same effect).
 const aliasCanonical = new Map(TOOL_ALIASES.map(({ alias, canonical }) => [alias, canonical]));
 
+/** Canonical name for a tool or alias. */
+const canonicalOf = (name: string) => aliasCanonical.get(name) ?? name;
+
 export const registeredTools = [...allTools, ...aliasTools].map((t: any) => ({
   ...t,
-  annotations: { ...annotationsFor(aliasCanonical.get(t.name) ?? t.name), title: humanizeToolName(t.name) },
+  // Central constraints (UUID patterns, limit/offset bounds) are advertised AND enforced.
+  inputSchema: normalizeInputSchema(t.inputSchema),
+  annotations: { ...annotationsFor(canonicalOf(t.name)), title: humanizeToolName(t.name) },
 }));
 
+/**
+ * Per-tool toggles, alias-aware. An alias is the same tool as its canonical
+ * name, so: with an allowlist (enabledTools) listing EITHER name enables it;
+ * with a denylist (disabledTools) listing EITHER name disables it.
+ */
+function enabledByToggles(name: string): boolean {
+  const canonical = canonicalOf(name);
+  if (canonical === name) return isToolEnabledByConfig(name);
+  const allowlistMode = getToolToggles().enabled.length > 0;
+  return allowlistMode
+    ? isToolEnabledByConfig(name) || isToolEnabledByConfig(canonical)
+    : isToolEnabledByConfig(name) && isToolEnabledByConfig(canonical);
+}
+
+/** Why a tool (or alias) is unavailable, or null when it may be used. Read-only checks the canonical name. */
+function unavailableReason(name: string): string | null {
+  if (isReadOnly() && WRITE_TOOL_NAMES.includes(canonicalOf(name))) {
+    return `Tool "${name}" is disabled: this server is running in read-only mode. ` +
+      `Set "readOnly": false in config.json to enable write operations.`;
+  }
+  if (!enabledByToggles(name)) {
+    return `Tool "${name}" is disabled by server configuration ` +
+      `(enabledTools/disabledTools or COLLIBRA_ENABLED_TOOLS/COLLIBRA_DISABLED_TOOLS).`;
+  }
+  return null;
+}
+
 export const tools = registeredTools
-  .filter(t => !(isReadOnly() && WRITE_TOOL_NAMES.includes(t.name)))
-  .filter(t => isToolEnabledByConfig(t.name))
+  .filter(t => unavailableReason(t.name) === null)
   // Don't advertise the opt-in demo source when it's switched off.
   .filter(t => t.name !== 'search_star_wars' || getStarWarsSource().enabled);
 // Tool executor map. Executors may return either:
@@ -346,30 +378,20 @@ for (const { alias, canonical } of TOOL_ALIASES) {
 // `ToolResult` regardless of whether the underlying executor returned a
 // string (legacy) or a `ToolResult` (refactored tool).
 export async function executeTool(toolName: string, args: any): Promise<ToolResult> {
-  if (isReadOnly() && WRITE_TOOL_NAMES.includes(toolName)) {
-    throw new Error(
-      `Tool "${toolName}" is disabled: this server is running in read-only mode. ` +
-      `Set "readOnly": false in config.json to enable write operations.`
-    );
-  }
-
-  if (!isToolEnabledByConfig(toolName)) {
-    throw new Error(
-      `Tool "${toolName}" is disabled by server configuration ` +
-      `(enabledTools/disabledTools or COLLIBRA_ENABLED_TOOLS/COLLIBRA_DISABLED_TOOLS).`
-    );
-  }
-
   const executor = toolExecutors[toolName];
-
   if (!executor) {
     throw new Error(`Unknown tool: ${toolName}`);
   }
 
-  const canonical = aliasCanonical.get(toolName) ?? toolName;
+  const reason = unavailableReason(toolName);
+  if (reason) throw new Error(reason);
+
+  const canonical = canonicalOf(toolName);
   const inputSchema = registeredTools.find((t) => t.name === toolName)?.inputSchema;
-  return auditedExecute(canonical, args, inputSchema, WRITE_TOOL_NAMES.includes(canonical), async () => {
-    const result = await executor(args);
+  // Throws ToolInputError (→ MCP isError) before anything reaches Collibra.
+  const validArgs = validateToolArgs(toolName, inputSchema, args);
+  return auditedExecute(canonical, validArgs, inputSchema, WRITE_TOOL_NAMES.includes(canonical), async () => {
+    const result = await executor(validArgs);
     return typeof result === 'string' ? { text: result } : result;
   });
 }

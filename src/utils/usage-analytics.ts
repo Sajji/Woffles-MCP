@@ -1,4 +1,5 @@
 import { CollibraClient } from './collibra-client.js';
+import { isUuid } from './validation.js';
 
 /**
  * Helpers for Collibra's Usage Analytics APIs (`/rest/usageAnalyticsUsage/v1`
@@ -19,7 +20,6 @@ const SERVICE_PATH: Record<UaService, string> = {
 };
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export type QueryValue = string | number | boolean | string[] | undefined | null;
 
@@ -282,7 +282,7 @@ export class UsageAnalyticsApi {
           resolved.push({ id: v, label: v });
           continue;
         }
-        if (UUID_RE.test(v)) {
+        if (isUuid(v)) {
           resolved.push({ id: v, label: v });
           continue;
         }
@@ -322,7 +322,7 @@ export interface AssetContext {
 /** Batch-fetch name, type, domain and community for assets via GraphQL. Missing/deleted assets are omitted. */
 export async function fetchAssetContext(client: CollibraClient, ids: string[]): Promise<Map<string, AssetContext>> {
   const out = new Map<string, AssetContext>();
-  const unique = [...new Set(ids)].filter((id) => UUID_RE.test(id));
+  const unique = [...new Set(ids)].filter((id) => isUuid(id));
   for (let i = 0; i < unique.length; i += 100) {
     const batch = unique.slice(i, i + 100);
     const query = `{ assets(limit: ${batch.length}, where: { id: { in: ${JSON.stringify(batch)} } }) {
@@ -350,7 +350,7 @@ export async function fetchUserNames(
   const entries = await Promise.all(
     unique.map(async (id) => {
       try {
-        const u = await client.restCall<any>(`/rest/2.0/users/${id}`);
+        const u = await client.restCall<any>(`/rest/2.0/users/${encodeURIComponent(id)}`);
         const fullName = [u.firstName, u.lastName].filter(Boolean).join(' ') || null;
         return [id, { fullName, userName: u.userName ?? null }] as const;
       } catch {

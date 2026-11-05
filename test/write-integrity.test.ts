@@ -172,7 +172,7 @@ beforeAll(async () => {
 
     // Domains
     if (GET && p === '/rest/2.0/domains') {
-      return list(q.get('name') === 'Glossary' ? [{ id: 'dom-1', name: 'Glossary', type: { id: 'type-glossary', name: 'Glossary' } }] : []);
+      return list(q.get('name') === 'Glossary' ? [{ id: 'dom-1', name: 'Glossary', type: { id: 'c0000000-0000-0000-0000-000000000010', name: 'Glossary' } }] : []);
     }
 
     // Mappings
@@ -331,7 +331,7 @@ describe('safety defaults and conflict detection', () => {
   });
 
   it('create_domain reports a conflict when the name exists with another type', async () => {
-    const res = await call('create_domain', { name: 'Glossary', community_id: 'c1', type_id: 'type-other' });
+    const res = await call('create_domain', { name: 'Glossary', community_id: 'c0000000-0000-0000-0000-000000000001', type_id: 'c0000000-0000-0000-0000-0000000000ff' });
     expect(res).toMatchObject({ error: true, status: 'conflict' });
     expect(sent('POST', '/rest/2.0/domains')).toHaveLength(0);
   });

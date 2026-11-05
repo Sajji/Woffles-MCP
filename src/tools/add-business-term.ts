@@ -1,4 +1,4 @@
-import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
+import { ok, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
@@ -151,6 +151,7 @@ export async function executeAddBusinessTerm(args: any): Promise<ToolResult> {
       output.attributesCreated = createdAttributes;
     }
     if (attributeErrors.length > 0) {
+      output.status = 'partial';
       output.attributeErrors = attributeErrors;
       output.warning =
         'Business term was created successfully but some attributes could not be set. See attributeErrors for details.';

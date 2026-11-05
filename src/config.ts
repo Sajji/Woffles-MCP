@@ -64,8 +64,8 @@ export function getPlaintextPasswordInstances(): string[] {
 
 /** Every resolved instance secret (passwords, client-key passphrases), for redacting output. */
 export function getConfiguredSecrets(): string[] {
-  return loadConfig()
-    .instances.flatMap((i) => [i.password, i.tls?.clientKeyPassphrase])
+  const cfg = loadConfig();
+  return [...cfg.instances.flatMap((i) => [i.password, i.tls?.clientKeyPassphrase]), cfg.http?.token]
     .filter((s): s is string => !!s);
 }
 

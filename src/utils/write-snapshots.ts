@@ -168,10 +168,10 @@ export async function applyRestore(client: CollibraClient, actions: RestoreActio
   for (const a of actions) {
     try {
       if (a.action === 'change_properties') {
-        await client.restCallWithBody(`/rest/2.0/assets/${a.assetId}`, 'PATCH', { id: a.assetId, ...(a.to as object) });
+        await client.restCallWithBody(`/rest/2.0/assets/${encodeURIComponent(a.assetId)}`, 'PATCH', { id: a.assetId, ...(a.to as object) });
         applied++;
       } else if (a.action === 'set_attribute_values') {
-        await client.restCallWithBody(`/rest/2.0/assets/${a.assetId}/attributes`, 'PUT', { typeId: a.typeId, values: a.to });
+        await client.restCallWithBody(`/rest/2.0/assets/${encodeURIComponent(a.assetId)}/attributes`, 'PUT', { typeId: a.typeId, values: a.to });
         applied++;
       }
     } catch (error) {

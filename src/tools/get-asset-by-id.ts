@@ -85,21 +85,22 @@ export const getAssetByIdTool = {
 const ATTRIBUTES_LIMIT = 100;
 const RELATIONS_LIMIT = 50;
 
-function buildAssetDetailsQuery(
-  assetId: string,
-  outgoingCursor?: string,
-  incomingCursor?: string,
-): string {
-  const outgoingWhere = outgoingCursor
-    ? `, where: { id: { gt: "${outgoingCursor}" } }`
-    : '';
-  const incomingWhere = incomingCursor
-    ? `, where: { id: { gt: "${incomingCursor}" } }`
-    : '';
+/**
+ * Asset id and relation cursors are passed as GraphQL variables (never spliced
+ * into the query text). Cursor filters are only declared when a cursor is given.
+ */
+function buildAssetDetailsQuery(hasOutgoingCursor: boolean, hasIncomingCursor: boolean): string {
+  const vars = [
+    '$id: UUID!',
+    ...(hasOutgoingCursor ? ['$outgoingWhere: RelationFilter'] : []),
+    ...(hasIncomingCursor ? ['$incomingWhere: RelationFilter'] : []),
+  ].join(', ');
+  const outgoingWhere = hasOutgoingCursor ? ', where: $outgoingWhere' : '';
+  const incomingWhere = hasIncomingCursor ? ', where: $incomingWhere' : '';
 
   return `
-    {
-      assets(where: { id: { eq: "${assetId}" } }, limit: 1) {
+    query AssetDetails(${vars}) {
+      assets(where: { id: { eq: $id } }, limit: 1) {
         id
         displayName
         fullName
@@ -156,10 +157,15 @@ export async function executeGetAssetById(args: any): Promise<ToolResult> {
     // Fetch asset details via GraphQL and responsibilities via REST in parallel
     const [gqlResponse, responsibilitiesResponse, breadcrumbResponse, generatedContext] = await Promise.all([
       client.graphqlQuery<{ data: { assets: any[] } }>(
-        buildAssetDetailsQuery(asset_id, outgoing_relations_cursor, incoming_relations_cursor),
+        buildAssetDetailsQuery(!!outgoing_relations_cursor, !!incoming_relations_cursor),
+        {
+          id: asset_id,
+          ...(outgoing_relations_cursor ? { outgoingWhere: { id: { gt: outgoing_relations_cursor } } } : {}),
+          ...(incoming_relations_cursor ? { incomingWhere: { id: { gt: incoming_relations_cursor } } } : {}),
+        },
       ),
       client.restCall<any>(
-        `/rest/2.0/responsibilities?resourceIds=${asset_id}&includeInherited=${include_inherited}&limit=1000`
+        `/rest/2.0/responsibilities?${new URLSearchParams({ resourceIds: asset_id, includeInherited: String(include_inherited), limit: '1000' })}`
       ).catch(() => ({ results: [] })),
       include_breadcrumb
         ? client.restCall<any>(`/rest/2.0/assets/${encodeURIComponent(asset_id)}/breadcrumb`).catch(() => null)

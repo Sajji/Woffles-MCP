@@ -4,7 +4,6 @@ import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
 
 // The fixed public ID for the Business Term asset type in Collibra
-const BUSINESS_TERM_TYPE_PUBLIC_ID = 'BusinessTerm';
 // The fixed attribute type UUID for the Definition attribute
 const DEFINITION_ATTR_TYPE_ID = '00000000-0000-0000-0000-000000000202';
 
@@ -92,7 +91,7 @@ export async function executePrepareAddBusinessTerm(args: any): Promise<ToolResu
       }
     } else if (resolvedDomainId) {
       try {
-        const domainResp = await client.restCall<any>(`/rest/2.0/domains/${resolvedDomainId}`);
+        const domainResp = await client.restCall<any>(`/rest/2.0/domains/${encodeURIComponent(resolvedDomainId)}`);
         resolvedDomainName = domainResp.name;
       } catch {
         result.status = 'incomplete';

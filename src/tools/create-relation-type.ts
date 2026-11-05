@@ -1,7 +1,7 @@
 import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
+import { CollibraClient, clearModelCaches } from '../utils/collibra-client.js';
 
 export const createRelationTypeTool = {
   name: 'create_relation_type',
@@ -99,6 +99,7 @@ export async function executeCreateRelationType(args: any): Promise<ToolResult> 
     if (description) body.description = description;
 
     const created = await client.restCallWithBody<any>('/rest/2.0/relationTypes', 'POST', body);
+    clearModelCaches(instance); // new type must be visible to cached lookups immediately
 
     return okWithNext({
       action: 'created',

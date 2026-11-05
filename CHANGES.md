@@ -1,5 +1,52 @@
 # Changelog
 
+## Unreleased — Platform fixes (Review plan, Phase 1)
+
+### Fixed
+- **Failed calls are now reported as errors.** Most tools reported a failure as an ordinary result, so clients and agents could not tell a failed call from a successful one. The server now sets MCP `isError: true` whenever a tool's result describes a failure. Writes that were partly applied are marked `status: "partial"` and are not flagged as errors, so an agent can see what was applied and doesn't blindly retry. `failureMessage()` in `src/utils/tool-result.ts` decides this, and the audit log uses the same check.
+- **Tool arguments are now checked against each tool's schema** (`src/utils/validation.ts`). The checks happen before anything is sent to Collibra:
+  - wrong types are coerced (`"25"` → `25`)
+  - schema defaults are applied
+  - enum values and required arguments are enforced
+
+  The server also adds two kinds of limits to every tool's schema, and these show up in `tools/list` too:
+  - every `limit` must be between 1 and 1000, and `offset` must be 0 or more
+  - Core REST id parameters must be UUIDs
+
+  Invalid input returns a readable error such as `asset_id must be a UUID` or `limit must be <= 1000`.
+- **GraphQL injection.** `query_assets`, `get_asset_by_id`, `get_asset_relations` and `get_api_catalog` pasted user input into the query text, so a quote in an asset type name could change the query. All user input is now passed as GraphQL variables.
+- **Aliases no longer bypass `disabledTools`.** Previously, disabling a tool left its alias listed and callable. Now:
+  - denylisting either the tool or its alias disables both
+  - allowlisting either one enables both
+- **`get_api_catalog`** always failed because the nested query asked for 86 million nodes, against Collibra's limit of 100,000. It now fetches the catalog in stages that each stay within that limit, and relations are filtered by role on the server. Two smaller fixes: the name filter used a field that doesn't exist on assets, and `include_operations=false` now actually skips fetching operations.
+- **Clearer Collibra errors.** Errors now:
+  - keep the HTTP status, so a 404 can be told apart from a 403
+  - include Collibra's `userMessage`
+  - explain HTML responses instead of failing with `Unexpected token '<'` (seen in Usage Analytics on older versions)
+- User-derived values placed in REST paths are now URL-encoded at the remaining ~17 places that weren't.
+
+### Changed
+- **Shared lookups now actually get reused.** Relation-type and attribute-type lookups are shared by all clients of an instance and refresh after 10 minutes. Previously each tool call started with empty caches. Creating a relation type or attribute type clears them.
+- **`query_assets`** summary pages now default to 500 rows instead of 5000; a full 5000-row page was about 100K characters.
+- **HTTP mode** only accepts requests addressed to localhost (`Host`/`Origin` headers), which blocks DNS-rebinding attacks from a web page. Other changes:
+  - optional `http.token` requires an `Authorization: Bearer …` header
+  - an invalid JSON body returns 400 instead of 500
+- **Server instructions** no longer say that every tool needs `instance_name`, and they explain `isError`.
+- **Dependencies:** removed the unused `js-yaml`, and `npm audit fix` cleared 9 vulnerabilities in indirect dependencies, now 0. Star Wars API calls time out after 15 seconds.
+- **Cleanup:**
+  - removed dead code: the unused GraphQL types, `graphqlQueryPaginated`, and three copies of the UUID regex
+  - removed unused imports
+  - `tsconfig` now sets `noUnusedLocals` so unused code fails the build
+  - `.gitignore`: `dcat*` is anchored to the repository root
+
+### Tests
+- `test/platform.test.ts` covers:
+  - argument validation and the added schema limits
+  - `failureMessage`
+  - alias toggles in both allowlist and denylist modes
+  - GraphQL variables
+  - descriptive HTTP errors
+
 ## Unreleased — Write-integrity fixes (Review plan, Phase 0)
 
 ### Fixed

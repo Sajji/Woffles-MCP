@@ -73,9 +73,9 @@ export async function executeUpdateAssetDescription(args: any): Promise<ToolResu
 
     // Step 1: Fetch asset info and current Description attribute
     const [asset, attributesResponse] = await Promise.all([
-      client.restCall<any>(`/rest/2.0/assets/${asset_id}`),
+      client.restCall<any>(`/rest/2.0/assets/${encodeURIComponent(asset_id)}`),
       client.restCall<any>(
-        `/rest/2.0/attributes?assetId=${asset_id}&typeIds=${DESCRIPTION_TYPE_ID}&limit=1`
+        `/rest/2.0/attributes?assetId=${encodeURIComponent(asset_id)}&typeIds=${DESCRIPTION_TYPE_ID}&limit=1`
       ),
     ]);
 
@@ -106,7 +106,7 @@ export async function executeUpdateAssetDescription(args: any): Promise<ToolResu
     if (existingAttr) {
       // PATCH existing Description attribute
       result = await client.restCallWithBody<any>(
-        `/rest/2.0/attributes/${existingAttr.id}`,
+        `/rest/2.0/attributes/${encodeURIComponent(existingAttr.id)}`,
         'PATCH',
         { id: existingAttr.id, value: new_description },
       );

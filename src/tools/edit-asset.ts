@@ -4,6 +4,7 @@ import { getInstance } from '../config.js';
 import { CollibraClient, isNotFound } from '../utils/collibra-client.js';
 import { findRelation } from '../utils/relations.js';
 import { pickExact } from '../utils/resolve.js';
+import { isUuid } from '../utils/validation.js';
 import {
   coerceAttributeValues,
   getAttributeTypeInfo,
@@ -134,10 +135,6 @@ interface ResolvedOp {
   existingResponsibilityId?: string;
 }
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-function isUuid(v: string): boolean {
-  return typeof v === 'string' && UUID_RE.test(v.trim());
-}
 
 type Resolved<T> = { ok: true; value: T } | { ok: false; error: string };
 
@@ -149,7 +146,7 @@ async function resolveRoleId(
   client: CollibraClient,
   role: string,
 ): Promise<Resolved<{ id: string; name: string }>> {
-  if (isUuid(role)) {
+  if (isUuid(role.trim())) {
     try {
       const r = await client.restCall<any>(`/rest/2.0/roles/${encodeURIComponent(role.trim())}`);
       return { ok: true, value: { id: r.id, name: r.name } };
@@ -172,7 +169,7 @@ async function resolveOwnerId(
   client: CollibraClient,
   owner: string,
 ): Promise<Resolved<{ id: string; type: 'User' | 'UserGroup'; label: string }>> {
-  if (isUuid(owner)) {
+  if (isUuid(owner.trim())) {
     const id = encodeURIComponent(owner.trim());
     try {
       const u = await client.restCall<any>(`/rest/2.0/users/${id}`);
@@ -534,6 +531,8 @@ export async function executeEditAsset(args: any): Promise<ToolResult> {
 
     return okWithNext({
       mode: 'APPLIED',
+      // partial: some ops applied, some failed — report, don't flag the whole call as an error.
+      ...(errors.length > 0 && applied.length > 0 ? { status: 'partial' } : {}),
       asset: { id: asset_id, name: asset.name, url: client.assetUrl(asset_id) },
       requestedOps: operations.length,
       appliedActions: applied,

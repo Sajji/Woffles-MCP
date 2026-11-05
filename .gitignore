@@ -153,7 +153,7 @@ graphqlSchema.json
 **/.DS_Store
 
 #dcat stuff
-dcat*
+/dcat*
 
 #scripts
 /scripts/

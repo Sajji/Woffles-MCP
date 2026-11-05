@@ -15,7 +15,7 @@ export const queryAssetsTool = {
     'Use detail_level="full" only when the user wants complete attribute details for a ' +
     'specific asset type — this fetches all attributes, responsibilities, tags, and metadata. ' +
     'detail_level="summary" (default) returns fullName, displayName, and Description only — ' +
-    'very efficient: fetches up to 5000 assets per page which covers most datasets in a single call. ' +
+    'compact: fetches 500 assets per page by default (up to 1000). ' +
     'detail_level="full" returns all attributes but defaults to 100 per page due to payload size. ' +
     'Returns one page of results at a time to stay within response size limits. ' +
     'Check has_more in the response and call again with the returned next_offset to fetch additional pages.',
@@ -38,7 +38,7 @@ export const queryAssetsTool = {
         enum: ['summary', 'full'],
         description:
           '"summary" (default) returns fullName, displayName, and Description attribute only — ' +
-          'compact per-asset payload allows up to 5000 results per page, covering most datasets in one call. ' +
+          'compact per-asset payload; 500 results per page by default (max 1000). ' +
           '"full" returns all attribute types (string, boolean, numeric, date, multi-value), ' +
           'responsibilities, and tags — use only when the user needs all attribute detail ' +
           'and an asset type filter is applied. Defaults to 100 per page due to heavier payload.',
@@ -46,7 +46,7 @@ export const queryAssetsTool = {
       },
       limit: {
         type: 'number',
-        description: 'Results per page. Defaults to 5000 for summary (compact payload) and 100 for full ' +
+        description: 'Results per page (max 1000). Defaults to 500 for summary and 100 for full ' +
           '(heavy payload). Reduce if responses are still too large.',
       },
       offset: {
@@ -83,10 +83,21 @@ export const queryAssetsTool = {
   },
 };
 
-function buildSummaryQuery(whereClause: string, limit: number, offset: number): string {
+/**
+ * Query header. All user input travels as GraphQL variables — never spliced
+ * into the query text — so a crafted asset type name cannot alter the query.
+ */
+function queryHeader(hasWhere: boolean): string {
+  return hasWhere
+    ? `query QueryAssets($limit: Int!, $offset: Int!, $where: AssetFilter) {
+      assets(limit: $limit, offset: $offset, where: $where) {`
+    : `query QueryAssets($limit: Int!, $offset: Int!) {
+      assets(limit: $limit, offset: $offset) {`;
+}
+
+function buildSummaryQuery(hasWhere: boolean): string {
   return `
-    {
-      assets(limit: ${limit}, offset: ${offset}${whereClause ? `, ${whereClause}` : ''}) {
+    ${queryHeader(hasWhere)}
         id
         fullName
         displayName
@@ -98,10 +109,9 @@ function buildSummaryQuery(whereClause: string, limit: number, offset: number): 
   `;
 }
 
-function buildFullQuery(whereClause: string, limit: number, offset: number): string {
+function buildFullQuery(hasWhere: boolean): string {
   return `
-    {
-      assets(limit: ${limit}, offset: ${offset}${whereClause ? `, ${whereClause}` : ''}) {
+    ${queryHeader(hasWhere)}
         id
         displayName
         fullName
@@ -163,25 +173,22 @@ function buildFullQuery(whereClause: string, limit: number, offset: number): str
 
 export async function executeQueryAssets(args: any): Promise<ToolResult> {
   const { instance_name, asset_type_name, detail_level = 'summary', offset = 0 } = args;
-  // Smart defaults: summary payloads are tiny per asset so 5000 is safe;
-  // full payloads carry all attributes so keep pages small.
-  const defaultLimit = detail_level === 'full' ? 100 : 5000;
+  // Summary rows are small but 5000 of them (~100K chars) overwhelm an agent's
+  // context; full payloads carry all attributes so keep pages smaller still.
+  const defaultLimit = detail_level === 'full' ? 100 : 500;
   const limit: number = args.limit ?? defaultLimit;
 
   try {
     const instance = getInstance(instance_name);
     const client = new CollibraClient(instance);
 
-    const whereClause = asset_type_name
-      ? `where: { type: { name: { eq: "${asset_type_name}" } } }`
-      : '';
-
-    const query =
-      detail_level === 'full'
-        ? buildFullQuery(whereClause, limit, offset)
-        : buildSummaryQuery(whereClause, limit, offset);
-
-    const response = await client.graphqlQuery<{ data: { assets: any[] } }>(query);
+    const where = asset_type_name ? { type: { name: { eq: asset_type_name } } } : undefined;
+    const query = detail_level === 'full' ? buildFullQuery(!!where) : buildSummaryQuery(!!where);
+    const response = await client.graphqlQuery<{ data: { assets: any[] } }>(query, {
+      limit,
+      offset,
+      ...(where ? { where } : {}),
+    });
     const assets = response.data.assets.map((a: any) => ({
       ...a,
       url: client.assetUrl(a.id),

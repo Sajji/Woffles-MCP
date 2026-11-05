@@ -1,6 +1,6 @@
 import { getInstance } from '../config.js';
 import { CollibraClient, enrichResponseUrls } from '../utils/collibra-client.js';
-import { ok, okPretty } from '../utils/tool-result.js';
+import { ok } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 
 export const getAssetResponsibilitiesTool = {
@@ -51,10 +51,10 @@ export async function executeGetAssetResponsibilities(args: any): Promise<ToolRe
     const client = new CollibraClient(instance);
 
     // Get asset basic info for context
-    const asset = await client.restCall<any>(`/rest/2.0/assets/${asset_id}`);
+    const asset = await client.restCall<any>(`/rest/2.0/assets/${encodeURIComponent(asset_id)}`);
 
     // Get responsibilities
-    const responsibilitiesUrl = `/rest/2.0/responsibilities?resourceIds=${asset_id}&includeInherited=${include_inherited}&limit=1000`;
+    const responsibilitiesUrl = `/rest/2.0/responsibilities?resourceIds=${encodeURIComponent(asset_id)}&includeInherited=${include_inherited}&limit=1000`;
     const responsibilitiesResponse = await client.restCall<any>(responsibilitiesUrl);
 
     let allResponsibilities = responsibilitiesResponse.results || [];

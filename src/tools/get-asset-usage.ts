@@ -1,4 +1,5 @@
 import { withEnvelope, errorEnvelope } from '../utils/tool-result.js';
+import { isUuid } from '../utils/validation.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
@@ -12,7 +13,6 @@ import {
 } from '../utils/usage-analytics.js';
 
 const OPERATION = 'get_asset_usage';
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export const getAssetUsageTool = {
   name: OPERATION,
@@ -48,7 +48,7 @@ export const getAssetUsageTool = {
 
 async function resolveAssetId(client: CollibraClient, assetId?: string, assetName?: string): Promise<string> {
   if (assetId) {
-    if (!UUID_RE.test(assetId)) throw new Error(`asset_id must be a UUID (got "${assetId}").`);
+    if (!isUuid(assetId)) throw new Error(`asset_id must be a UUID (got "${assetId}").`);
     return assetId;
   }
   if (!assetName) throw new Error('Provide asset_id or asset_name.');
