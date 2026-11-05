@@ -54,17 +54,15 @@ export async function executeGetAssetViewStats(args: any): Promise<ToolResult> {
     const resp = await client.restCall<any>(`/rest/2.0/navigation/${encodeURIComponent(mode)}?${qp.toString()}`);
     const results: any[] = resp.results || [];
 
-    const entries = results.map((e) => {
-      const asset = e.asset ?? e;
-      return {
-        assetId: asset?.id ?? null,
-        name: asset?.name ?? null,
-        type: asset?.type?.name ?? null,
-        viewCount: e.numberOfViews ?? e.viewCount ?? null,
-        lastViewedDate: e.lastViewedDate ?? null,
-        url: asset?.id ? client.assetUrl(asset.id) : null,
-      };
-    });
+    // NavigationStatisticsEntry is flat: { assetId, name, numberOfViews, lastViewedDate } (no type).
+    const entries = results.map((e) => ({
+      assetId: e.assetId ?? null,
+      name: e.name ?? null,
+      viewCount: e.numberOfViews ?? null,
+      lastViewedDate: e.lastViewedDate ?? null,
+      lastViewedIso: e.lastViewedDate ? new Date(e.lastViewedDate).toISOString() : null,
+      url: e.assetId ? client.assetUrl(e.assetId) : null,
+    }));
 
     return withEnvelope({
       instance: instance_name,

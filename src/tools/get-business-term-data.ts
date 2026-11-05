@@ -2,13 +2,10 @@ import { ok, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
+import { fetchRelations, SEMANTIC_RELATION_TYPES as REL } from '../utils/relations.js';
+import { mapLimit } from '../utils/concurrency.js';
+const { COLUMN_TO_TABLE: COLUMN_TO_TABLE_REL_ID, DATA_ATTRIBUTE_1: DATA_ATTRIBUTE_REL_ID_1, DATA_ATTRIBUTE_2: DATA_ATTRIBUTE_REL_ID_2, GENERIC_CONNECTED_ASSET: GENERIC_CONNECTED_ASSET_REL_ID, DATA_ATTRIBUTE_REPRESENTS_MEASURE: DATA_ATTRIBUTE_REPRESENTS_MEASURE_REL_ID } = REL;
 
-// Well-known Collibra relation type UUIDs
-const COLUMN_TO_TABLE_REL_ID = '00000000-0000-0000-0000-000000007042';
-const DATA_ATTRIBUTE_REL_ID_1 = '00000000-0000-0000-0000-000000007094';
-const DATA_ATTRIBUTE_REL_ID_2 = 'cd000000-0000-0000-0000-000000000023';
-const GENERIC_CONNECTED_ASSET_REL_ID = '00000000-0000-0000-0000-000000007038';
-const DATA_ATTRIBUTE_REPRESENTS_MEASURE_REL_ID = '00000000-0000-0000-0000-000000007200';
 
 export const getBusinessTermDataTool = {
   name: 'get_business_term_data',
@@ -36,27 +33,6 @@ export const getBusinessTermDataTool = {
     additionalProperties: true,
   },
 };
-
-async function fetchRelations(
-  client: CollibraClient,
-  relationTypeId: string,
-  sourceId?: string,
-  targetId?: string,
-): Promise<any[]> {
-  const params = new URLSearchParams({
-    relationTypeId,
-    limit: '1000',
-  });
-  if (sourceId) params.append('sourceId', sourceId);
-  if (targetId) params.append('targetId', targetId);
-
-  try {
-    const resp = await client.restCall<any>(`/rest/2.0/relations?${params.toString()}`);
-    return resp.results || [];
-  } catch {
-    return [];
-  }
-}
 
 export async function executeGetBusinessTermData(args: any): Promise<ToolResult> {
   const { instance_name, term_asset_id } = args;
@@ -109,8 +85,8 @@ export async function executeGetBusinessTermData(args: any): Promise<ToolResult>
     }
 
     // Step 2: For each Data Attribute, find linked Columns
-    const enrichedDAs = await Promise.all(
-      dataAttributes.map(async (da: any) => {
+    // Bounded fan-out: each data attribute costs 6 requests plus one per column.
+    const enrichedDAs = await mapLimit(dataAttributes, 6, async (da: any) => {
         // Columns are linked via the same data attribute relation types
         const colRelResults = await Promise.all(
           [DATA_ATTRIBUTE_REL_ID_1, DATA_ATTRIBUTE_REL_ID_2, GENERIC_CONNECTED_ASSET_REL_ID].flatMap(
@@ -139,8 +115,7 @@ export async function executeGetBusinessTermData(args: any): Promise<ToolResult>
         const columns = Array.from(columnMap.values());
 
         // Step 3: For each Column, find its parent Table
-        const enrichedColumns = await Promise.all(
-          columns.map(async (col: any) => {
+        const enrichedColumns = await mapLimit(columns, 4, async (col: any) => {
             const tableRels = await fetchRelations(client, COLUMN_TO_TABLE_REL_ID, col.id);
 
             const tables = tableRels.map((rel: any) => ({
@@ -150,12 +125,10 @@ export async function executeGetBusinessTermData(args: any): Promise<ToolResult>
             }));
 
             return { ...col, tables };
-          }),
-        );
+          });
 
         return { ...da, columns: enrichedColumns };
-      }),
-    );
+      });
 
     return okWithNext({
       instance: instance_name,

@@ -2,13 +2,9 @@ import { ok, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
+import { fetchRelations, SEMANTIC_RELATION_TYPES as REL } from '../utils/relations.js';
+const { COLUMN_TO_TABLE: COLUMN_TO_TABLE_REL_ID, DATA_ATTRIBUTE_1: DATA_ATTRIBUTE_REL_ID_1, DATA_ATTRIBUTE_2: DATA_ATTRIBUTE_REL_ID_2, GENERIC_CONNECTED_ASSET: GENERIC_CONNECTED_ASSET_REL_ID, DATA_ATTRIBUTE_REPRESENTS_MEASURE: DATA_ATTRIBUTE_REPRESENTS_MEASURE_REL_ID } = REL;
 
-// Well-known Collibra relation type UUIDs (same as get-table-semantics.ts)
-const COLUMN_TO_TABLE_REL_ID = '00000000-0000-0000-0000-000000007042';
-const DATA_ATTRIBUTE_REL_ID_1 = '00000000-0000-0000-0000-000000007094';
-const DATA_ATTRIBUTE_REL_ID_2 = 'cd000000-0000-0000-0000-000000000023';
-const GENERIC_CONNECTED_ASSET_REL_ID = '00000000-0000-0000-0000-000000007038';
-const DATA_ATTRIBUTE_REPRESENTS_MEASURE_REL_ID = '00000000-0000-0000-0000-000000007200';
 
 export const getColumnSemanticsTool = {
   name: 'get_column_semantics',
@@ -37,23 +33,6 @@ export const getColumnSemanticsTool = {
     additionalProperties: true,
   },
 };
-
-async function fetchRelations(
-  client: CollibraClient,
-  relationTypeId: string,
-  sourceId?: string,
-  targetId?: string,
-): Promise<any[]> {
-  const params = new URLSearchParams({ relationTypeId, limit: '1000' });
-  if (sourceId) params.append('sourceId', sourceId);
-  if (targetId) params.append('targetId', targetId);
-  try {
-    const resp = await client.restCall<any>(`/rest/2.0/relations?${params.toString()}`);
-    return resp.results || [];
-  } catch {
-    return [];
-  }
-}
 
 export async function executeGetColumnSemantics(args: any): Promise<ToolResult> {
   const { instance_name, column_asset_id } = args;
@@ -121,9 +100,12 @@ export async function executeGetColumnSemantics(args: any): Promise<ToolResult> 
           }
         }
 
+        // The generic relation type also links the data attribute back to the
+        // column itself (step 1) and to sibling data attributes — exclude those.
         const btMap = new Map<string, any>();
         for (const rel of [...businessTermsAsSource, ...businessTermsAsTarget]) {
           const other = rel.source.id === da.id ? rel.target : rel.source;
+          if (other.id === column_asset_id || dataAttrMap.has(other.id)) continue;
           if (!btMap.has(other.id) && !measureMap.has(other.id)) {
             btMap.set(other.id, { id: other.id, name: other.name, url: client.assetUrl(other.id) });
           }

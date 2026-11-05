@@ -108,9 +108,20 @@ export async function executeFindTraversalPath(args: any): Promise<ToolResult> {
     const queue: { node: string; path: Edge[]; visited: Set<string> }[] = [
       { node: src.id, path: [], visited: new Set([src.id]) },
     ];
-    while (queue.length && paths.length < max_paths) {
-      const cur = queue.shift()!;
-      if (cur.path.length > max_depth) continue;
+    // Simple-path enumeration is exponential around hub types (Asset, Data
+    // Asset): cap the work and say so rather than hang.
+    const MAX_EXPANSIONS = 50_000;
+    let expansions = 0;
+    let truncated = false;
+    let head = 0;
+    while (head < queue.length && paths.length < max_paths) {
+      if (++expansions > MAX_EXPANSIONS) {
+        truncated = true;
+        break;
+      }
+      const cur = queue[head++];
+      // Expanding a node at depth d yields paths of length d+1, so stop at max_depth.
+      if (cur.path.length >= max_depth) continue;
       const edges = adj.get(cur.node) || [];
       for (const e of edges) {
         if (e.toTypeId === dst.id) {
@@ -121,9 +132,16 @@ export async function executeFindTraversalPath(args: any): Promise<ToolResult> {
         if (cur.visited.has(e.toTypeId)) continue;
         const nv = new Set(cur.visited);
         nv.add(e.toTypeId);
+        if (queue.length - head >= 200_000) {
+          truncated = true;
+          break;
+        }
         queue.push({ node: e.toTypeId, path: [...cur.path, e], visited: nv });
       }
     }
+    const warnings: string[] = [];
+    if (paths.length === 0) warnings.push(`No path found within depth ${max_depth}.`);
+    if (truncated) warnings.push('Search stopped early (too many candidate paths); results may be incomplete — reduce max_depth.');
 
     return withEnvelope({
       instance: instance_name,
@@ -144,7 +162,7 @@ export async function executeFindTraversalPath(args: any): Promise<ToolResult> {
           })),
         })),
       },
-      warnings: paths.length === 0 ? [`No path found within depth ${max_depth}.`] : [],
+      warnings,
     });
   } catch (error) {
     return errorEnvelope({ instance: instance_name, operation, message: (error as Error).message });

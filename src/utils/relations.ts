@@ -39,6 +39,31 @@ export async function findRelation(client: CollibraClient, key: RelationKey): Pr
   );
 }
 
+/** Well-known out-of-the-box relation type UUIDs used by the semantics tools. */
+export const SEMANTIC_RELATION_TYPES = {
+  COLUMN_TO_TABLE: '00000000-0000-0000-0000-000000007042',
+  DATA_ATTRIBUTE_1: '00000000-0000-0000-0000-000000007094',
+  DATA_ATTRIBUTE_2: 'cd000000-0000-0000-0000-000000000023',
+  GENERIC_CONNECTED_ASSET: '00000000-0000-0000-0000-000000007038',
+  DATA_ATTRIBUTE_REPRESENTS_MEASURE: '00000000-0000-0000-0000-000000007200',
+} as const;
+
+/**
+ * All relations of one type, filtered by source and/or target, across every
+ * page. Errors propagate: a 403 or 500 must not look like "no relations".
+ */
+export async function fetchRelations(
+  client: CollibraClient,
+  relationTypeId: string,
+  sourceId?: string,
+  targetId?: string,
+): Promise<any[]> {
+  const params: Record<string, string> = { relationTypeId };
+  if (sourceId) params.sourceId = sourceId;
+  if (targetId) params.targetId = targetId;
+  return client.restPaginate<any>('/rest/2.0/relations', params);
+}
+
 /**
  * Role / co-role labels for a relation type. Relation payloads only embed the
  * type's `{ id }`, so labels must come from the (cached) relation-type map.

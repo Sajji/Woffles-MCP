@@ -43,9 +43,9 @@ export async function executeGetLineageEntity(args: any): Promise<ToolResult> {
     const response = await client.restCall<any>(endpoint);
 
     return okWithNext({
+      ...response, // API fields first; our keys below take precedence
       instance: instance_name,
       entityId: entity_id,
-      ...response,
     }, [
       { tool: 'get_lineage_downstream', args: { instance_name, entity_id }, why: 'Walk the lineage graph downstream from this entity.' },
       { tool: 'get_lineage_upstream', args: { instance_name, entity_id }, why: 'Walk the lineage graph upstream from this entity.' },

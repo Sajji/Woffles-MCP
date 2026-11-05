@@ -32,7 +32,7 @@ export const findUsersTool = {
       },
       only_enabled: {
         type: 'boolean',
-        description: 'Optional: When true, only enabled (active) users.',
+        description: 'Optional: true (default — Collibra excludes disabled users) returns only enabled users; false also includes disabled users.',
       },
       limit: {
         type: 'number',
@@ -65,7 +65,8 @@ export async function executeFindUsers(args: any): Promise<ToolResult> {
     if (name) qp.set('name', name);
     for (const f of name_search_fields ?? []) qp.append('nameSearchFields', f);
     if (group_id) qp.set('groupId', group_id);
-    if (only_enabled !== undefined) qp.set('onlyEnabledUsers', String(only_enabled));
+    // The API parameter is includeDisabled (default false); onlyEnabledUsers does not exist.
+    if (only_enabled === false) qp.set('includeDisabled', 'true');
 
     const resp = await client.restCall<any>(`/rest/2.0/users?${qp.toString()}`);
     const results: any[] = resp.results || [];

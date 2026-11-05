@@ -132,12 +132,12 @@ export async function executeCreateAssessment(args: any): Promise<ToolResult> {
     );
 
     return okWithNext({
+      ...response, // API fields first; our keys below take precedence
       instance: instance_name,
       created: true,
-      ...response,
     }, [
       { tool: 'get_assessment', args: { instance_name, assessment_id: '<id from response>' }, why: 'Verify the newly created assessment.' },
-      { tool: 'update_assessment', args: { instance_name, assessment_id: '<id from response>', content: '[{"id":"questionId","answer":{...}}]' }, why: 'Submit answers to questions.' },
+      { tool: 'edit_assessment', args: { instance_name, assessment_id: '<id from response>', operations: [{ op: 'set_answer', question_id: '<question id>', value: '<answer>' }] }, why: 'Submit answers to questions.' },
     ]);
   } catch (error) {
     return ok({

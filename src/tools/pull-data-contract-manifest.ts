@@ -57,7 +57,7 @@ export async function executePullDataContractManifest(args: any): Promise<ToolRe
       dataContractId: data_contract_id,
       manifest: manifestContent,
     }, [
-      { tool: 'push_data_contract_manifest', args: { instance_name, data_contract_id, manifest: '<edited manifest>' }, why: 'Push an edited version of this manifest back.' },
+      { tool: 'push_data_contract_manifest', args: { instance_name, manifest: '<edited manifest>', manifest_id: '<manifest id from this contract>' }, why: 'Push an edited version of this manifest back.' },
     ], true);
 
   } catch (error) {

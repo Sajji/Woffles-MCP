@@ -1,10 +1,12 @@
 import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
+import { CollibraClient, attrKindFromDiscriminator } from '../utils/collibra-client.js';
+import { fetchApplicableAssignment } from '../utils/operating-model-cache.js';
+import { narrowToExact } from '../utils/resolve.js';
 
-// The fixed public ID for the Business Term asset type in Collibra
-// The fixed attribute type UUID for the Definition attribute
+// Out-of-the-box Business Term asset type and Definition attribute type UUIDs.
+const BUSINESS_TERM_TYPE_ID = '00000000-0000-0000-0000-000000011001';
 const DEFINITION_ATTR_TYPE_ID = '00000000-0000-0000-0000-000000000202';
 
 export const prepareAddBusinessTermTool = {
@@ -70,7 +72,7 @@ export async function executePrepareAddBusinessTerm(args: any): Promise<ToolResu
       const domainsResp = await client.restCall<any>(
         `/rest/2.0/domains?name=${encodeURIComponent(domain_name)}&nameMatchMode=ANYWHERE&limit=20&offset=0`,
       );
-      const domainMatches: any[] = domainsResp.results || [];
+      const domainMatches: any[] = narrowToExact(domainsResp.results || [], domain_name, (d: any) => d.name);
       if (domainMatches.length === 0) {
         result.status = 'incomplete';
         result.instructions = `No domain found matching "${domain_name}". Use get_domains to list available domains.`;
@@ -145,15 +147,18 @@ export async function executePrepareAddBusinessTerm(args: any): Promise<ToolResu
     }
 
     // --- Hydrate attribute schema ---
+    // The attributes a Business Term can carry in THIS domain, from the
+    // assignment that applies there (previously: the first 50 attribute types
+    // in the whole instance, filtered by name — which often missed Definition).
     let attributeSchema: any[] = [];
     try {
-      const attrTypesResp = await client.restCall<any>(
-        `/rest/2.0/attributeTypes?limit=50&offset=0`,
-      );
-      const relevantNames = ['Definition', 'Note', 'Example', 'Short Description'];
-      attributeSchema = (attrTypesResp.results || [])
-        .filter((t: any) => relevantNames.some(n => t.name?.toLowerCase().includes(n.toLowerCase())))
-        .map((t: any) => ({ id: t.id, name: t.name, kind: t.kind }));
+      const assignment = await fetchApplicableAssignment(instance_name, BUSINESS_TERM_TYPE_ID, resolvedDomainId!);
+      attributeSchema = (assignment?.attributeTypes ?? []).map((t) => ({
+        id: t.id,
+        name: t.name,
+        kind: attrKindFromDiscriminator(t.kind) ?? t.kind,
+        required: (t.minimumOccurrences ?? 0) >= 1,
+      }));
     } catch {
       // Non-critical
     }

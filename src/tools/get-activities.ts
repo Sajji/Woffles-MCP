@@ -75,6 +75,26 @@ function toEpochMs(iso: string, label: string): number {
   return ms;
 }
 
+/**
+ * Activities carry no resource field; the affected resource is encoded as JSON
+ * in `description` (e.g. {"affected":{"name","id","type":"CO"}} or {"new":{...},"old":{...}}).
+ * Parse it so callers get structured details and the resource it concerns.
+ */
+function describeActivity(description: unknown): { description: unknown; onResource: { id: string; name: string | null; typeCode: string | null } | null } {
+  if (typeof description !== 'string') return { description: description ?? null, onResource: null };
+  let parsed: any;
+  try {
+    parsed = JSON.parse(description);
+  } catch {
+    return { description, onResource: null };
+  }
+  const r = parsed?.affected ?? parsed?.new ?? parsed?.old;
+  return {
+    description: parsed,
+    onResource: r?.id ? { id: r.id, name: r.name ?? null, typeCode: r.type ?? null } : null,
+  };
+}
+
 export async function executeGetActivities(args: any): Promise<ToolResult> {
   const {
     instance_name,
@@ -108,11 +128,10 @@ export async function executeGetActivities(args: any): Promise<ToolResult> {
       timestamp: a.timestamp ?? null,
       timestampIso: a.timestamp ? new Date(a.timestamp).toISOString() : null,
       activityType: a.activityType ?? null,
-      description: a.description ?? null,
+      ...describeActivity(a.description),
       cause: a.cause ?? null,
+      callId: a.callId ?? null,
       user: a.user ? { id: a.user.id, userName: a.user.userName ?? null } : null,
-      context: a.context ?? null,
-      onResource: a.resource ?? a.baseResource ?? null,
     }));
 
     return withEnvelope({

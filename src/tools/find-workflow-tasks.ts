@@ -24,6 +24,12 @@ export const findWorkflowTasksTool = {
         type: 'string',
         description: 'Optional: UUID of the asset/domain/community the tasks relate to.',
       },
+      business_item_type: {
+        type: 'string',
+        enum: ['ASSET', 'DOMAIN', 'COMMUNITY'],
+        description: 'Optional: kind of business_item_id (default ASSET). Collibra ignores the item filter without it.',
+        default: 'ASSET',
+      },
       user_id: {
         type: 'string',
         description: 'Optional: UUID of a user — returns tasks assigned to (or claimable by) that user.',
@@ -49,7 +55,7 @@ export const findWorkflowTasksTool = {
 };
 
 export async function executeFindWorkflowTasks(args: any): Promise<ToolResult> {
-  const { instance_name, title, business_item_id, user_id, limit = 100, offset = 0 } = args;
+  const { instance_name, title, business_item_id, business_item_type = 'ASSET', user_id, limit = 100, offset = 0 } = args;
 
   try {
     const instance = getInstance(instance_name);
@@ -57,22 +63,32 @@ export async function executeFindWorkflowTasks(args: any): Promise<ToolResult> {
 
     const qp = new URLSearchParams({ limit: String(Math.min(limit, 1000)), offset: String(offset) });
     if (title) qp.set('title', title);
-    if (business_item_id) qp.append('businessItemIds', business_item_id);
-    if (user_id) qp.append('userIds', user_id);
+    // Singular names: the API silently ignores `businessItemIds` / `userIds`.
+    // businessItemId is also ignored unless businessItemType accompanies it.
+    if (business_item_id) {
+      qp.set('businessItemId', business_item_id);
+      qp.set('businessItemType', business_item_type);
+    }
+    if (user_id) qp.set('userId', user_id);
     const resp = await client.restCall<any>(`/rest/2.0/workflowTasks?${qp.toString()}`);
     const results: any[] = resp.results || [];
 
+    // Field names per the WorkflowTask schema (createTime, owner, candidateUsers, formKeyAvailable).
+    const userRef = (u: any) => (u ? { id: u.id, name: u.userName ?? u.name ?? u.fullName ?? null } : null);
     const tasks = results.map((t) => ({
       id: t.id,
-      title: t.title ?? t.name ?? null,
+      title: t.title ?? null,
       description: t.description ?? null,
+      type: t.type ?? null,
       dueDate: t.dueDate ?? null,
-      createdOn: t.createdOn ?? null,
+      createTime: t.createTime ?? null,
       workflowDefinition: t.workflowDefinition ? { id: t.workflowDefinition.id, name: t.workflowDefinition.name } : null,
       businessItem: t.businessItemReference ?? t.businessItem ?? null,
-      assignees: t.assignee ? [t.assignee] : t.assignees ?? [],
-      candidateUsers: t.candidateUsers ?? undefined,
-      formKey: t.formKey ?? null,
+      owner: userRef(t.owner),
+      candidateUsers: (t.candidateUsers ?? []).map(userRef),
+      formRequired: t.formRequired ?? null,
+      formKeyAvailable: t.formKeyAvailable ?? null,
+      ...(t.inError ? { inError: true, errorMessage: t.errorMessage ?? null } : {}),
     }));
 
     return withEnvelope({

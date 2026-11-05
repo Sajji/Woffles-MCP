@@ -122,10 +122,10 @@ export async function executeUpdateAssessment(args: any): Promise<ToolResult> {
     );
 
     return okWithNext({
+      ...response, // API fields first; our keys below take precedence
       instance: instance_name,
       updated: true,
       assessment_id,
-      ...response,
     }, [
       { tool: 'get_assessment', args: { instance_name, assessment_id }, why: 'Verify the updated assessment.' },
     ]);

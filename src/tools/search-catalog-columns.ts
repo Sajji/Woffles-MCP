@@ -186,7 +186,7 @@ function buildWhere(args: any): Record<string, any> {
 }
 
 const COLUMNS_QUERY = `
-  query SearchCatalogColumns($where: AssetFilter, $limit: Int!, $offset: Int!) {
+  query SearchCatalogColumns($where: AssetFilter, $limit: Int!, $offset: Int!, $relatedTypes: [String!]!) {
     assets(where: $where, limit: $limit, offset: $offset) {
       id
       displayName
@@ -200,11 +200,13 @@ const COLUMNS_QUERY = `
       responsibilities(where: { role: { name: { eq: "Data Steward" } } }) {
         user { fullName }
       }
-      outgoingRelations(limit: 20) {
+      # Filter by related asset type server-side; filtering after a fixed
+      # limit let unrelated relations crowd out the relevant ones.
+      outgoingRelations(where: { target: { type: { name: { in: $relatedTypes } } } }, limit: 20) {
         type { role }
         target { id displayName type { name } }
       }
-      incomingRelations(limit: 20) {
+      incomingRelations(where: { source: { type: { name: { in: $relatedTypes } } } }, limit: 20) {
         type { role }
         source { id displayName type { name } }
       }
@@ -232,13 +234,13 @@ export async function executeSearchCatalogColumns(args: any): Promise<ToolResult
       });
     }
 
-    const where = buildWhere(args);
-    const resp = await client.graphqlQuery<any>(COLUMNS_QUERY, { where, limit: pageSize, offset });
-    const assets: any[] = resp?.data?.assets ?? [];
-
     const relatedTypeNames: string[] = Array.isArray(args.related_to_types) && args.related_to_types.length > 0
       ? args.related_to_types
       : DEFAULT_RELATED_TYPES;
+
+    const where = buildWhere(args);
+    const resp = await client.graphqlQuery<any>(COLUMNS_QUERY, { where, limit: pageSize, offset, relatedTypes: relatedTypeNames });
+    const assets: any[] = resp?.data?.assets ?? [];
 
     const columns = assets.map((a) => {
       const attrByName = new Map<string, string>(

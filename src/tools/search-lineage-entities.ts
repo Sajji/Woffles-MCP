@@ -68,13 +68,13 @@ export async function executeSearchLineageEntities(args: any): Promise<ToolResul
     const response = await client.restCall<any>(endpoint);
 
     return okWithNext({
+      ...response, // API fields first; our keys below take precedence
       instance: instance_name,
       searchParams: {
         nameContains: name_contains || null,
         entityType: entity_type || null,
         dgcAssetId: dgc_asset_id || null,
       },
-      ...response,
     }, [
       { tool: 'get_lineage_entity', args: { instance_name, entity_id: '<id from results>' }, why: 'Inspect a matching entity in detail.' },
       { tool: 'get_lineage_downstream', args: { instance_name, entity_id: '<id from results>' }, why: 'Walk downstream from a match.' },

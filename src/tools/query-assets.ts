@@ -209,8 +209,8 @@ export async function executeQueryAssets(args: any): Promise<ToolResult> {
     };
     return okWithNext(structured, [
       { tool: 'get_asset_by_id', args: { instance_name, asset_id: '<id from assets>' }, why: 'Drill into a specific asset.' },
-      { tool: 'bulk_update_asset_descriptions', args: { instance_name, updates: [{ asset_id: '<id>', description: '<text>' }] }, why: 'Batch-update descriptions across results.' },
-      { tool: 'bulk_update_asset_attributes', args: { instance_name, updates: [{ asset_id: '<id>', attribute_type_id: '<from get_attribute_types>', value: '<value>' }] }, why: 'Batch-update attributes across results.' },
+      { tool: 'bulk_update_asset_descriptions', args: { instance_name, updates: [{ asset_id: '<id>', new_description: '<text>' }] }, why: 'Batch-update descriptions across results.' },
+      { tool: 'bulk_update_asset_attributes', args: { instance_name, attribute_type_id: '<from get_attribute_types>', updates: [{ asset_id: '<id>', new_value: '<value>' }] }, why: 'Batch-update attributes across results.' },
     ]);
   } catch (error) {
     const structured = {

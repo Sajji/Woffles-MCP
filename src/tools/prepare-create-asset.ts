@@ -2,6 +2,7 @@ import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
+import { narrowToExact } from '../utils/resolve.js';
 
 export const prepareCreateAssetTool = {
   name: 'prepare_create_asset',
@@ -74,7 +75,8 @@ export async function executePrepareCreateAsset(args: any): Promise<ToolResult> 
       const typesResp = await client.restCall<any>(
         `/rest/2.0/assetTypes?name=${encodeURIComponent(asset_type_name)}&nameMatchMode=ANYWHERE&limit=20&offset=0`,
       );
-      const matches: any[] = typesResp.results || [];
+      // An exact name ("Table") wins over partial hits ("Table View", "Database Table").
+      const matches: any[] = narrowToExact(typesResp.results || [], asset_type_name, (t: any) => t.name);
       if (matches.length === 0) {
         result.status = 'incomplete';
         result.instructions = `No asset type found matching "${asset_type_name}". Use get_asset_types to list available types.`;
@@ -108,7 +110,7 @@ export async function executePrepareCreateAsset(args: any): Promise<ToolResult> 
       const domainsResp = await client.restCall<any>(
         `/rest/2.0/domains?name=${encodeURIComponent(domain_name)}&nameMatchMode=ANYWHERE&limit=20&offset=0`,
       );
-      const domainMatches: any[] = domainsResp.results || [];
+      const domainMatches: any[] = narrowToExact(domainsResp.results || [], domain_name, (d: any) => d.name);
       if (domainMatches.length === 0) {
         result.status = 'incomplete';
         result.instructions = `No domain found matching "${domain_name}". Use get_domains to list available domains.`;

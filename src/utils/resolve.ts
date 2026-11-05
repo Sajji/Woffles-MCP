@@ -13,6 +13,18 @@ export type ExactResolution<T> =
   | { ok: false; reason: 'not_found' | 'ambiguous'; message: string; candidates: string[] };
 
 /**
+ * Narrow "contains" search results: when several match but exactly one equals
+ * `query` exactly (case-insensitive), return just that one. Otherwise the list
+ * is returned unchanged (still ambiguous, or nothing exact).
+ */
+export function narrowToExact<T>(results: T[], query: string, key: (item: T) => string | null | undefined): T[] {
+  if (results.length <= 1) return results;
+  const q = query.trim().toLowerCase();
+  const exact = results.filter((r) => (key(r) ?? '').trim().toLowerCase() === q);
+  return exact.length === 1 ? exact : results;
+}
+
+/**
  * Pick the single result whose any of `keys(item)` equals `query`
  * (case-insensitive, trimmed).
  */

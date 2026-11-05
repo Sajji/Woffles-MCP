@@ -121,11 +121,9 @@ export async function executeStartWorkflowInstance(args: any): Promise<ToolResul
       // Fetch the start-form fields so required inputs are visible before starting
       let startFormData: any = null;
       try {
-        const qp = business_item_ids?.length
-          ? `?businessItemId=${encodeURIComponent(business_item_ids[0])}`
-          : '';
+        // startFormData only accepts formPropertyType; business items are supplied at start time.
         startFormData = await client.restCall<any>(
-          `/rest/2.0/workflowDefinitions/workflowDefinition/${encodeURIComponent(definition.id)}/startFormData${qp}`,
+          `/rest/2.0/workflowDefinitions/workflowDefinition/${encodeURIComponent(definition.id)}/startFormData`,
         );
       } catch {
         startFormData = { note: 'Start-form data unavailable — the workflow may not define a start form.' };

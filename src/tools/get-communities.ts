@@ -33,6 +33,11 @@ export const getCommunitiesTool = {
         description: 'Optional: Maximum number of results to return (default: 1000)',
         default: 1000,
       },
+      offset: {
+        type: 'number',
+        description: 'Optional: Pagination offset (default: 0). Use nextOffset from the previous response.',
+        default: 0,
+      },
     },
     required: ['instance_name'],
   },
@@ -55,7 +60,7 @@ interface Community {
 }
 
 export async function executeGetCommunities(args: any): Promise<ToolResult> {
-  const { instance_name, parent_id, name, show_hierarchy = true, limit = 1000 } = args;
+  const { instance_name, parent_id, name, show_hierarchy = true, limit = 1000, offset = 0 } = args;
 
   try {
     // Get the instance configuration
@@ -67,6 +72,7 @@ export async function executeGetCommunities(args: any): Promise<ToolResult> {
     // Build query parameters
     const params = new URLSearchParams({
       limit: Math.min(limit, 1000).toString(),
+      offset: String(offset),
       excludeMeta: 'true',
       sortField: 'NAME',
       sortOrder: 'ASC',
@@ -93,9 +99,12 @@ export async function executeGetCommunities(args: any): Promise<ToolResult> {
     let childCommunities: Community[] = [];
 
     if (show_hierarchy && !parent_id) {
-      // Separate top-level and child communities
-      topLevelCommunities = communities.filter(c => !c.parent);
-      childCommunities = communities.filter(c => c.parent);
+      // A community is a root of THIS view when its parent isn't in the result
+      // set (true top-level, or its parent was excluded by the name filter /
+      // paging) — otherwise filtered children would silently disappear.
+      const returnedIds = new Set(communities.map(c => c.id));
+      topLevelCommunities = communities.filter(c => !c.parent?.id || !returnedIds.has(c.parent.id));
+      childCommunities = communities.filter(c => c.parent?.id && returnedIds.has(c.parent.id));
 
       // Build hierarchy tree
       const communityMap = new Map<string, any>();
@@ -135,6 +144,7 @@ export async function executeGetCommunities(args: any): Promise<ToolResult> {
         topLevel: topLevelCommunities.length,
         children: childCommunities.length,
       },
+      ...(communities.length === Math.min(limit, 1000) ? { nextOffset: offset + communities.length } : {}),
     };
 
     if (show_hierarchy && !parent_id && hierarchicalView) {

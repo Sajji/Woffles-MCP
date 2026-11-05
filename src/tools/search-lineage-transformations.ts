@@ -59,12 +59,12 @@ export async function executeSearchLineageTransformations(args: any): Promise<To
     const response = await client.restCall<any>(endpoint);
 
     return okWithNext({
+      ...response, // API fields first; our keys below take precedence
       instance: instance_name,
       searchParams: {
         nameContains: name_contains || null,
         limit: Math.min(limit, 100),
       },
-      ...response,
     }, [
       { tool: 'get_lineage_transformation', args: { instance_name, transformation_id: '<id from results>' }, why: 'Inspect a transformation in detail.' },
     ], true);

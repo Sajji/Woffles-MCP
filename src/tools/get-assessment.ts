@@ -45,8 +45,8 @@ export async function executeGetAssessment(args: any): Promise<ToolResult> {
     const response = await client.restCall<any>(endpoint);
 
     return okWithNext({
+      ...response, // API fields first; our keys below take precedence
       instance: instance_name,
-      ...response,
     }, [
       { tool: 'edit_assessment', args: { instance_name, assessment_id, operations: [] }, why: 'Edit the assessment (answers, status, owner, assignees, visibility) via typed operations.' },
       { tool: 'list_assessment_attachments', args: { instance_name, assessment_id }, why: 'List attached evidence files.' },

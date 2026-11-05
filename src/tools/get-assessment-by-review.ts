@@ -44,13 +44,13 @@ export async function executeGetAssessmentByReview(args: any): Promise<ToolResul
     const response = await client.restCall<any>(endpoint);
 
     return okWithNext({
+      ...response, // API fields first; our keys below take precedence
       instance: instance_name,
       lookedUpBy: 'assessmentReviewId',
       assessmentReviewId: assessment_review_id,
-      ...response,
     }, [
       { tool: 'get_assessment', args: { instance_name, assessment_id: '<id from response>' }, why: 'Fetch the assessment by its own id for canonical detail.' },
-      { tool: 'update_assessment', args: { instance_name, assessment_id: '<id from response>', status: '<new status>' }, why: 'Edit the assessment.' },
+      { tool: 'edit_assessment', args: { instance_name, assessment_id: '<id from response>', operations: [{ op: 'set_status', value: '<new status>' }] }, why: 'Edit the assessment.' },
     ]);
   } catch (error) {
     return ok({

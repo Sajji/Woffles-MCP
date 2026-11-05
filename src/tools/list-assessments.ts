@@ -101,9 +101,9 @@ export async function executeListAssessments(args: any): Promise<ToolResult> {
     const response = await client.restCall<any>(endpoint);
 
     return okWithNext({
+      ...response, // API fields first; our keys below take precedence
       instance: instance_name,
       filters: { asset_id, status, name, template_id, template_version },
-      ...response,
     }, [
       { tool: 'get_assessment', args: { instance_name, assessment_id: '<id from results>' }, why: 'Fetch full assessment detail.' },
       { tool: 'list_assessment_templates', args: { instance_name }, why: 'Browse available templates to filter by templateId.' },

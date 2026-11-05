@@ -61,13 +61,13 @@ export async function executeRetakeAssessment(args: any): Promise<ToolResult> {
     );
 
     return okWithNext({
+      ...response, // API fields first; our keys below take precedence
       instance: instance_name,
       retaken: true,
       originAssessmentId: assessment_id,
-      ...response,
     }, [
       { tool: 'get_assessment', args: { instance_name, assessment_id: '<new id from response>' }, why: 'Fetch the newly spawned iteration.' },
-      { tool: 'update_assessment', args: { instance_name, assessment_id: '<new id from response>', content: '[...]' }, why: 'Answer the questions in the new iteration.' },
+      { tool: 'edit_assessment', args: { instance_name, assessment_id: '<new id from response>', operations: [{ op: 'set_answer', question_id: '<question id>', value: '<answer>' }] }, why: 'Answer the questions in the new iteration.' },
     ]);
   } catch (error) {
     return ok({

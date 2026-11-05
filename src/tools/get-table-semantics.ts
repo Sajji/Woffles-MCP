@@ -2,13 +2,10 @@ import { ok, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
+import { fetchRelations, SEMANTIC_RELATION_TYPES as REL } from '../utils/relations.js';
+import { mapLimit } from '../utils/concurrency.js';
+const { COLUMN_TO_TABLE: COLUMN_TO_TABLE_REL_ID, DATA_ATTRIBUTE_1: DATA_ATTRIBUTE_REL_ID_1, DATA_ATTRIBUTE_2: DATA_ATTRIBUTE_REL_ID_2, GENERIC_CONNECTED_ASSET: GENERIC_CONNECTED_ASSET_REL_ID, DATA_ATTRIBUTE_REPRESENTS_MEASURE: DATA_ATTRIBUTE_REPRESENTS_MEASURE_REL_ID } = REL;
 
-// Well-known Collibra relation type UUIDs
-const COLUMN_TO_TABLE_REL_ID = '00000000-0000-0000-0000-000000007042';
-const DATA_ATTRIBUTE_REL_ID_1 = '00000000-0000-0000-0000-000000007094';
-const DATA_ATTRIBUTE_REL_ID_2 = 'cd000000-0000-0000-0000-000000000023';
-const GENERIC_CONNECTED_ASSET_REL_ID = '00000000-0000-0000-0000-000000007038';
-const DATA_ATTRIBUTE_REPRESENTS_MEASURE_REL_ID = '00000000-0000-0000-0000-000000007200';
 
 export const getTableSemanticsTool = {
   name: 'get_table_semantics',
@@ -36,27 +33,6 @@ export const getTableSemanticsTool = {
     additionalProperties: true,
   },
 };
-
-async function fetchRelations(
-  client: CollibraClient,
-  relationTypeId: string,
-  sourceId?: string,
-  targetId?: string,
-): Promise<any[]> {
-  const params = new URLSearchParams({
-    relationTypeId,
-    limit: '1000',
-  });
-  if (sourceId) params.append('sourceId', sourceId);
-  if (targetId) params.append('targetId', targetId);
-
-  try {
-    const resp = await client.restCall<any>(`/rest/2.0/relations?${params.toString()}`);
-    return resp.results || [];
-  } catch {
-    return [];
-  }
-}
 
 export async function executeGetTableSemantics(args: any): Promise<ToolResult> {
   const { instance_name, table_asset_id } = args;
@@ -92,8 +68,9 @@ export async function executeGetTableSemantics(args: any): Promise<ToolResult> {
       GENERIC_CONNECTED_ASSET_REL_ID,
     ];
 
-    const columnDetails = await Promise.all(
-      columns.map(async (col: any) => {
+    // Bounded: each column costs 6+ requests, so an unbounded Promise.all over
+    // a wide table fired hundreds of simultaneous calls.
+    const columnDetails = await mapLimit(columns, 8, async (col: any) => {
         // Fetch data attribute relations where column is source OR target
         const relResults = await Promise.all(
           dataAttributeRelTypeIds.flatMap((relTypeId) => [
@@ -150,8 +127,7 @@ export async function executeGetTableSemantics(args: any): Promise<ToolResult> {
           ...col,
           dataAttributes: enrichedDAs,
         };
-      }),
-    );
+      });
 
     return okWithNext({
       instance: instance_name,

@@ -38,13 +38,14 @@ export async function executeGetAssetStatuses(args: any): Promise<ToolResult> {
     const instance = getInstance(instance_name);
     const client = new CollibraClient(instance);
 
-    const params = new URLSearchParams({ limit: '500', offset: '0', sortField: 'NAME', sortOrder: 'ASC' });
+    // Small, fixed set: fetch every page instead of silently truncating at one.
+    const params: Record<string, string> = { sortField: 'NAME', sortOrder: 'ASC' };
     if (name) {
-      params.set('name', name);
-      params.set('nameMatchMode', 'ANYWHERE');
+      params.name = name;
+      params.nameMatchMode = 'ANYWHERE';
     }
-
-    const response = await client.restCall<any>(`/rest/2.0/statuses?${params.toString()}`);
+    const results = await client.restPaginate<any>('/rest/2.0/statuses', params);
+    const response = { results, total: results.length };
 
     return okWithNext({
       instance: instance_name,

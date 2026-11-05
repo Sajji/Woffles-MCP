@@ -67,13 +67,23 @@ export async function executeFindRatings(args: any): Promise<ToolResult> {
       createdOn: r.createdOn ?? null,
     }));
 
-    const values = ratings.map((r) => r.rating).filter((v): v is number => typeof v === 'number');
-    const average = values.length > 0 ? Math.round((values.reduce((a, b) => a + b, 0) / values.length) * 100) / 100 : null;
+    // The average must cover ALL of the asset's ratings, not just this page.
+    let summary: { averageRating: number | null; ratingCount: number } | undefined;
+    if (asset_id) {
+      const all = results.length < Math.min(limit, 1000) && offset === 0
+        ? results
+        : await client.restPaginate<any>('/rest/2.0/ratings', { assetId: asset_id });
+      const values = all.map((r) => r.rating).filter((v): v is number => typeof v === 'number');
+      summary = {
+        averageRating: values.length > 0 ? Math.round((values.reduce((a, b) => a + b, 0) / values.length) * 100) / 100 : null,
+        ratingCount: values.length,
+      };
+    }
 
     return withEnvelope({
       instance: instance_name,
       operation: 'find_ratings',
-      data: { count: ratings.length, ...(asset_id ? { averageRating: average } : {}), ratings },
+      data: { count: ratings.length, ...(summary ?? {}), ratings },
       pagination: { offset, limit, ...(results.length === limit ? { nextOffset: offset + limit } : {}) },
     });
   } catch (error) {

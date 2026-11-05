@@ -1,5 +1,50 @@
 # Changelog
 
+## Unreleased — Read-tool fixes (Review plan, Phase 2)
+
+### Fixed
+- **`find_workflow_tasks`: the user and business-item filters returned every task.** The tool sent `businessItemIds`/`userIds`, which the API ignores. The parameter names are now `businessItemId`/`userId`. `businessItemId` also has no effect unless `businessItemType` is sent with it, so the tool now adds it (`business_item_type`, default `ASSET`). Verified live: the filter now returns 1 task where it used to return all 20. Task fields are now read by their real names: `createTime`, `owner`, `candidateUsers`, `formKeyAvailable` and `inError`.
+- **`find_users`: `only_enabled` had no effect.** The parameter it sent (`onlyEnabledUsers`) doesn't exist. `only_enabled=false` now sends `includeDisabled=true`. On Production that returns 62 users instead of 24.
+- **`get_asset_view_stats`: every `assetId` and URL was null.** The tool read `asset.id`, but the API returns `assetId`.
+- **`get_activities`: `context` and `onResource` were always null.** Activities don't have those fields; the resource an activity concerns is stored as JSON inside `description`. That JSON is now parsed, so `onResource` holds `{ id, name, typeCode }`.
+- **`find_comments`** no longer returns a `user` field that was always null. It now returns `mentionedUsers`.
+- **`start_workflow_instance`** no longer sends `businessItemId` to `startFormData`, which ignored it.
+- **`find_ratings`: `averageRating` only covered the current page.** It now covers every rating on the asset, and a new `ratingCount` field shows how many.
+- **Semantics tools:**
+  - `get_column_semantics` no longer lists the column as one of its own business terms.
+  - `get_measure_data` no longer lists the measure as one of its own columns.
+  - The four semantics tools share one `fetchRelations` (`src/utils/relations.ts`) instead of four copies. Errors now surface instead of looking like "no data", and results are paginated.
+  - Requests that fan out per column or per data attribute are now capped at 8 at a time; before, a wide table could fire hundreds of requests at once.
+- **`get_asset_by_id`:**
+  - multi-value attributes are now returned
+  - it says when attribute lists are cut off at 100
+  - the assignable schema now comes from the assignment that applies to the asset's domain
+- **`get_asset_relations`:**
+  - each relation now includes its `id`, so results can be passed straight to `bulk_delete_relations`
+  - `next_offset` is null when there are no more relations
+- **Paging:**
+  - `get_domains`, `get_communities` and `get_attribute_types` now accept `offset` and return `nextOffset`
+  - `get_domain_types` and `get_asset_statuses` now return every page instead of stopping at 200 / 500
+- **`get_communities`:** with a name filter, a matching child whose parent didn't match used to vanish from the hierarchy. It is now shown as a top-level entry.
+- **`find_traversal_path`:**
+  - `max_depth` was off by one, so paths could be one step longer than allowed
+  - the path search is now capped, and the result warns if it stopped early
+- **`search_catalog_columns`** filters related assets by type on the server. Previously it fetched the first 20 relations of any type and filtered afterwards, so relevant ones could be missed.
+- **`prepare_create_asset` / `prepare_add_business_term`:**
+  - an exact name match is now chosen even when other names also contain the search text (for example, "Table" no longer comes back as `needs_clarification`)
+  - `prepare_add_business_term` now suggests the attributes Business Term can actually have in the chosen domain, instead of the first 50 attribute types in the whole system
+- **API fields could overwrite tool fields.** Lineage and assessment tools added the raw API response after their own fields (such as `instance` and `entityId`), so the API could replace them. The tool's fields now always win.
+- **Follow-up suggestions (`nextActions`):**
+  - fixed suggestions that used the wrong argument names
+  - fixed one that suggested a tool that doesn't do what it described
+  - suggestions no longer point at the deprecated `update_assessment`
+  - `test/next-actions.test.ts` now checks every suggestion against the target tool's schema
+- `plan_write_operation`'s rule for single-item writes no longer contradicts its own recommendations.
+
+### Tests
+- `test/read-tools.test.ts`: parameter and field-mapping regressions. All 9 tests fail against the previous code.
+- `test/next-actions.test.ts`
+
 ## Unreleased — Platform fixes (Review plan, Phase 1)
 
 ### Fixed

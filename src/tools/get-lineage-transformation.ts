@@ -43,9 +43,9 @@ export async function executeGetLineageTransformation(args: any): Promise<ToolRe
     const response = await client.restCall<any>(endpoint);
 
     return okWithNext({
+      ...response, // API fields first; our keys below take precedence
       instance: instance_name,
       transformationId: transformation_id,
-      ...response,
     }, [
       { tool: 'get_lineage_entity', args: { instance_name, entity_id: '<source or target entity id>' }, why: 'Inspect the source/target entities of this transformation.' },
     ], true);

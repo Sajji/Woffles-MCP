@@ -85,9 +85,9 @@ export async function executeListAssessmentTemplates(args: any): Promise<ToolRes
     const response = await client.restCall<any>(endpoint);
 
     return okWithNext({
+      ...response, // API fields first; our keys below take precedence
       instance: instance_name,
       filters: { name, status, asset_type_id, latest_version_only },
-      ...response,
     }, [
       { tool: 'get_assessment_template', args: { instance_name, template_id: '<id from results>' }, why: 'Inspect template structure (questions, scoring).' },
       { tool: 'create_assessment', args: { instance_name, template_id: '<id>', name: '<assessment name>' }, why: 'Start a new assessment from a template.' },

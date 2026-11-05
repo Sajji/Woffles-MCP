@@ -52,6 +52,7 @@ function buildRelationsQuery(): string {
         displayName
         fullName
         outgoingRelations(limit: $limit, offset: $offset) {
+          id
           type {
             source {
               name
@@ -74,6 +75,7 @@ function buildRelationsQuery(): string {
           }
         }
         incomingRelations(limit: $limit, offset: $offset) {
+          id
           type {
             source {
               name
@@ -145,7 +147,9 @@ export async function executeGetAssetRelations(args: any): Promise<ToolResult> {
         total: outgoing.length + incoming.length,
         has_more_outgoing: outgoing.length === relation_limit,
         has_more_incoming: incoming.length === relation_limit,
-        next_offset: relation_offset + relation_limit,
+        // Both directions page with the same offset; only offer one when either has more.
+        next_offset:
+          outgoing.length === relation_limit || incoming.length === relation_limit ? relation_offset + relation_limit : null,
       },
       relations: {
         outgoing,

@@ -150,7 +150,7 @@ export async function executePlanWriteOperation(args: any): Promise<ToolResult> 
     why,
     ...(efficiencyNote ? { efficiencyNote } : {}),
     rules: {
-      single: 'items_count === 1 → use the singleton (no preview round trip required).',
+      single: 'items_count === 1 → use the singleton where one exists (create_relation, update_asset_attribute, update_asset_description); asset/term creation and deletes still go through the bulk tools for their preview/confirm safety.',
       bulkSameType: 'items_count > 1 AND same kind/target type → use the bulk variant.',
       multiOpOneAsset: 'Mixed ops on one asset → use edit_asset.',
       destructive: 'Any delete → always go through bulk_delete_* (preview/confirm).',

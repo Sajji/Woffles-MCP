@@ -61,10 +61,10 @@ export async function executeGetLineageDownstream(args: any): Promise<ToolResult
     const response = await client.restCall<any>(endpoint);
 
     return okWithNext({
+      ...response, // API fields first; our keys below take precedence
       instance: instance_name,
       entityId: entity_id,
       direction: 'downstream',
-      ...response,
     }, [
       { tool: 'get_lineage_entity', args: { instance_name, entity_id: '<id from results>' }, why: 'Inspect a downstream entity in detail.' },
       { tool: 'get_lineage_downstream', args: { instance_name, entity_id: '<id from results>' }, why: 'Continue traversing further downstream.' },

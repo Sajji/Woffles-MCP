@@ -27,6 +27,11 @@ export const getDomainsTool = {
         description: 'Optional: Maximum number of results to return (default: 1000)',
         default: 1000,
       },
+      offset: {
+        type: 'number',
+        description: 'Optional: Pagination offset (default: 0). Use nextOffset from the previous response.',
+        default: 0,
+      },
     },
     required: ['instance_name'],
   },
@@ -38,7 +43,7 @@ export const getDomainsTool = {
 };
 
 export async function executeGetDomains(args: any): Promise<ToolResult> {
-  const { instance_name, community_id, name, limit = 1000 } = args;
+  const { instance_name, community_id, name, limit = 1000, offset = 0 } = args;
 
   try {
     // Get the instance configuration
@@ -50,6 +55,7 @@ export async function executeGetDomains(args: any): Promise<ToolResult> {
     // Build query parameters
     const params = new URLSearchParams({
       limit: Math.min(limit, 1000).toString(),
+      offset: String(offset),
       sortField: 'NAME',
       sortOrder: 'ASC',
     });
@@ -86,6 +92,7 @@ export async function executeGetDomains(args: any): Promise<ToolResult> {
       },
       total: response.total || 0,
       returned: response.results?.length || 0,
+      ...((response.results?.length || 0) === Math.min(limit, 1000) ? { nextOffset: offset + response.results.length } : {}),
       domainsByCommunity,
       allDomains: response.results || [],
     }) as Record<string, unknown>, [

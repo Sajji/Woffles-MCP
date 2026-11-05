@@ -98,8 +98,9 @@ export async function executeFindComments(args: any): Promise<ToolResult> {
       id: c.id,
       content: c.content ?? null,
       createdOn: c.createdOn ?? null,
+      // Comments have no embedded user; createdBy is the author's user id.
       createdBy: c.createdBy ?? null,
-      user: c.user ? { id: c.user.id, name: c.user.fullName ?? c.user.userName ?? null } : null,
+      mentionedUsers: (c.mentionedUsers ?? []).map((u: any) => ({ id: u.id, name: u.name ?? u.userName ?? null })),
       baseResource: c.baseResource ?? null,
       parentId: c.parent?.id ?? null,
       resolved: c.resolved ?? null,

@@ -35,6 +35,11 @@ export const getAttributeTypesTool = {
         type: 'number',
         description: 'Maximum number of results to return (max 1000). Default: 100.',
       },
+      offset: {
+        type: 'number',
+        description: 'Pagination offset (default: 0). Use nextOffset from the previous response.',
+        default: 0,
+      },
     },
     required: ['instance_name'],
   },
@@ -46,14 +51,14 @@ export const getAttributeTypesTool = {
 };
 
 export async function executeGetAttributeTypes(args: any): Promise<ToolResult> {
-  const { instance_name, name, name_match_mode, kind, limit = 100 } = args;
+  const { instance_name, name, name_match_mode, kind, limit = 100, offset = 0 } = args;
 
   try {
     const instance = getInstance(instance_name);
     const client = new CollibraClient(instance);
 
     const params = new URLSearchParams();
-    params.set('offset', '0');
+    params.set('offset', String(offset));
     params.set('limit', String(Math.min(limit, 1000)));
 
     if (name) {
@@ -79,9 +84,10 @@ export async function executeGetAttributeTypes(args: any): Promise<ToolResult> {
         statisticsEnabled: t.statisticsEnabled,
         isInteger: t.isInteger,
       })),
+      ...((response.results || []).length === Math.min(limit, 1000) ? { nextOffset: offset + (response.results || []).length } : {}),
     }, [
       { tool: 'validate_against_model', args: { instance_name, proposal_type: 'attribute', attribute_type_id: '<pick from attributeTypes>' }, why: 'Schema-validate an attribute write before calling update_asset_attribute.' },
-      { tool: 'update_asset_attribute', args: { instance_name, asset_id: '<asset>', attribute_type_id: '<pick from attributeTypes>', value: '<value>' }, why: 'Write the attribute once you have the UUID.' },
+      { tool: 'update_asset_attribute', args: { instance_name, asset_id: '<asset>', attribute_type_id: '<pick from attributeTypes>', new_value: '<value>' }, why: 'Write the attribute once you have the UUID.' },
     ], true);
 
   } catch (error) {
