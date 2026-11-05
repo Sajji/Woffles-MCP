@@ -1,7 +1,7 @@
 import { getInstances, getStarWarsSource } from '../config.js';
 import { enrichResponseUrls } from '../utils/collibra-client.js';
 import { SwapiClient, SWAPI_RESOURCES, type SwapiResource, type SwapiHit } from '../utils/swapi-client.js';
-import { withEnvelope } from '../utils/tool-result.js';
+import { stripAuditFields, withEnvelope } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { clientFor } from './_context.js';
 
@@ -109,7 +109,7 @@ async function searchCollibraInstance(
     source: instanceName,
     kind: 'collibra',
     total: response.total || enriched.results.length,
-    hits: enriched.results,
+    hits: stripAuditFields(enriched.results),
   };
 }
 

@@ -3,7 +3,7 @@ import { okWithNext } from '../utils/tool-result.js';
 import { fetchApplicableAssignment, fetchAssetTypeAssignments } from '../utils/operating-model-cache.js';
 import type { ToolResult } from '../types.js';
 import { clientFor } from './_context.js';
-import { categorizeResponsibilities, enrichResponsibilityOwners } from '../utils/responsibilities.js';
+import { categorizeResponsibilities, compactResponsibility, enrichResponsibilityOwners } from '../utils/responsibilities.js';
 
 export const getAssetByIdTool = {
   name: 'get_asset_by_id',
@@ -304,12 +304,9 @@ export async function executeGetAssetById(args: any): Promise<ToolResult> {
           inheritedFromCommunity: inheritedByCommunity.length,
           inheritedFromDomain: inheritedByDomain.length,
         },
-        direct: directResponsibilities,
-        inherited: include_inherited ? {
-          all: inheritedResponsibilities,
-          fromCommunity: inheritedByCommunity,
-          fromDomain: inheritedByDomain,
-        } : null,
+        // Compact entries; inherited ones carry inheritedFrom (Community / Domain).
+        direct: directResponsibilities.map((r: any) => compactResponsibility(r, asset_id)),
+        inherited: include_inherited ? inheritedResponsibilities.map((r: any) => compactResponsibility(r, asset_id)) : null,
       },
     }) as Record<string, unknown>;
     return okWithNext(structured, [

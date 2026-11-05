@@ -1,5 +1,51 @@
 # Changelog
 
+## Unreleased — Token efficiency (Review plan, Phase 5)
+
+### Changed
+- **Responses are now much smaller.** Measured on Production before and after this change:
+
+  | Call | Before | After |
+  |---|---|---|
+  | `query_assets` (default page) | 106K chars | 17K chars |
+  | `list_assessments` (5) | 79K chars | 4.6K chars |
+  | `get_asset_responsibilities` | 33K chars | 4.8K chars |
+  | `get_domains` (20) | 33K chars | 7.4K chars |
+  | `get_communities` (20) | 25K chars | 7.9K chars |
+  | `get_asset_by_id` | 21K chars | 9.0K chars |
+  | `describe_asset_type` | 30K chars | 22K chars |
+  | `search_assets_by_name` (20) | 10K chars | 7.9K chars |
+
+  The changes behind this:
+  - **Compact JSON.** A tool's text output is no longer pretty-printed when it is just the JSON of its structured result. `executeTool` handles this for every tool.
+  - **`list_assessments`** no longer includes each assessment's question-and-answer content (about 54K characters per assessment). It returns `questionCount` instead. Pass `include_content: true` to get the content back, or use `get_assessment` for a single assessment.
+  - **`get_domains`** returns each domain once, in a compact `allDomains` list: `id`, `name`, `description`, `type`, `community`, `url`. The duplicate `domainsByCommunity` grouping is gone.
+  - **`get_communities`** returns compact entries, and the tree is returned once; the duplicate `flat` copy is gone.
+  - **Responsibilities** in `get_asset_responsibilities` and `get_asset_by_id`:
+    - each responsibility is listed once, as `{ role, owner{name,email}, inheritedFrom }`
+    - `groupedByRole` and `groupedByOwner` now hold names only
+    - the separate by-community and by-domain lists were dropped; `inheritedFrom.type` gives the same information
+  - **`query_assets` summary rows** are now `{ id, name, fullName?, description?, url }`. Default page sizes are 100 (summary) and 50 (full).
+  - **Search results** (`search_assets_by_name`, `search_subject`) leave out audit fields (`createdBy`, `createdOn`, and similar) and empty `tags`, using `stripAuditFields()`.
+- **`tools/list` is about 14% smaller.** In write mode it went from 154K to 132K characters; in read-only mode, from 104K to 90K. These are central changes, so no tool file was edited:
+  - UUID parameters are shown as `format: "uuid"` instead of the full pattern. Ajv still enforces it.
+  - One short `instance_name` description is used everywhere.
+  - The redundant "Optional:" prefixes were removed.
+  - Output schemas with no properties were dropped (39 placeholders).
+  - The chip aliases have one-line descriptions.
+
+### Not done (plan deviations)
+- Individual tool descriptions were not hand-trimmed. They average about 480 characters, and trimming the ten largest would save about 3%.
+- Outputs were not moved to a single envelope shape. That would change every tool's result shape for consumers, for little token saving now that the payloads themselves are compact.
+
+### Tests
+- `test/payload.test.ts` checks:
+  - output is compact JSON
+  - `get_domains` and `get_communities` contain no duplicates and no audit metadata
+  - `list_assessments` leaves out content by default
+  - responsibilities are compact
+  - `tools/list` uses `format: "uuid"`, a single `instance_name` description, no placeholder output schemas and no "Optional:" prefixes
+
 ## Unreleased — Tool consolidation (Review plan, Phase 4)
 
 Overlapping tools were merged into fewer, broader tools. **No tool was removed.** The 18 superseded ("legacy") names are still callable with their original arguments, but `tools/list` no longer shows them. Add `"listLegacyTools": true` to `config.json` to show them again; they are then labelled `[Legacy — prefer …]`. The mapping is in `docs/TOOLS_REFERENCE.md` under "Consolidated tools and legacy names".

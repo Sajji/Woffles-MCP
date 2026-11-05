@@ -47,13 +47,23 @@ export function normalizeInputSchema<T>(schema: T): T {
   return copy;
 }
 
+/** One short description for the parameter every tool shares (it was ~60 chars × ~85 tools). */
+const INSTANCE_NAME_DESCRIPTION = 'Collibra instance name (see get_instances).';
+
 function constrain(schema: any): void {
   if (!schema || typeof schema !== 'object') return;
   for (const [name, prop] of Object.entries<any>(schema.properties ?? {})) {
     const isNumber = prop.type === 'number' || prop.type === 'integer';
+    // `format: "uuid"` (enforced by a custom Ajv format) is far shorter in
+    // tools/list than repeating the full regex on every id parameter.
     if (UUID_PARAMS.has(name)) {
-      if (prop.type === 'string' && !prop.pattern) prop.pattern = UUID_PATTERN;
-      if (prop.type === 'array' && prop.items?.type === 'string' && !prop.items.pattern) prop.items.pattern = UUID_PATTERN;
+      if (prop.type === 'string' && !prop.pattern) prop.format ??= 'uuid';
+      if (prop.type === 'array' && prop.items?.type === 'string' && !prop.items.pattern) prop.items.format ??= 'uuid';
+    }
+    if (name === 'instance_name' && prop.type === 'string') prop.description = INSTANCE_NAME_DESCRIPTION;
+    // "Optional:" is redundant — the schema's `required` list already says so.
+    if (typeof prop.description === 'string') {
+      prop.description = prop.description.replace(/^Optional\s*[:\-–—]\s*/i, '').replace(/^./, (c: string) => c.toUpperCase());
     }
     if (isNumber && (name === 'limit' || name.endsWith('_limit'))) {
       prop.minimum ??= 1;
@@ -74,6 +84,7 @@ export class ToolInputError extends Error {
 }
 
 const ajv = new (Ajv as any)({ strict: false, allErrors: true, coerceTypes: true, useDefaults: true, allowUnionTypes: true });
+ajv.addFormat('uuid', UUID_RE);
 const validators = new Map<string, any>();
 
 /**
@@ -91,7 +102,9 @@ export function validateToolArgs(toolName: string, schema: any, args: unknown): 
   if (!validate(copy)) {
     const problems = (validate.errors as any[]).map((e) => {
       const at = e.instancePath ? e.instancePath.slice(1).replace(/\//g, '.') : '(arguments)';
-      if (e.keyword === 'pattern' && e.params?.pattern === UUID_PATTERN) return `${at} must be a UUID`;
+      if ((e.keyword === 'pattern' && e.params?.pattern === UUID_PATTERN) || (e.keyword === 'format' && e.params?.format === 'uuid')) {
+        return `${at} must be a UUID`;
+      }
       if (e.keyword === 'enum') return `${at} must be one of: ${e.params.allowedValues.join(', ')}`;
       if (e.keyword === 'required') return `missing required argument "${e.params.missingProperty}"`;
       return `${at} ${e.message}`;

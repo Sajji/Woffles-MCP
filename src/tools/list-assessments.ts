@@ -56,6 +56,11 @@ export const listAssessmentsTool = {
         type: 'string',
         description: 'Optional: Pagination cursor from the nextCursor field of a previous response',
       },
+      include_content: {
+        type: 'boolean',
+        description: 'Include each assessment\'s full Q&A content (large — tens of KB per assessment). Default false: a questionCount is returned instead; use get_assessment for one assessment\'s content.',
+        default: false,
+      },
     },
     required: ['instance_name'],
   },
@@ -77,6 +82,7 @@ export async function executeListAssessments(args: any): Promise<ToolResult> {
     last_modified_from,
     last_modified_to,
     limit = 10,
+    include_content = false,
     cursor,
   } = args;
 
@@ -96,8 +102,18 @@ export async function executeListAssessments(args: any): Promise<ToolResult> {
   const endpoint = `${ASSESSMENTS_BASE}/assessments?${params.toString()}`;
   const response = await client.restCall<any>(endpoint);
 
+  // The Q&A `content` is ~95% of each row (tens of KB per assessment); a list
+  // only needs the summary. get_assessment returns the full content.
+  const results = include_content
+    ? response.results
+    : (response.results ?? []).map(({ content, ...rest }: any) => ({
+        ...rest,
+        questionCount: Array.isArray(content) ? content.length : null,
+      }));
+
   return okWithNext({
     ...response, // API fields first; our keys below take precedence
+    results,
     instance: instance_name,
     filters: { asset_id, status, name, template_id, template_version },
   }, [

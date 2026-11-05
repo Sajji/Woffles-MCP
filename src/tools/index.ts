@@ -230,8 +230,16 @@ const TOOL_ALIASES: { alias: string; canonical: string }[] = [
 
 const aliasTools = TOOL_ALIASES.map(({ alias, canonical }) => {
   const base = allTools.find(t => t.name === canonical)!;
-  return { ...base, name: alias, description: `[Alias for ${canonical}] ${base.description}` };
+  // Same schema; a one-line description instead of repeating the canonical one.
+  return { ...base, name: alias, description: `Alias of ${canonical} (chip-compatible name) — identical arguments and behaviour; see ${canonical}.` };
 });
+
+/**
+ * An outputSchema with no `properties` ("object, anything goes") tells clients
+ * nothing but still costs tokens in every tools/list — omit it.
+ */
+const informativeOutputSchema = (schema: any) =>
+  schema && schema.properties && Object.keys(schema.properties).length > 0 ? schema : undefined;
 
 // Aliases inherit the canonical tool's hints (same executor, same effect).
 const aliasCanonical = new Map(TOOL_ALIASES.map(({ alias, canonical }) => [alias, canonical]));
@@ -239,8 +247,9 @@ const aliasCanonical = new Map(TOOL_ALIASES.map(({ alias, canonical }) => [alias
 /** Canonical name for a tool or alias. */
 const canonicalOf = (name: string) => aliasCanonical.get(name) ?? name;
 
-export const registeredTools = [...allTools, ...aliasTools].map((t: any) => ({
+export const registeredTools = [...allTools, ...aliasTools].map(({ outputSchema, ...t }: any) => ({
   ...t,
+  ...(informativeOutputSchema(outputSchema) ? { outputSchema } : {}),
   // Central constraints (UUID patterns, limit/offset bounds) are advertised AND enforced.
   inputSchema: normalizeInputSchema(t.inputSchema),
   annotations: { ...annotationsFor(canonicalOf(t.name)), title: humanizeToolName(t.name) },
@@ -341,7 +350,13 @@ export async function executeTool(toolName: string, args: any): Promise<ToolResu
   return auditedExecute(canonical, validArgs, inputSchema, WRITE_TOOL_NAMES.includes(canonical), async () => {
     try {
       const result = await executor(validArgs);
-      return typeof result === 'string' ? { text: result } : result;
+      if (typeof result === 'string') return { text: result };
+      // Compact JSON: when the text block is just the (pretty-printed) structured
+      // payload, emit it without indentation — indentation costs tokens and adds nothing.
+      if (result.structured !== undefined && result.text === JSON.stringify(result.structured, null, 2)) {
+        return { ...result, text: JSON.stringify(result.structured) };
+      }
+      return result;
     } catch (error) {
       // Single error boundary for every tool: a thrown error becomes the
       // standard { error: true, message, instance } result (→ MCP isError).

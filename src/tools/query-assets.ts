@@ -14,8 +14,8 @@ export const queryAssetsTool = {
     'Use detail_level="full" only when the user wants complete attribute details for a ' +
     'specific asset type — this fetches all attributes, responsibilities, tags, and metadata. ' +
     'detail_level="summary" (default) returns fullName, displayName, and Description only — ' +
-    'compact: fetches 500 assets per page by default (up to 1000). ' +
-    'detail_level="full" returns all attributes but defaults to 100 per page due to payload size. ' +
+    'compact: 100 assets per page by default (up to 1000). ' +
+    'detail_level="full" returns all attributes but defaults to 50 per page due to payload size. ' +
     'Returns one page of results at a time to stay within response size limits. ' +
     'Check has_more in the response and call again with the returned next_offset to fetch additional pages.',
   inputSchema: {
@@ -37,15 +37,15 @@ export const queryAssetsTool = {
         enum: ['summary', 'full'],
         description:
           '"summary" (default) returns fullName, displayName, and Description attribute only — ' +
-          'compact per-asset payload; 500 results per page by default (max 1000). ' +
+          'compact per-asset payload; 100 results per page by default (max 1000). ' +
           '"full" returns all attribute types (string, boolean, numeric, date, multi-value), ' +
           'responsibilities, and tags — use only when the user needs all attribute detail ' +
-          'and an asset type filter is applied. Defaults to 100 per page due to heavier payload.',
+          'and an asset type filter is applied. Defaults to 50 per page due to heavier payload.',
         default: 'summary',
       },
       limit: {
         type: 'number',
-        description: 'Results per page (max 1000). Defaults to 500 for summary and 100 for full ' +
+        description: 'Results per page (max 1000). Defaults to 100 for summary and 50 for full ' +
           '(heavy payload). Reduce if responses are still too large.',
       },
       offset: {
@@ -174,7 +174,7 @@ export async function executeQueryAssets(args: any): Promise<ToolResult> {
   const { instance_name, asset_type_name, detail_level = 'summary', offset = 0 } = args;
   // Summary rows are small but 5000 of them (~100K chars) overwhelm an agent's
   // context; full payloads carry all attributes so keep pages smaller still.
-  const defaultLimit = detail_level === 'full' ? 100 : 500;
+  const defaultLimit = detail_level === 'full' ? 50 : 100;
   const limit: number = args.limit ?? defaultLimit;
 
   try {
@@ -187,11 +187,25 @@ export async function executeQueryAssets(args: any): Promise<ToolResult> {
       offset,
       ...(where ? { where } : {}),
     });
-    const assets = response.data.assets.map((a: any) => ({
-      ...a,
-      url: client.assetUrl(a.id),
-      ...(a.domain?.id ? { domain: { ...a.domain, url: client.domainUrl(a.domain.id) } } : {}),
-    }));
+    const assets = response.data.assets.map((a: any) => {
+      if (detail_level !== 'full') {
+        // Compact summary row: fullName only when it differs, description
+        // flattened (was an often-empty stringAttributes array).
+        const description = a.stringAttributes?.[0]?.stringValue;
+        return {
+          id: a.id,
+          name: a.displayName ?? a.fullName,
+          ...(a.fullName && a.fullName !== a.displayName ? { fullName: a.fullName } : {}),
+          ...(description ? { description } : {}),
+          url: client.assetUrl(a.id),
+        };
+      }
+      return {
+        ...a,
+        url: client.assetUrl(a.id),
+        ...(a.domain?.id ? { domain: { ...a.domain, url: client.domainUrl(a.domain.id) } } : {}),
+      };
+    });
     const has_more = assets.length === limit;
     const next_offset = offset + assets.length;
 

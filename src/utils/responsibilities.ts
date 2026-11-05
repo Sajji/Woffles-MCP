@@ -56,6 +56,29 @@ export async function enrichResponsibilityOwners(client: CollibraClient, respons
   });
 }
 
+/**
+ * Compact form of an enriched responsibility: role, owner and — when not set
+ * directly on the asset — where it is inherited from. Full REST objects carried
+ * audit metadata and were repeated across several groupings.
+ */
+export function compactResponsibility(r: any, assetId: string) {
+  const o = r.owner ?? {};
+  const base = r.baseResource;
+  return {
+    id: r.id,
+    role: r.role?.name ?? null,
+    roleId: r.role?.id ?? null,
+    owner: {
+      id: o.id ?? null,
+      type: o.resourceType ?? null,
+      name: o.fullName ?? o.name ?? o.userName ?? null,
+      ...(o.userName && o.userName !== o.fullName ? { userName: o.userName } : {}),
+      ...(o.emailAddress ? { email: o.emailAddress } : {}),
+    },
+    inheritedFrom: base && base.id !== assetId ? { type: base.resourceType ?? null, id: base.id, name: base.name ?? null } : null,
+  };
+}
+
 /** Split responsibilities on an asset into direct and inherited (and inherited by level). */
 export function categorizeResponsibilities(responsibilities: any[], assetId: string) {
   const direct = responsibilities.filter((r) => r.baseResource?.id === assetId);

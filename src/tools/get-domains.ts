@@ -1,4 +1,3 @@
-import { enrichResponseUrls } from '../utils/collibra-client.js';
 import { okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { clientFor } from './_context.js';
@@ -46,7 +45,7 @@ export async function executeGetDomains(args: any): Promise<ToolResult> {
   const { instance_name, community_id, name, limit = 1000, offset = 0 } = args;
 
   // Get the instance configuration
-  const { instance, client } = clientFor(instance_name);
+  const { client } = clientFor(instance_name);
 
   // Build query parameters
   const params = new URLSearchParams({
@@ -69,30 +68,29 @@ export async function executeGetDomains(args: any): Promise<ToolResult> {
   const endpoint = `/rest/2.0/domains?${params.toString()}`;
   const response = await client.restCall<any>(endpoint);
 
-  // Group domains by community for better organization
-  const domainsByCommunity: Record<string, any[]> = {};
-  (response.results || []).forEach((domain: any) => {
-    const communityName = domain.community?.name || 'Unknown Community';
-    if (!domainsByCommunity[communityName]) {
-      domainsByCommunity[communityName] = [];
-    }
-    domainsByCommunity[communityName].push(domain);
-  });
+  // One flat list of compact entries. (Previously every domain was returned
+  // twice — grouped by community AND flat — as full REST objects with audit
+  // metadata: ~1.6 KB per domain.)
+  const allDomains = (response.results || []).map((d: any) => ({
+    id: d.id,
+    name: d.name,
+    ...(d.description ? { description: d.description } : {}),
+    type: d.type ? { id: d.type.id, name: d.type.name } : null,
+    community: d.community ? { id: d.community.id, name: d.community.name } : null,
+    url: client.domainUrl(d.id),
+  }));
 
-  // Return formatted response
-  return okWithNext(enrichResponseUrls(instance.baseUrl, {
+  return okWithNext({
     instance: instance_name,
     filters: {
       communityId: community_id || 'All communities',
       name: name || 'All domains',
     },
     total: response.total || 0,
-    returned: response.results?.length || 0,
-    ...((response.results?.length || 0) === Math.min(limit, 1000) ? { nextOffset: offset + response.results.length } : {}),
-    domainsByCommunity,
-    allDomains: response.results || [],
-  }) as Record<string, unknown>, [
-    { tool: 'prepare_create_asset', args: { instance_name, asset_name: '<name>', asset_type_name: '<type>', domain_id: '<pick from allDomains>' }, why: 'Pre-flight check before creating an asset in a chosen domain.' },
-    { tool: 'prepare_create_asset', args: { instance_name, asset_name: '<name>', asset_type_name: '<type>', domain_id: '<pick from allDomains>' }, why: 'Build a model-conformant creation plan including attributes and status.' },
+    returned: allDomains.length,
+    ...(allDomains.length === Math.min(limit, 1000) ? { nextOffset: offset + allDomains.length } : {}),
+    allDomains,
+  }, [
+    { tool: 'prepare_create_asset', args: { instance_name, asset_name: '<name>', asset_type_name: '<type>', domain_id: '<pick from allDomains>' }, why: 'Plan an asset creation in a chosen domain (required attributes, statuses, duplicates).' },
   ]);
 }

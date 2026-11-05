@@ -1,5 +1,5 @@
 import { enrichResponseUrls } from '../utils/collibra-client.js';
-import { okWithNext } from '../utils/tool-result.js';
+import { okWithNext, stripAuditFields } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { clientFor } from './_context.js';
 
@@ -185,7 +185,7 @@ export async function executeSearchAssetsByName(args: any): Promise<ToolResult> 
       total: response.total || 0,
       returned: response.results?.length || 0,
       offset,
-      results: response.results || [],
+      results: stripAuditFields(response.results || []),
     }) as Record<string, unknown>;
     return okWithNext(structured, [
       { tool: 'get_asset_by_id', args: { instance_name, asset_id: '<id from results>' }, why: 'Fetch full details for a search hit.' },

@@ -33,6 +33,25 @@ export function failureMessage(result: ToolResult): string | undefined {
   return undefined;
 }
 
+const AUDIT_FIELDS = new Set(['createdBy', 'createdOn', 'lastModifiedBy', 'lastModifiedOn', 'system', 'resourceDiscriminator']);
+
+/**
+ * Recursively drop REST audit metadata (createdBy/On, lastModifiedBy/On,
+ * system, resourceDiscriminator) and empty `tags` arrays from list results.
+ * These fields rarely matter to an agent but add ~30% to raw Collibra objects.
+ */
+export function stripAuditFields<T>(value: T): T {
+  if (Array.isArray(value)) return value.map(stripAuditFields) as T;
+  if (!value || typeof value !== 'object') return value;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (AUDIT_FIELDS.has(k)) continue;
+    if (k === 'tags' && Array.isArray(v) && v.length === 0) continue;
+    out[k] = stripAuditFields(v);
+  }
+  return out as T;
+}
+
 /**
  * Same as {@link ok} but pretty-prints the text block (2-space indent).
  * Use for write tools / previews where readability matters.

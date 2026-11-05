@@ -1,4 +1,3 @@
-import { enrichResponseUrls } from '../utils/collibra-client.js';
 import { okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { clientFor } from './_context.js';
@@ -63,7 +62,7 @@ export async function executeGetCommunities(args: any): Promise<ToolResult> {
   const { instance_name, parent_id, name, show_hierarchy = true, limit = 1000, offset = 0 } = args;
 
   // Get the instance configuration
-  const { instance, client } = clientFor(instance_name);
+  const { client } = clientFor(instance_name);
 
   // Build query parameters
   const params = new URLSearchParams({
@@ -87,7 +86,14 @@ export async function executeGetCommunities(args: any): Promise<ToolResult> {
   const endpoint = `/rest/2.0/communities?${params.toString()}`;
   const response = await client.restCall<any>(endpoint);
 
-  const communities: Community[] = response.results || [];
+  // Compact entries (full REST objects carried audit metadata on every entry).
+  const communities: Community[] = (response.results || []).map((c: any) => ({
+    id: c.id,
+    name: c.name,
+    ...(c.description ? { description: c.description } : {}),
+    parent: c.parent ? { id: c.parent.id, name: c.parent.name } : null,
+    url: client.communityUrl(c.id),
+  }));
 
   // Organize by hierarchy if requested
   let hierarchicalView = null;
@@ -143,17 +149,14 @@ export async function executeGetCommunities(args: any): Promise<ToolResult> {
     ...(communities.length === Math.min(limit, 1000) ? { nextOffset: offset + communities.length } : {}),
   };
 
+  // The tree already contains every community once; the old `flat` copy repeated them all.
   if (show_hierarchy && !parent_id && hierarchicalView) {
     result.hierarchy = hierarchicalView;
-    result.flat = {
-      topLevel: topLevelCommunities,
-      children: childCommunities,
-    };
   } else {
     result.communities = communities;
   }
 
-  return okWithNext(enrichResponseUrls(instance.baseUrl, result) as Record<string, unknown>, [
+  return okWithNext(result, [
     { tool: 'get_domains', args: { instance_name, community_id: '<pick from communities>' }, why: 'List domains under a chosen community.' },
     { tool: 'create_domain', args: { instance_name, name: '<domain name>', community_id: '<pick from communities>', type_id: '<from get_domain_types>' }, why: 'Create a domain inside a community.' },
   ]);

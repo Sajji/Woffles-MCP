@@ -9,7 +9,7 @@ import type { AddressInfo } from 'net';
 import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { normalizeInputSchema, validateToolArgs, UUID_PATTERN } from '../src/utils/validation.js';
+import { normalizeInputSchema, validateToolArgs } from '../src/utils/validation.js';
 import { failureMessage } from '../src/utils/tool-result.js';
 
 const ASSET = 'aaaaaaaa-0000-0000-0000-000000000001';
@@ -78,9 +78,9 @@ describe('schema normalization and argument validation', () => {
   });
 
   it('adds UUID patterns only to known Core REST id parameters', () => {
-    expect(schema.properties.asset_id.pattern).toBe(UUID_PATTERN);
-    expect((schema.properties.asset_ids as any).items.pattern).toBe(UUID_PATTERN);
-    expect((schema.properties.entity_id as any).pattern).toBeUndefined();
+    expect((schema.properties.asset_id as any).format).toBe('uuid');
+    expect((schema.properties.asset_ids as any).items.format).toBe('uuid');
+    expect((schema.properties.entity_id as any).format).toBeUndefined();
   });
 
   it('bounds limit and offset parameters', () => {
@@ -144,7 +144,7 @@ describe('alias-aware tool toggles', () => {
   it('advertises the central constraints in tools/list', async () => {
     const reg = await loadRegistry();
     const tool: any = reg.tools.find((t) => t.name === 'get_asset_by_id');
-    expect(tool.inputSchema.properties.asset_id.pattern).toBe(UUID_PATTERN);
+    expect(tool.inputSchema.properties.asset_id.format).toBe('uuid');
   });
 });
 

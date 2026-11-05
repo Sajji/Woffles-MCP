@@ -1,8 +1,7 @@
-import { enrichResponseUrls } from '../utils/collibra-client.js';
 import { ok } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { clientFor } from './_context.js';
-import { categorizeResponsibilities, enrichResponsibilityOwners } from '../utils/responsibilities.js';
+import { categorizeResponsibilities, compactResponsibility, enrichResponsibilityOwners } from '../utils/responsibilities.js';
 
 export const getAssetResponsibilitiesTool = {
   name: 'get_asset_responsibilities',
@@ -45,7 +44,7 @@ export async function executeGetAssetResponsibilities(args: any): Promise<ToolRe
   const { instance_name, asset_id, include_inherited = true, role_name } = args;
 
   // Get the instance configuration
-  const { instance, client } = clientFor(instance_name);
+  const { client } = clientFor(instance_name);
 
   // Get asset basic info for context
   const asset = await client.restCall<any>(`/rest/2.0/assets/${encodeURIComponent(asset_id)}`);
@@ -72,58 +71,23 @@ export async function executeGetAssetResponsibilities(args: any): Promise<ToolRe
     inheritedByDomain,
   } = categorizeResponsibilities(allResponsibilities, asset_id);
 
-  // Group by role for easier analysis
-  const byRole: Record<string, any> = {};
-  allResponsibilities.forEach((r: any) => {
-    const roleName = r.role?.name || 'Unknown Role';
-    if (!byRole[roleName]) {
-      byRole[roleName] = {
-        direct: [],
-        inherited: [],
-      };
-    }
-    
-    if (r.baseResource?.id === asset_id) {
-      byRole[roleName].direct.push(r);
-    } else {
-      byRole[roleName].inherited.push(r);
-    }
-  });
-
-  // Group by owner for easier analysis
-  const byOwner: Record<string, any> = {};
-  allResponsibilities.forEach((r: any) => {
-    let ownerName = 'Unknown';
-    let ownerType = 'Unknown';
-    
-    if (r.owner?.fullName) {
-      ownerName = r.owner.fullName;
-      ownerType = 'User';
-    } else if (r.owner?.name) {
-      ownerName = r.owner.name;
-      ownerType = 'UserGroup';
-    } else if (r.owner?.userName) {
-      ownerName = r.owner.userName;
-      ownerType = 'User';
-    }
-    
-    const ownerKey = `${ownerName} (${ownerType})`;
-    
-    if (!byOwner[ownerKey]) {
-      byOwner[ownerKey] = {
-        roles: [],
-        responsibilities: [],
-      };
-    }
-    
-    if (!byOwner[ownerKey].roles.includes(r.role?.name)) {
-      byOwner[ownerKey].roles.push(r.role?.name);
-    }
-    byOwner[ownerKey].responsibilities.push(r);
-  });
+  // Each responsibility appears once (compact); the groupings below carry names only.
+  const direct = directResponsibilities.map((r: any) => compactResponsibility(r, asset_id));
+  const inherited = inheritedResponsibilities.map((r: any) => compactResponsibility(r, asset_id));
+  const byRole: Record<string, { direct: string[]; inherited: string[] }> = {};
+  const byOwner: Record<string, string[]> = {};
+  for (const r of [...direct, ...inherited]) {
+    const role = r.role ?? 'Unknown Role';
+    const owner = `${r.owner.name ?? 'Unknown'} (${r.owner.type ?? 'Unknown'})`;
+    byRole[role] ??= { direct: [], inherited: [] };
+    const bucket = r.inheritedFrom ? byRole[role].inherited : byRole[role].direct;
+    if (!bucket.includes(owner)) bucket.push(owner);
+    byOwner[owner] ??= [];
+    if (!byOwner[owner].includes(role)) byOwner[owner].push(role);
+  }
 
   // Return comprehensive responsibility analysis
-  return ok(enrichResponseUrls(instance.baseUrl, {
+  return ok({
     instance: instance_name,
     asset: {
       id: asset_id,
@@ -147,14 +111,11 @@ export async function executeGetAssetResponsibilities(args: any): Promise<ToolRe
       uniqueOwners: Object.keys(byOwner).length,
     },
     responsibilities: {
-      direct: directResponsibilities,
-      inherited: include_inherited ? {
-        all: inheritedResponsibilities,
-        fromCommunity: inheritedByCommunity,
-        fromDomain: inheritedByDomain,
-      } : null,
+      direct,
+      // Each inherited entry says where it comes from (inheritedFrom.type: Community / Domain).
+      inherited: include_inherited ? inherited : null,
     },
     groupedByRole: byRole,
     groupedByOwner: byOwner,
-  }));
+  });
 }
