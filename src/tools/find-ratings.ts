@@ -1,7 +1,6 @@
-import { withEnvelope, errorEnvelope } from '../utils/tool-result.js';
+import { withEnvelope } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
+import { clientFor } from './_context.js';
 
 export const findRatingsTool = {
   name: 'find_ratings',
@@ -47,50 +46,41 @@ export const findRatingsTool = {
 export async function executeFindRatings(args: any): Promise<ToolResult> {
   const { instance_name, asset_id, user_id, limit = 100, offset = 0 } = args;
 
-  try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+  const { client } = clientFor(instance_name);
 
-    const qp = new URLSearchParams({ limit: String(Math.min(limit, 1000)), offset: String(offset) });
-    if (asset_id) qp.set('assetId', asset_id);
-    if (user_id) qp.set('userId', user_id);
+  const qp = new URLSearchParams({ limit: String(Math.min(limit, 1000)), offset: String(offset) });
+  if (asset_id) qp.set('assetId', asset_id);
+  if (user_id) qp.set('userId', user_id);
 
-    const resp = await client.restCall<any>(`/rest/2.0/ratings?${qp.toString()}`);
-    const results: any[] = resp.results || [];
+  const resp = await client.restCall<any>(`/rest/2.0/ratings?${qp.toString()}`);
+  const results: any[] = resp.results || [];
 
-    const ratings = results.map((r) => ({
-      id: r.id,
-      rating: r.rating ?? null,
-      review: r.review ?? null,
-      asset: r.asset ? { id: r.asset.id, name: r.asset.name } : null,
-      createdBy: r.createdBy ?? null,
-      createdOn: r.createdOn ?? null,
-    }));
+  const ratings = results.map((r) => ({
+    id: r.id,
+    rating: r.rating ?? null,
+    review: r.review ?? null,
+    asset: r.asset ? { id: r.asset.id, name: r.asset.name } : null,
+    createdBy: r.createdBy ?? null,
+    createdOn: r.createdOn ?? null,
+  }));
 
-    // The average must cover ALL of the asset's ratings, not just this page.
-    let summary: { averageRating: number | null; ratingCount: number } | undefined;
-    if (asset_id) {
-      const all = results.length < Math.min(limit, 1000) && offset === 0
-        ? results
-        : await client.restPaginate<any>('/rest/2.0/ratings', { assetId: asset_id });
-      const values = all.map((r) => r.rating).filter((v): v is number => typeof v === 'number');
-      summary = {
-        averageRating: values.length > 0 ? Math.round((values.reduce((a, b) => a + b, 0) / values.length) * 100) / 100 : null,
-        ratingCount: values.length,
-      };
-    }
-
-    return withEnvelope({
-      instance: instance_name,
-      operation: 'find_ratings',
-      data: { count: ratings.length, ...(summary ?? {}), ratings },
-      pagination: { offset, limit, ...(results.length === limit ? { nextOffset: offset + limit } : {}) },
-    });
-  } catch (error) {
-    return errorEnvelope({
-      instance: instance_name,
-      operation: 'find_ratings',
-      message: (error as Error).message,
-    });
+  // The average must cover ALL of the asset's ratings, not just this page.
+  let summary: { averageRating: number | null; ratingCount: number } | undefined;
+  if (asset_id) {
+    const all = results.length < Math.min(limit, 1000) && offset === 0
+      ? results
+      : await client.restPaginate<any>('/rest/2.0/ratings', { assetId: asset_id });
+    const values = all.map((r) => r.rating).filter((v): v is number => typeof v === 'number');
+    summary = {
+      averageRating: values.length > 0 ? Math.round((values.reduce((a, b) => a + b, 0) / values.length) * 100) / 100 : null,
+      ratingCount: values.length,
+    };
   }
+
+  return withEnvelope({
+    instance: instance_name,
+    operation: 'find_ratings',
+    data: { count: ratings.length, ...(summary ?? {}), ratings },
+    pagination: { offset, limit, ...(results.length === limit ? { nextOffset: offset + limit } : {}) },
+  });
 }

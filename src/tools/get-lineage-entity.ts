@@ -1,7 +1,6 @@
-import { ok, okWithNext } from '../utils/tool-result.js';
+import { okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
+import { clientFor } from './_context.js';
 
 const LINEAGE_BASE = '/technical_lineage_resource/rest/lineageGraphRead/v1';
 
@@ -35,29 +34,18 @@ export const getLineageEntityTool = {
 export async function executeGetLineageEntity(args: any): Promise<ToolResult> {
   const { instance_name, entity_id } = args;
 
-  try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+  const { client } = clientFor(instance_name);
 
-    const endpoint = `${LINEAGE_BASE}/entities/${encodeURIComponent(entity_id)}`;
-    const response = await client.restCall<any>(endpoint);
+  const endpoint = `${LINEAGE_BASE}/entities/${encodeURIComponent(entity_id)}`;
+  const response = await client.restCall<any>(endpoint);
 
-    return okWithNext({
-      ...response, // API fields first; our keys below take precedence
-      instance: instance_name,
-      entityId: entity_id,
-    }, [
-      { tool: 'get_lineage_downstream', args: { instance_name, entity_id }, why: 'Walk the lineage graph downstream from this entity.' },
-      { tool: 'get_lineage_upstream', args: { instance_name, entity_id }, why: 'Walk the lineage graph upstream from this entity.' },
-      { tool: 'get_asset_by_id', args: { instance_name, asset_id: '<dgcAssetId from response, if present>' }, why: 'Cross over to the catalog asset linked to this lineage entity.' },
-    ]);
-
-  } catch (error) {
-    return ok({
-      error: true,
-      message: (error as Error).message,
-      instance: instance_name,
-      entityId: entity_id,
-    });
-  }
+  return okWithNext({
+    ...response, // API fields first; our keys below take precedence
+    instance: instance_name,
+    entityId: entity_id,
+  }, [
+    { tool: 'get_lineage_downstream', args: { instance_name, entity_id }, why: 'Walk the lineage graph downstream from this entity.' },
+    { tool: 'get_lineage_upstream', args: { instance_name, entity_id }, why: 'Walk the lineage graph upstream from this entity.' },
+    { tool: 'get_asset_by_id', args: { instance_name, asset_id: '<dgcAssetId from response, if present>' }, why: 'Cross over to the catalog asset linked to this lineage entity.' },
+  ]);
 }

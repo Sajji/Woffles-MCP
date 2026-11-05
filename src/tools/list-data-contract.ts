@@ -1,7 +1,6 @@
-import { ok, okWithNext } from '../utils/tool-result.js';
+import { okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
+import { clientFor } from './_context.js';
 
 export const listDataContractTool = {
   name: 'list_data_contract',
@@ -41,35 +40,25 @@ export const listDataContractTool = {
 export async function executeListDataContract(args: any): Promise<ToolResult> {
   const { instance_name, manifest_id, cursor, limit = 100 } = args;
 
-  try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+  const { client } = clientFor(instance_name);
 
-    const params = new URLSearchParams();
-    params.append('includeTotal', 'true');
-    params.append('limit', String(Math.min(limit, 500)));
-    if (manifest_id) params.append('manifestId', manifest_id);
-    if (cursor) params.append('cursor', cursor);
+  const params = new URLSearchParams();
+  params.append('includeTotal', 'true');
+  params.append('limit', String(Math.min(limit, 500)));
+  if (manifest_id) params.append('manifestId', manifest_id);
+  if (cursor) params.append('cursor', cursor);
 
-    const endpoint = `/rest/dataProduct/v1/dataContracts?${params.toString()}`;
-    const response = await client.restCall<any>(endpoint);
+  const endpoint = `/rest/dataProduct/v1/dataContracts?${params.toString()}`;
+  const response = await client.restCall<any>(endpoint);
 
-    return okWithNext({
-      instance: instance_name,
-      filters: { manifestId: manifest_id || null },
-      total: response.total ?? null,
-      limit: response.limit,
-      nextCursor: response.nextCursor || null,
-      contracts: response.items || [],
-    }, [
-      { tool: 'pull_data_contract_manifest', args: { instance_name, data_contract_id: '<id from contracts>' }, why: 'Pull the YAML/JSON manifest for a specific contract.' },
-    ], true);
-
-  } catch (error) {
-    return ok({
-      error: true,
-      message: (error as Error).message,
-      instance: instance_name,
-    });
-  }
+  return okWithNext({
+    instance: instance_name,
+    filters: { manifestId: manifest_id || null },
+    total: response.total ?? null,
+    limit: response.limit,
+    nextCursor: response.nextCursor || null,
+    contracts: response.items || [],
+  }, [
+    { tool: 'pull_data_contract_manifest', args: { instance_name, data_contract_id: '<id from contracts>' }, why: 'Pull the YAML/JSON manifest for a specific contract.' },
+  ], true);
 }

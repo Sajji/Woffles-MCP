@@ -1,5 +1,5 @@
 import type { ToolResult } from '../types.js';
-import { errorEnvelope, withEnvelope } from '../utils/tool-result.js';
+import { withEnvelope } from '../utils/tool-result.js';
 import { loadSnapshot, type ModelRelationType } from '../utils/operating-model-cache.js';
 
 export const findTraversalPathTool = {
@@ -67,104 +67,100 @@ export async function executeFindTraversalPath(args: any): Promise<ToolResult> {
     max_depth = 5, max_paths = 3,
   } = args || {};
   const operation = 'find_traversal_path';
-  try {
-    const snap = loadSnapshot(instance_name);
-    if (!snap) {
-      return withEnvelope({
-        instance: instance_name, operation, pretty: true, data: null,
-        warnings: ['No cached operating model. Refresh first.'],
-        nextActions: [{ tool: 'refresh_operating_model', args: { instance_name }, why: 'Required cache.' }],
-      });
-    }
+  const snap = loadSnapshot(instance_name);
+  if (!snap) {
+    return withEnvelope({
+      instance: instance_name, operation, pretty: true, data: null,
+      warnings: ['No cached operating model. Refresh first.'],
+      nextActions: [{ tool: 'refresh_operating_model', args: { instance_name }, why: 'Required cache.' }],
+    });
+  }
 
-    const resolve = (id?: string, name?: string) => {
-      if (id) return snap.assetTypes.filter((t) => t.id === id);
-      if (name) {
-        const n = name.toLowerCase();
-        const contains = snap.assetTypes.filter((t) => t.name.toLowerCase().includes(n));
-        // Prefer an exact (case-insensitive) match when the contains-match is ambiguous.
-        const exact = contains.filter((t) => t.name.toLowerCase() === n);
-        return exact.length === 1 ? exact : contains;
+  const resolve = (id?: string, name?: string) => {
+    if (id) return snap.assetTypes.filter((t) => t.id === id);
+    if (name) {
+      const n = name.toLowerCase();
+      const contains = snap.assetTypes.filter((t) => t.name.toLowerCase().includes(n));
+      // Prefer an exact (case-insensitive) match when the contains-match is ambiguous.
+      const exact = contains.filter((t) => t.name.toLowerCase() === n);
+      return exact.length === 1 ? exact : contains;
+    }
+    return [];
+  };
+
+  const sources = resolve(source_asset_type_id, source_asset_type_name);
+  const targets = resolve(target_asset_type_id, target_asset_type_name);
+  if (sources.length !== 1 || targets.length !== 1) {
+    return withEnvelope({
+      instance: instance_name, operation, pretty: true,
+      data: { sourceCandidates: sources.slice(0, 20), targetCandidates: targets.slice(0, 20) },
+      warnings: ['Source and target must each resolve to exactly one asset type.'],
+    });
+  }
+
+  const src = sources[0];
+  const dst = targets[0];
+  const adj = buildAdjacency(snap.relationTypes);
+
+  // BFS yielding up to max_paths shortest-first paths.
+  const paths: Edge[][] = [];
+  const queue: { node: string; path: Edge[]; visited: Set<string> }[] = [
+    { node: src.id, path: [], visited: new Set([src.id]) },
+  ];
+  // Simple-path enumeration is exponential around hub types (Asset, Data
+  // Asset): cap the work and say so rather than hang.
+  const MAX_EXPANSIONS = 50_000;
+  let expansions = 0;
+  let truncated = false;
+  let head = 0;
+  while (head < queue.length && paths.length < max_paths) {
+    if (++expansions > MAX_EXPANSIONS) {
+      truncated = true;
+      break;
+    }
+    const cur = queue[head++];
+    // Expanding a node at depth d yields paths of length d+1, so stop at max_depth.
+    if (cur.path.length >= max_depth) continue;
+    const edges = adj.get(cur.node) || [];
+    for (const e of edges) {
+      if (e.toTypeId === dst.id) {
+        paths.push([...cur.path, e]);
+        if (paths.length >= max_paths) break;
+        continue;
       }
-      return [];
-    };
-
-    const sources = resolve(source_asset_type_id, source_asset_type_name);
-    const targets = resolve(target_asset_type_id, target_asset_type_name);
-    if (sources.length !== 1 || targets.length !== 1) {
-      return withEnvelope({
-        instance: instance_name, operation, pretty: true,
-        data: { sourceCandidates: sources.slice(0, 20), targetCandidates: targets.slice(0, 20) },
-        warnings: ['Source and target must each resolve to exactly one asset type.'],
-      });
-    }
-
-    const src = sources[0];
-    const dst = targets[0];
-    const adj = buildAdjacency(snap.relationTypes);
-
-    // BFS yielding up to max_paths shortest-first paths.
-    const paths: Edge[][] = [];
-    const queue: { node: string; path: Edge[]; visited: Set<string> }[] = [
-      { node: src.id, path: [], visited: new Set([src.id]) },
-    ];
-    // Simple-path enumeration is exponential around hub types (Asset, Data
-    // Asset): cap the work and say so rather than hang.
-    const MAX_EXPANSIONS = 50_000;
-    let expansions = 0;
-    let truncated = false;
-    let head = 0;
-    while (head < queue.length && paths.length < max_paths) {
-      if (++expansions > MAX_EXPANSIONS) {
+      if (cur.visited.has(e.toTypeId)) continue;
+      const nv = new Set(cur.visited);
+      nv.add(e.toTypeId);
+      if (queue.length - head >= 200_000) {
         truncated = true;
         break;
       }
-      const cur = queue[head++];
-      // Expanding a node at depth d yields paths of length d+1, so stop at max_depth.
-      if (cur.path.length >= max_depth) continue;
-      const edges = adj.get(cur.node) || [];
-      for (const e of edges) {
-        if (e.toTypeId === dst.id) {
-          paths.push([...cur.path, e]);
-          if (paths.length >= max_paths) break;
-          continue;
-        }
-        if (cur.visited.has(e.toTypeId)) continue;
-        const nv = new Set(cur.visited);
-        nv.add(e.toTypeId);
-        if (queue.length - head >= 200_000) {
-          truncated = true;
-          break;
-        }
-        queue.push({ node: e.toTypeId, path: [...cur.path, e], visited: nv });
-      }
+      queue.push({ node: e.toTypeId, path: [...cur.path, e], visited: nv });
     }
-    const warnings: string[] = [];
-    if (paths.length === 0) warnings.push(`No path found within depth ${max_depth}.`);
-    if (truncated) warnings.push('Search stopped early (too many candidate paths); results may be incomplete — reduce max_depth.');
-
-    return withEnvelope({
-      instance: instance_name,
-      operation,
-      pretty: true,
-      model: { snapshotHash: snap.snapshotHash, refreshedAt: snap.refreshedAt },
-      data: {
-        source: { id: src.id, name: src.name },
-        target: { id: dst.id, name: dst.name },
-        paths: paths.map((p) => ({
-          length: p.length,
-          steps: p.map((e) => ({
-            relationTypeId: e.relationTypeId,
-            direction: e.direction,
-            label: e.direction === 'OUTGOING' ? e.role : e.corole,
-            from: e.fromTypeName,
-            to: e.toTypeName,
-          })),
-        })),
-      },
-      warnings,
-    });
-  } catch (error) {
-    return errorEnvelope({ instance: instance_name, operation, message: (error as Error).message });
   }
+  const warnings: string[] = [];
+  if (paths.length === 0) warnings.push(`No path found within depth ${max_depth}.`);
+  if (truncated) warnings.push('Search stopped early (too many candidate paths); results may be incomplete — reduce max_depth.');
+
+  return withEnvelope({
+    instance: instance_name,
+    operation,
+    pretty: true,
+    model: { snapshotHash: snap.snapshotHash, refreshedAt: snap.refreshedAt },
+    data: {
+      source: { id: src.id, name: src.name },
+      target: { id: dst.id, name: dst.name },
+      paths: paths.map((p) => ({
+        length: p.length,
+        steps: p.map((e) => ({
+          relationTypeId: e.relationTypeId,
+          direction: e.direction,
+          label: e.direction === 'OUTGOING' ? e.role : e.corole,
+          from: e.fromTypeName,
+          to: e.toTypeName,
+        })),
+      })),
+    },
+    warnings,
+  });
 }

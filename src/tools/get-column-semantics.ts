@@ -1,8 +1,7 @@
 import { ok, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
 import { fetchRelations, SEMANTIC_RELATION_TYPES as REL } from '../utils/relations.js';
+import { clientFor } from './_context.js';
 const { COLUMN_TO_TABLE: COLUMN_TO_TABLE_REL_ID, DATA_ATTRIBUTE_1: DATA_ATTRIBUTE_REL_ID_1, DATA_ATTRIBUTE_2: DATA_ATTRIBUTE_REL_ID_2, GENERIC_CONNECTED_ASSET: GENERIC_CONNECTED_ASSET_REL_ID, DATA_ATTRIBUTE_REPRESENTS_MEASURE: DATA_ATTRIBUTE_REPRESENTS_MEASURE_REL_ID } = REL;
 
 
@@ -37,111 +36,101 @@ export const getColumnSemanticsTool = {
 export async function executeGetColumnSemantics(args: any): Promise<ToolResult> {
   const { instance_name, column_asset_id } = args;
 
-  try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+  const { client } = clientFor(instance_name);
 
-    // Step 1: Find Data Attributes linked to this column
-    const dataAttributeRelTypeIds = [
-      DATA_ATTRIBUTE_REL_ID_1,
-      DATA_ATTRIBUTE_REL_ID_2,
-      GENERIC_CONNECTED_ASSET_REL_ID,
-    ];
+  // Step 1: Find Data Attributes linked to this column
+  const dataAttributeRelTypeIds = [
+    DATA_ATTRIBUTE_REL_ID_1,
+    DATA_ATTRIBUTE_REL_ID_2,
+    GENERIC_CONNECTED_ASSET_REL_ID,
+  ];
 
-    const relResults = await Promise.all(
-      dataAttributeRelTypeIds.flatMap((relTypeId) => [
-        fetchRelations(client, relTypeId, column_asset_id),
-        fetchRelations(client, relTypeId, undefined, column_asset_id),
-      ]),
-    );
+  const relResults = await Promise.all(
+    dataAttributeRelTypeIds.flatMap((relTypeId) => [
+      fetchRelations(client, relTypeId, column_asset_id),
+      fetchRelations(client, relTypeId, undefined, column_asset_id),
+    ]),
+  );
 
-    const dataAttrMap = new Map<string, any>();
-    for (const relations of relResults) {
-      for (const rel of relations) {
-        const other = rel.source.id === column_asset_id ? rel.target : rel.source;
-        if (!dataAttrMap.has(other.id)) {
-          dataAttrMap.set(other.id, {
-            id: other.id,
-            name: other.name,
-            url: client.assetUrl(other.id),
-          });
-        }
+  const dataAttrMap = new Map<string, any>();
+  for (const relations of relResults) {
+    for (const rel of relations) {
+      const other = rel.source.id === column_asset_id ? rel.target : rel.source;
+      if (!dataAttrMap.has(other.id)) {
+        dataAttrMap.set(other.id, {
+          id: other.id,
+          name: other.name,
+          url: client.assetUrl(other.id),
+        });
       }
     }
+  }
 
-    const dataAttributes = Array.from(dataAttrMap.values());
+  const dataAttributes = Array.from(dataAttrMap.values());
 
-    if (dataAttributes.length === 0) {
-      return ok({
-        instance: instance_name,
-        columnId: column_asset_id,
-        columnUrl: client.assetUrl(column_asset_id),
-        message: 'No data attributes found linked to this column.',
-        dataAttributes: [],
-      });
-    }
-
-    // Step 2: For each data attribute find linked Measures and Business Terms
-    const enrichedDAs = await Promise.all(
-      dataAttributes.map(async (da: any) => {
-        const [measuresAsSource, measuresAsTarget, businessTermsAsSource, businessTermsAsTarget] =
-          await Promise.all([
-            fetchRelations(client, DATA_ATTRIBUTE_REPRESENTS_MEASURE_REL_ID, da.id),
-            fetchRelations(client, DATA_ATTRIBUTE_REPRESENTS_MEASURE_REL_ID, undefined, da.id),
-            fetchRelations(client, GENERIC_CONNECTED_ASSET_REL_ID, da.id),
-            fetchRelations(client, GENERIC_CONNECTED_ASSET_REL_ID, undefined, da.id),
-          ]);
-
-        const measureMap = new Map<string, any>();
-        for (const rel of [...measuresAsSource, ...measuresAsTarget]) {
-          const other = rel.source.id === da.id ? rel.target : rel.source;
-          if (!measureMap.has(other.id)) {
-            measureMap.set(other.id, { id: other.id, name: other.name, url: client.assetUrl(other.id) });
-          }
-        }
-
-        // The generic relation type also links the data attribute back to the
-        // column itself (step 1) and to sibling data attributes — exclude those.
-        const btMap = new Map<string, any>();
-        for (const rel of [...businessTermsAsSource, ...businessTermsAsTarget]) {
-          const other = rel.source.id === da.id ? rel.target : rel.source;
-          if (other.id === column_asset_id || dataAttrMap.has(other.id)) continue;
-          if (!btMap.has(other.id) && !measureMap.has(other.id)) {
-            btMap.set(other.id, { id: other.id, name: other.name, url: client.assetUrl(other.id) });
-          }
-        }
-
-        return {
-          ...da,
-          measures: Array.from(measureMap.values()),
-          businessTerms: Array.from(btMap.values()),
-        };
-      }),
-    );
-
-    // Step 3: Find the parent table
-    const tableRelations = await fetchRelations(client, COLUMN_TO_TABLE_REL_ID, column_asset_id);
-    const table = tableRelations.length > 0
-      ? { id: tableRelations[0].target.id, name: tableRelations[0].target.name, url: client.assetUrl(tableRelations[0].target.id) }
-      : null;
-
-    return okWithNext({
+  if (dataAttributes.length === 0) {
+    return ok({
       instance: instance_name,
       columnId: column_asset_id,
       columnUrl: client.assetUrl(column_asset_id),
-      parentTable: table,
-      dataAttributes: enrichedDAs,
-    }, [
-      { tool: 'get_asset_by_id', args: { instance_name, asset_id: column_asset_id }, why: 'Get full column asset detail.' },
-      { tool: 'get_table_semantics', args: { instance_name, table_asset_id: '<parentTable.id>' }, why: 'See semantics for the whole parent table.' },
-      { tool: 'get_business_term_data', args: { instance_name, term_asset_id: '<businessTerm id from dataAttributes>' }, why: 'Drill into a linked business term.' },
-    ], true);
-
-  } catch (error) {
-    return ok({
-      error: true,
-      message: (error as Error).message,
-      instance: instance_name,
+      message: 'No data attributes found linked to this column.',
+      dataAttributes: [],
     });
   }
+
+  // Step 2: For each data attribute find linked Measures and Business Terms
+  const enrichedDAs = await Promise.all(
+    dataAttributes.map(async (da: any) => {
+      const [measuresAsSource, measuresAsTarget, businessTermsAsSource, businessTermsAsTarget] =
+        await Promise.all([
+          fetchRelations(client, DATA_ATTRIBUTE_REPRESENTS_MEASURE_REL_ID, da.id),
+          fetchRelations(client, DATA_ATTRIBUTE_REPRESENTS_MEASURE_REL_ID, undefined, da.id),
+          fetchRelations(client, GENERIC_CONNECTED_ASSET_REL_ID, da.id),
+          fetchRelations(client, GENERIC_CONNECTED_ASSET_REL_ID, undefined, da.id),
+        ]);
+
+      const measureMap = new Map<string, any>();
+      for (const rel of [...measuresAsSource, ...measuresAsTarget]) {
+        const other = rel.source.id === da.id ? rel.target : rel.source;
+        if (!measureMap.has(other.id)) {
+          measureMap.set(other.id, { id: other.id, name: other.name, url: client.assetUrl(other.id) });
+        }
+      }
+
+      // The generic relation type also links the data attribute back to the
+      // column itself (step 1) and to sibling data attributes — exclude those.
+      const btMap = new Map<string, any>();
+      for (const rel of [...businessTermsAsSource, ...businessTermsAsTarget]) {
+        const other = rel.source.id === da.id ? rel.target : rel.source;
+        if (other.id === column_asset_id || dataAttrMap.has(other.id)) continue;
+        if (!btMap.has(other.id) && !measureMap.has(other.id)) {
+          btMap.set(other.id, { id: other.id, name: other.name, url: client.assetUrl(other.id) });
+        }
+      }
+
+      return {
+        ...da,
+        measures: Array.from(measureMap.values()),
+        businessTerms: Array.from(btMap.values()),
+      };
+    }),
+  );
+
+  // Step 3: Find the parent table
+  const tableRelations = await fetchRelations(client, COLUMN_TO_TABLE_REL_ID, column_asset_id);
+  const table = tableRelations.length > 0
+    ? { id: tableRelations[0].target.id, name: tableRelations[0].target.name, url: client.assetUrl(tableRelations[0].target.id) }
+    : null;
+
+  return okWithNext({
+    instance: instance_name,
+    columnId: column_asset_id,
+    columnUrl: client.assetUrl(column_asset_id),
+    parentTable: table,
+    dataAttributes: enrichedDAs,
+  }, [
+    { tool: 'get_asset_by_id', args: { instance_name, asset_id: column_asset_id }, why: 'Get full column asset detail.' },
+    { tool: 'get_table_semantics', args: { instance_name, table_asset_id: '<parentTable.id>' }, why: 'See semantics for the whole parent table.' },
+    { tool: 'get_business_term_data', args: { instance_name, term_asset_id: '<businessTerm id from dataAttributes>' }, why: 'Drill into a linked business term.' },
+  ], true);
 }

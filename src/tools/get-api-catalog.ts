@@ -1,8 +1,7 @@
-import { ok, okWithNext } from '../utils/tool-result.js';
+import { okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
 import { chunk, mapLimit } from '../utils/concurrency.js';
+import { clientFor } from './_context.js';
 
 export const getApiCatalogTool = {
   name: 'get_api_catalog',
@@ -181,66 +180,56 @@ function shapeApi(apiAsset: any, includeOperations: boolean, baseUrl: string) {
 export async function executeGetApiCatalog(args: any): Promise<ToolResult> {
   const { instance_name, api_name, include_operations = true, limit = 20 } = args;
 
-  try {
-    const instance = getInstance(instance_name);
-    const client   = new CollibraClient(instance);
+  const { instance, client } = clientFor(instance_name);
 
-    // Stage 1: API assets (name filter is a case-insensitive "contains" on the display name).
-    const where: any = { type: { name: { eq: 'REST API' } } };
-    if (api_name) where.displayName = { contains: api_name };
-    const listResp = await client.graphqlQuery<{ data: { assets: any[] } }>(API_LIST_QUERY, { where, limit });
-    const rawApis = listResp.data?.assets ?? [];
+  // Stage 1: API assets (name filter is a case-insensitive "contains" on the display name).
+  const where: any = { type: { name: { eq: 'REST API' } } };
+  if (api_name) where.displayName = { contains: api_name };
+  const listResp = await client.graphqlQuery<{ data: { assets: any[] } }>(API_LIST_QUERY, { where, limit });
+  const rawApis = listResp.data?.assets ?? [];
 
-    /**
-     * Attach each parent's role-filtered relations as `outgoingRelations`, in
-     * node-budgeted batches. Returns the child assets for the next stage.
-     */
-    const expand = async (parents: any[], stage: (typeof STAGES)[keyof typeof STAGES]): Promise<any[]> => {
-      const byId = new Map<string, any>(parents.map((p) => [p.id, p]));
-      const query = childrenQuery(stage.role, stage.batch, stage.children);
-      await mapLimit(chunk([...byId.keys()], stage.batch), 4, async (ids) => {
-        const resp = await client.graphqlQuery<{ data: { assets: any[] } }>(query, { ids });
-        for (const a of resp.data?.assets ?? []) {
-          const parent = byId.get(a.id);
-          if (parent) parent.outgoingRelations = a.outgoingRelations ?? [];
-        }
-      });
-      return parents.flatMap((p) => (p.outgoingRelations ?? []).map((r: any) => r.target).filter(Boolean));
-    };
-
-    const versions = await expand(rawApis, STAGES.versions);
-    const endpoints = await expand(versions, STAGES.endpoints);
-    if (include_operations) await expand(endpoints, STAGES.operations);
-
-    const apis = rawApis.map(a => shapeApi(a, include_operations, instance.baseUrl));
-
-    const totalEndpoints  = apis.reduce((s, a) => s + a.versions.reduce((sv: number, v: any) => sv + v.endpointCount, 0), 0);
-    const totalOperations = include_operations
-      ? apis.reduce((s, a) => s + a.versions.reduce((sv: number, v: any) =>
-          sv + v.endpoints.reduce((se: number, e: any) => se + (e.operations?.length ?? 0), 0), 0), 0)
-      : null;
-
-    return okWithNext({
-      instance:          instance_name,
-      filter:            api_name ?? null,
-      include_operations,
-      count:             apis.length,
-      summary: {
-        apis:       apis.length,
-        endpoints:  totalEndpoints,
-        ...(totalOperations != null ? { operations: totalOperations } : {}),
-      },
-      apis,
-    }, [
-      { tool: 'get_asset_by_id', args: { instance_name, asset_id: '<API or endpoint asset id from apis>' }, why: 'Drill into a specific API/endpoint asset.' },
-      { tool: 'query_assets', args: { instance_name, asset_type_name: 'REST API' }, why: 'Browse all REST API assets generically.' },
-    ], true);
-
-  } catch (error) {
-    return ok({
-      error:    true,
-      message:  (error as Error).message,
-      instance: instance_name,
+  /**
+   * Attach each parent's role-filtered relations as `outgoingRelations`, in
+   * node-budgeted batches. Returns the child assets for the next stage.
+   */
+  const expand = async (parents: any[], stage: (typeof STAGES)[keyof typeof STAGES]): Promise<any[]> => {
+    const byId = new Map<string, any>(parents.map((p) => [p.id, p]));
+    const query = childrenQuery(stage.role, stage.batch, stage.children);
+    await mapLimit(chunk([...byId.keys()], stage.batch), 4, async (ids) => {
+      const resp = await client.graphqlQuery<{ data: { assets: any[] } }>(query, { ids });
+      for (const a of resp.data?.assets ?? []) {
+        const parent = byId.get(a.id);
+        if (parent) parent.outgoingRelations = a.outgoingRelations ?? [];
+      }
     });
-  }
+    return parents.flatMap((p) => (p.outgoingRelations ?? []).map((r: any) => r.target).filter(Boolean));
+  };
+
+  const versions = await expand(rawApis, STAGES.versions);
+  const endpoints = await expand(versions, STAGES.endpoints);
+  if (include_operations) await expand(endpoints, STAGES.operations);
+
+  const apis = rawApis.map(a => shapeApi(a, include_operations, instance.baseUrl));
+
+  const totalEndpoints  = apis.reduce((s, a) => s + a.versions.reduce((sv: number, v: any) => sv + v.endpointCount, 0), 0);
+  const totalOperations = include_operations
+    ? apis.reduce((s, a) => s + a.versions.reduce((sv: number, v: any) =>
+        sv + v.endpoints.reduce((se: number, e: any) => se + (e.operations?.length ?? 0), 0), 0), 0)
+    : null;
+
+  return okWithNext({
+    instance:          instance_name,
+    filter:            api_name ?? null,
+    include_operations,
+    count:             apis.length,
+    summary: {
+      apis:       apis.length,
+      endpoints:  totalEndpoints,
+      ...(totalOperations != null ? { operations: totalOperations } : {}),
+    },
+    apis,
+  }, [
+    { tool: 'get_asset_by_id', args: { instance_name, asset_id: '<API or endpoint asset id from apis>' }, why: 'Drill into a specific API/endpoint asset.' },
+    { tool: 'query_assets', args: { instance_name, asset_type_name: 'REST API' }, why: 'Browse all REST API assets generically.' },
+  ], true);
 }

@@ -1,7 +1,6 @@
 import { ok, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
+import { clientFor } from './_context.js';
 
 const BUSINESS_TERM_TYPE_NAME = 'Business Term';
 const DEFINITION_ATTR_TYPE_ID = '00000000-0000-0000-0000-000000000202';
@@ -65,8 +64,7 @@ export async function executeAddBusinessTerm(args: any): Promise<ToolResult> {
   const { instance_name, name, domain_id, definition, attributes } = args;
 
   try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+    const { client } = clientFor(instance_name);
 
     // Resolve the Business Term asset type ID
     let businessTermTypeId: string | null = null;

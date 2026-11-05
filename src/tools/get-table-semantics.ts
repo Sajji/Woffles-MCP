@@ -1,9 +1,8 @@
 import { ok, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
 import { fetchRelations, SEMANTIC_RELATION_TYPES as REL } from '../utils/relations.js';
 import { mapLimit } from '../utils/concurrency.js';
+import { clientFor } from './_context.js';
 const { COLUMN_TO_TABLE: COLUMN_TO_TABLE_REL_ID, DATA_ATTRIBUTE_1: DATA_ATTRIBUTE_REL_ID_1, DATA_ATTRIBUTE_2: DATA_ATTRIBUTE_REL_ID_2, GENERIC_CONNECTED_ASSET: GENERIC_CONNECTED_ASSET_REL_ID, DATA_ATTRIBUTE_REPRESENTS_MEASURE: DATA_ATTRIBUTE_REPRESENTS_MEASURE_REL_ID } = REL;
 
 
@@ -37,116 +36,105 @@ export const getTableSemanticsTool = {
 export async function executeGetTableSemantics(args: any): Promise<ToolResult> {
   const { instance_name, table_asset_id } = args;
 
-  try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+  const { client } = clientFor(instance_name);
 
-    // Step 1: Find all Columns that belong to this Table
-    // Column→Table relation: column is source, table is target
-    const columnRelations = await fetchRelations(client, COLUMN_TO_TABLE_REL_ID, undefined, table_asset_id);
-    const columns = columnRelations.map((r: any) => ({
-      id: r.source.id,
-      name: r.source.name,
-      url: client.assetUrl(r.source.id),
-    }));
+  // Step 1: Find all Columns that belong to this Table
+  // Column→Table relation: column is source, table is target
+  const columnRelations = await fetchRelations(client, COLUMN_TO_TABLE_REL_ID, undefined, table_asset_id);
+  const columns = columnRelations.map((r: any) => ({
+    id: r.source.id,
+    name: r.source.name,
+    url: client.assetUrl(r.source.id),
+  }));
 
-    if (columns.length === 0) {
-      return ok({
-        instance: instance_name,
-        tableId: table_asset_id,
-        tableUrl: client.assetUrl(table_asset_id),
-        message: 'No columns found for this table.',
-        columns: [],
-      });
-    }
+  if (columns.length === 0) {
+    return ok({
+      instance: instance_name,
+      tableId: table_asset_id,
+      tableUrl: client.assetUrl(table_asset_id),
+      message: 'No columns found for this table.',
+      columns: [],
+    });
+  }
 
-    // Step 2: For each column, find linked Data Attributes
-    // Data Attribute relations use multiple relation type IDs
-    const dataAttributeRelTypeIds = [
-      DATA_ATTRIBUTE_REL_ID_1,
-      DATA_ATTRIBUTE_REL_ID_2,
-      GENERIC_CONNECTED_ASSET_REL_ID,
-    ];
+  // Step 2: For each column, find linked Data Attributes
+  // Data Attribute relations use multiple relation type IDs
+  const dataAttributeRelTypeIds = [
+    DATA_ATTRIBUTE_REL_ID_1,
+    DATA_ATTRIBUTE_REL_ID_2,
+    GENERIC_CONNECTED_ASSET_REL_ID,
+  ];
 
-    // Bounded: each column costs 6+ requests, so an unbounded Promise.all over
-    // a wide table fired hundreds of simultaneous calls.
-    const columnDetails = await mapLimit(columns, 8, async (col: any) => {
-        // Fetch data attribute relations where column is source OR target
-        const relResults = await Promise.all(
-          dataAttributeRelTypeIds.flatMap((relTypeId) => [
-            fetchRelations(client, relTypeId, col.id),
-            fetchRelations(client, relTypeId, undefined, col.id),
-          ]),
-        );
+  // Bounded: each column costs 6+ requests, so an unbounded Promise.all over
+  // a wide table fired hundreds of simultaneous calls.
+  const columnDetails = await mapLimit(columns, 8, async (col: any) => {
+      // Fetch data attribute relations where column is source OR target
+      const relResults = await Promise.all(
+        dataAttributeRelTypeIds.flatMap((relTypeId) => [
+          fetchRelations(client, relTypeId, col.id),
+          fetchRelations(client, relTypeId, undefined, col.id),
+        ]),
+      );
 
-        // Deduplicate data attributes
-        const dataAttrMap = new Map<string, any>();
-        for (const relations of relResults) {
-          for (const rel of relations) {
-            const other = rel.source.id === col.id ? rel.target : rel.source;
-            if (!dataAttrMap.has(other.id)) {
-              dataAttrMap.set(other.id, {
+      // Deduplicate data attributes
+      const dataAttrMap = new Map<string, any>();
+      for (const relations of relResults) {
+        for (const rel of relations) {
+          const other = rel.source.id === col.id ? rel.target : rel.source;
+          if (!dataAttrMap.has(other.id)) {
+            dataAttrMap.set(other.id, {
+              id: other.id,
+              name: other.name,
+              url: client.assetUrl(other.id),
+            });
+          }
+        }
+      }
+
+      const dataAttributes = Array.from(dataAttrMap.values());
+
+      // Step 3: For each data attribute, find linked Measures
+      const enrichedDAs = await Promise.all(
+        dataAttributes.map(async (da: any) => {
+          const [measuresAsSource, measuresAsTarget] = await Promise.all([
+            fetchRelations(client, DATA_ATTRIBUTE_REPRESENTS_MEASURE_REL_ID, da.id),
+            fetchRelations(client, DATA_ATTRIBUTE_REPRESENTS_MEASURE_REL_ID, undefined, da.id),
+          ]);
+
+          const measureMap = new Map<string, any>();
+          for (const rel of [...measuresAsSource, ...measuresAsTarget]) {
+            const other = rel.source.id === da.id ? rel.target : rel.source;
+            if (!measureMap.has(other.id)) {
+              measureMap.set(other.id, {
                 id: other.id,
                 name: other.name,
                 url: client.assetUrl(other.id),
               });
             }
           }
-        }
 
-        const dataAttributes = Array.from(dataAttrMap.values());
+          return {
+            ...da,
+            measures: Array.from(measureMap.values()),
+          };
+        }),
+      );
 
-        // Step 3: For each data attribute, find linked Measures
-        const enrichedDAs = await Promise.all(
-          dataAttributes.map(async (da: any) => {
-            const [measuresAsSource, measuresAsTarget] = await Promise.all([
-              fetchRelations(client, DATA_ATTRIBUTE_REPRESENTS_MEASURE_REL_ID, da.id),
-              fetchRelations(client, DATA_ATTRIBUTE_REPRESENTS_MEASURE_REL_ID, undefined, da.id),
-            ]);
-
-            const measureMap = new Map<string, any>();
-            for (const rel of [...measuresAsSource, ...measuresAsTarget]) {
-              const other = rel.source.id === da.id ? rel.target : rel.source;
-              if (!measureMap.has(other.id)) {
-                measureMap.set(other.id, {
-                  id: other.id,
-                  name: other.name,
-                  url: client.assetUrl(other.id),
-                });
-              }
-            }
-
-            return {
-              ...da,
-              measures: Array.from(measureMap.values()),
-            };
-          }),
-        );
-
-        return {
-          ...col,
-          dataAttributes: enrichedDAs,
-        };
-      });
-
-    return okWithNext({
-      instance: instance_name,
-      tableId: table_asset_id,
-      tableUrl: client.assetUrl(table_asset_id),
-      totalColumns: columnDetails.length,
-      columns: columnDetails,
-    }, [
-      { tool: 'get_asset_by_id', args: { instance_name, asset_id: table_asset_id }, why: 'Get full table asset detail.' },
-      { tool: 'get_column_semantics', args: { instance_name, column_asset_id: '<column id from columns>' }, why: 'Drill into a specific column.' },
-      { tool: 'get_lineage_downstream', args: { instance_name, entity_id: '<dgc entity id>' }, why: 'Trace downstream lineage from this table.' },
-    ]);
-
-  } catch (error) {
-    return ok({
-      error: true,
-      message: (error as Error).message,
-      instance: instance_name,
-      tableAssetId: table_asset_id,
+      return {
+        ...col,
+        dataAttributes: enrichedDAs,
+      };
     });
-  }
+
+  return okWithNext({
+    instance: instance_name,
+    tableId: table_asset_id,
+    tableUrl: client.assetUrl(table_asset_id),
+    totalColumns: columnDetails.length,
+    columns: columnDetails,
+  }, [
+    { tool: 'get_asset_by_id', args: { instance_name, asset_id: table_asset_id }, why: 'Get full table asset detail.' },
+    { tool: 'get_column_semantics', args: { instance_name, column_asset_id: '<column id from columns>' }, why: 'Drill into a specific column.' },
+    { tool: 'get_lineage_downstream', args: { instance_name, entity_id: '<dgc entity id>' }, why: 'Trace downstream lineage from this table.' },
+  ]);
 }

@@ -1,7 +1,7 @@
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
 import { okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
+import { clientFor } from './_context.js';
+import { applyAttributeSetPlans, getAttributeTypeInfo, planAttributeSet } from '../utils/attributes.js';
 
 // Well-known Collibra attribute type ID for "Description"
 const DESCRIPTION_TYPE_ID = '00000000-0000-0000-0000-000000003114';
@@ -59,7 +59,8 @@ export const updateAssetDescriptionTool = {
       newDescription: { type: 'string', description: 'Present after apply.' },
       attributeId: { type: 'string', description: 'Collibra attribute UUID written/updated.' },
       instructions: { type: 'string' },
-      error: { type: 'string' },
+      error: { type: 'boolean' },
+      message: { type: 'string' },
     },
   },
 };
@@ -67,81 +68,40 @@ export const updateAssetDescriptionTool = {
 export async function executeUpdateAssetDescription(args: any): Promise<ToolResult> {
   const { instance_name, asset_id, new_description, confirm = false } = args;
 
-  try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+  const { client } = clientFor(instance_name);
 
-    // Step 1: Fetch asset info and current Description attribute
-    const [asset, attributesResponse] = await Promise.all([
-      client.restCall<any>(`/rest/2.0/assets/${encodeURIComponent(asset_id)}`),
-      client.restCall<any>(
-        `/rest/2.0/attributes?assetId=${encodeURIComponent(asset_id)}&typeIds=${DESCRIPTION_TYPE_ID}&limit=1`
-      ),
-    ]);
+  // Same path as update_asset_attribute (shared planner): Markdown → HTML for
+  // the RICH_TEXT Description, and every existing value record is covered.
+  const [asset, type] = await Promise.all([
+    client.restCall<any>(`/rest/2.0/assets/${encodeURIComponent(asset_id)}`),
+    getAttributeTypeInfo(client, DESCRIPTION_TYPE_ID),
+  ]);
+  const plan = await planAttributeSet(client, asset_id, type, new_description);
 
-    const assetName = asset.name || 'Unknown';
-    const existingAttributes = attributesResponse.results || [];
-    const existingAttr = existingAttributes[0];
-    const currentDescription = existingAttr?.value ?? '(no description set)';
+  const assetRef = { id: asset_id, name: asset.name || 'Unknown', url: client.assetUrl(asset_id) };
+  const currentDescription = plan.current[0] ?? '(no description set)';
+  const proposedDescription = plan.proposed[0];
 
-    // Preview mode — show what would change without modifying anything
-    if (!confirm) {
-      const preview: any = {
-        mode: 'PREVIEW — no changes made',
-        asset: {
-          id: asset_id,
-          name: assetName,
-          url: client.assetUrl(asset_id),
-        },
-        currentDescription,
-        proposedDescription: new_description,
-        instructions: 'To apply this change, call this tool again with confirm=true.',
-      };
-      return { text: JSON.stringify(preview, null, 2), structured: preview };
-    }
-
-    // Confirm mode — apply the change
-    let result: any;
-
-    if (existingAttr) {
-      // PATCH existing Description attribute
-      result = await client.restCallWithBody<any>(
-        `/rest/2.0/attributes/${encodeURIComponent(existingAttr.id)}`,
-        'PATCH',
-        { id: existingAttr.id, value: new_description },
-      );
-    } else {
-      // POST a new Description attribute (asset doesn't have one yet)
-      result = await client.restCallWithBody<any>(
-        '/rest/2.0/attributes',
-        'POST',
-        {
-          assetId: asset_id,
-          typeId: DESCRIPTION_TYPE_ID,
-          value: new_description,
-        },
-      );
-    }
-
-    const output: any = {
-      mode: 'APPLIED',
-      asset: {
-        id: asset_id,
-        name: assetName,
-        url: client.assetUrl(asset_id),
-      },
-      previousDescription: currentDescription,
-      newDescription: new_description,
-      attributeId: result.id || existingAttr?.id,
+  // Preview mode — show what would change without modifying anything
+  if (!confirm) {
+    const preview = {
+      mode: 'PREVIEW — no changes made',
+      asset: assetRef,
+      currentDescription,
+      proposedDescription,
+      instructions: 'To apply this change, call this tool again with confirm=true.',
     };
-
-    return okWithNext(output as Record<string, unknown>, [
-      { tool: 'get_asset_by_id', args: { instance_name, asset_id }, why: 'Verify the updated description on the asset.' },
-    ], true);
-  } catch (error) {
-    const structured = {
-      error: `Failed to update asset description: ${(error as Error).message}`,
-    };
-    return { text: JSON.stringify(structured), structured };
+    return { text: JSON.stringify(preview, null, 2), structured: preview };
   }
+
+  const result = await applyAttributeSetPlans(client, [plan]);
+  return okWithNext({
+    mode: 'APPLIED',
+    asset: assetRef,
+    previousDescription: currentDescription,
+    newDescription: proposedDescription,
+    attributeId: result.patched[0]?.id ?? result.posted[0]?.id ?? null,
+  }, [
+    { tool: 'get_asset_by_id', args: { instance_name, asset_id }, why: 'Verify the updated description on the asset.' },
+  ], true);
 }

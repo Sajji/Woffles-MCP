@@ -1,9 +1,7 @@
-import { ok, okWithNext } from '../utils/tool-result.js';
+import { okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
-
-const ASSESSMENTS_BASE = '/rest/assessments/v2';
+import { clientFor } from './_context.js';
+import { ASSESSMENTS_BASE } from '../utils/assessments.js';
 
 export const retakeAssessmentTool = {
   name: 'retake_assessment',
@@ -46,35 +44,25 @@ export const retakeAssessmentTool = {
 export async function executeRetakeAssessment(args: any): Promise<ToolResult> {
   const { instance_name, assessment_id, owner_id, asset_id } = args;
 
-  try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+  const { client } = clientFor(instance_name);
 
-    const body: any = {};
-    if (owner_id) body.owner = { id: owner_id };
-    if (asset_id) body.asset = { id: asset_id };
+  const body: any = {};
+  if (owner_id) body.owner = { id: owner_id };
+  if (asset_id) body.asset = { id: asset_id };
 
-    const response = await client.restCallWithBody<any>(
-      `${ASSESSMENTS_BASE}/assessments/${encodeURIComponent(assessment_id)}/retake`,
-      'POST',
-      body
-    );
+  const response = await client.restCallWithBody<any>(
+    `${ASSESSMENTS_BASE}/assessments/${encodeURIComponent(assessment_id)}/retake`,
+    'POST',
+    body
+  );
 
-    return okWithNext({
-      ...response, // API fields first; our keys below take precedence
-      instance: instance_name,
-      retaken: true,
-      originAssessmentId: assessment_id,
-    }, [
-      { tool: 'get_assessment', args: { instance_name, assessment_id: '<new id from response>' }, why: 'Fetch the newly spawned iteration.' },
-      { tool: 'edit_assessment', args: { instance_name, assessment_id: '<new id from response>', operations: [{ op: 'set_answer', question_id: '<question id>', value: '<answer>' }] }, why: 'Answer the questions in the new iteration.' },
-    ]);
-  } catch (error) {
-    return ok({
-      error: true,
-      message: (error as Error).message,
-      instance: instance_name,
-      assessment_id,
-    });
-  }
+  return okWithNext({
+    ...response, // API fields first; our keys below take precedence
+    instance: instance_name,
+    retaken: true,
+    originAssessmentId: assessment_id,
+  }, [
+    { tool: 'get_assessment', args: { instance_name, assessment_id: '<new id from response>' }, why: 'Fetch the newly spawned iteration.' },
+    { tool: 'edit_assessment', args: { instance_name, assessment_id: '<new id from response>', operations: [{ op: 'set_answer', question_id: '<question id>', value: '<answer>' }] }, why: 'Answer the questions in the new iteration.' },
+  ]);
 }

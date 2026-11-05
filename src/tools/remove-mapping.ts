@@ -1,7 +1,6 @@
 import { okPretty, okWithNext, ok } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
+import { clientFor } from './_context.js';
 
 export const removeMappingTool = {
   name: 'remove_mapping',
@@ -47,60 +46,51 @@ export const removeMappingTool = {
 export async function executeRemoveMapping(args: any): Promise<ToolResult> {
   const { instance_name, mapping_id, external_system_id, external_entity_id, confirm = false } = args;
 
-  try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+  const { client } = clientFor(instance_name);
 
-    const byPair = external_system_id && external_entity_id;
-    if (!mapping_id && !byPair) {
-      return ok({
-        error: true,
-        message: 'Provide mapping_id, or both external_system_id and external_entity_id.',
-        instance: instance_name,
-      });
-    }
-
-    const lookupPath = mapping_id
-      ? `/rest/2.0/mappings/${encodeURIComponent(mapping_id)}`
-      : `/rest/2.0/mappings/externalSystem/${encodeURIComponent(external_system_id)}/externalEntity/${encodeURIComponent(external_entity_id)}`;
-
-    const mapping = await client.restCall<any>(lookupPath).catch(() => null);
-    if (!mapping?.id) {
-      return ok({
-        error: true,
-        message: 'No mapping found for the given identifier(s).',
-        instance: instance_name,
-      });
-    }
-
-    if (!confirm) {
-      return okPretty({
-        mode: 'PREVIEW — mapping NOT removed',
-        mapping,
-        note: 'Removing the mapping only deletes the external link, not the mapped Collibra resource.',
-        instructions: 'To remove, call again with confirm=true.',
-      });
-    }
-
-    await client.restCallWithBody<void>(`/rest/2.0/mappings/${encodeURIComponent(mapping.id)}`, 'DELETE', undefined as any);
-
-    return okWithNext(
-      {
-        mode: 'APPLIED',
-        removedMappingId: mapping.id,
-        externalSystemId: mapping.externalSystemId ?? null,
-        externalEntityId: mapping.externalEntityId ?? null,
-      },
-      [
-        { tool: 'find_mappings', args: { instance_name, external_system_id: mapping.externalSystemId }, why: 'Verify the remaining mappings for this system.' },
-      ],
-      true,
-    );
-  } catch (error) {
+  const byPair = external_system_id && external_entity_id;
+  if (!mapping_id && !byPair) {
     return ok({
       error: true,
-      message: (error as Error).message,
+      message: 'Provide mapping_id, or both external_system_id and external_entity_id.',
       instance: instance_name,
     });
   }
+
+  const lookupPath = mapping_id
+    ? `/rest/2.0/mappings/${encodeURIComponent(mapping_id)}`
+    : `/rest/2.0/mappings/externalSystem/${encodeURIComponent(external_system_id)}/externalEntity/${encodeURIComponent(external_entity_id)}`;
+
+  const mapping = await client.restCall<any>(lookupPath).catch(() => null);
+  if (!mapping?.id) {
+    return ok({
+      error: true,
+      message: 'No mapping found for the given identifier(s).',
+      instance: instance_name,
+    });
+  }
+
+  if (!confirm) {
+    return okPretty({
+      mode: 'PREVIEW — mapping NOT removed',
+      mapping,
+      note: 'Removing the mapping only deletes the external link, not the mapped Collibra resource.',
+      instructions: 'To remove, call again with confirm=true.',
+    });
+  }
+
+  await client.restCallWithBody<void>(`/rest/2.0/mappings/${encodeURIComponent(mapping.id)}`, 'DELETE', undefined as any);
+
+  return okWithNext(
+    {
+      mode: 'APPLIED',
+      removedMappingId: mapping.id,
+      externalSystemId: mapping.externalSystemId ?? null,
+      externalEntityId: mapping.externalEntityId ?? null,
+    },
+    [
+      { tool: 'find_mappings', args: { instance_name, external_system_id: mapping.externalSystemId }, why: 'Verify the remaining mappings for this system.' },
+    ],
+    true,
+  );
 }

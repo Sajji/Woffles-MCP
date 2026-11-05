@@ -1,7 +1,6 @@
-import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
+import { okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
+import { clientFor } from './_context.js';
 
 export const createCommunityTool = {
   name: 'create_community',
@@ -45,60 +44,50 @@ export const createCommunityTool = {
 export async function executeCreateCommunity(args: any): Promise<ToolResult> {
   const { instance_name, name, description, parent_id } = args;
 
-  try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+  const { client } = clientFor(instance_name);
 
-    // ── Idempotency check ─────────────────────────────────────────────
-    const checkParams = new URLSearchParams({
-      name,
-      nameMatchMode: 'EXACT',
-      excludeMeta: 'true',
-      limit: '5',
-    });
-    if (parent_id) checkParams.set('parentId', parent_id);
+  // ── Idempotency check ─────────────────────────────────────────────
+  const checkParams = new URLSearchParams({
+    name,
+    nameMatchMode: 'EXACT',
+    excludeMeta: 'true',
+    limit: '5',
+  });
+  if (parent_id) checkParams.set('parentId', parent_id);
 
-    const existing = await client.restCall<any>(`/rest/2.0/communities?${checkParams.toString()}`);
-    const match = (existing.results || []).find((c: any) => c.name === name);
+  const existing = await client.restCall<any>(`/rest/2.0/communities?${checkParams.toString()}`);
+  const match = (existing.results || []).find((c: any) => c.name === name);
 
-    if (match) {
-      return okPretty({
-        action: 'existing',
-        community: {
-          id: match.id,
-          name: match.name,
-          description: match.description || null,
-          parent: match.parent ? { id: match.parent.id, name: match.parent.name } : null,
-        },
-        message: `Community "${name}" already exists — no changes made.`,
-      });
-    }
-
-    // ── Create ────────────────────────────────────────────────────────
-    const body: any = { name };
-    if (description) body.description = description;
-    if (parent_id) body.parentId = parent_id;
-
-    const created = await client.restCallWithBody<any>('/rest/2.0/communities', 'POST', body);
-
-    return okWithNext({
-      action: 'created',
+  if (match) {
+    return okPretty({
+      action: 'existing',
       community: {
-        id: created.id,
-        name: created.name,
-        description: created.description || null,
-        parent: created.parent ? { id: created.parent.id, name: created.parent.name } : null,
+        id: match.id,
+        name: match.name,
+        description: match.description || null,
+        parent: match.parent ? { id: match.parent.id, name: match.parent.name } : null,
       },
-    }, [
-      { tool: 'create_domain', args: { instance_name, name: '<domain name>', community_id: created.id, type_id: '<from get_domain_types>' }, why: 'Create domains inside the new community.' },
-      { tool: 'get_communities', args: { instance_name }, why: 'See the new community in the list.' },
-    ], true);
-
-  } catch (error) {
-    return ok({
-      error: true,
-      message: (error as Error).message,
-      instance: instance_name,
+      message: `Community "${name}" already exists — no changes made.`,
     });
   }
+
+  // ── Create ────────────────────────────────────────────────────────
+  const body: any = { name };
+  if (description) body.description = description;
+  if (parent_id) body.parentId = parent_id;
+
+  const created = await client.restCallWithBody<any>('/rest/2.0/communities', 'POST', body);
+
+  return okWithNext({
+    action: 'created',
+    community: {
+      id: created.id,
+      name: created.name,
+      description: created.description || null,
+      parent: created.parent ? { id: created.parent.id, name: created.parent.name } : null,
+    },
+  }, [
+    { tool: 'create_domain', args: { instance_name, name: '<domain name>', community_id: created.id, type_id: '<from get_domain_types>' }, why: 'Create domains inside the new community.' },
+    { tool: 'get_communities', args: { instance_name }, why: 'See the new community in the list.' },
+  ], true);
 }

@@ -1,8 +1,7 @@
-import { ok, okWithNext } from '../utils/tool-result.js';
+import { okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
 import { fetchApplicableAssignment } from '../utils/operating-model-cache.js';
+import { clientFor } from './_context.js';
 
 export const createAssetTool = {
   name: 'create_asset',
@@ -75,148 +74,138 @@ export const createAssetTool = {
 export async function executeCreateAsset(args: any): Promise<ToolResult> {
   const { instance_name, name, asset_type_id, domain_id, display_name, status_id, attributes, allow_duplicate = false } = args;
 
+  const { client } = clientFor(instance_name);
+
+  // ── Pre-flight: enforce required attributes declared by the asset type's
+  // own assignment. If any mandatory attribute is missing from `attributes`,
+  // reject before creating anything so we never leave an invalid asset.
   try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
-
-    // ── Pre-flight: enforce required attributes declared by the asset type's
-    // own assignment. If any mandatory attribute is missing from `attributes`,
-    // reject before creating anything so we never leave an invalid asset.
-    try {
-      // Only the assignment that applies to this domain (by domain type + scope) counts.
-      const assignment = await fetchApplicableAssignment(instance_name, asset_type_id, domain_id);
-      const provided = new Set(Object.keys((attributes as Record<string, string>) || {}));
-      const missingRequired = (assignment?.attributeTypes ?? [])
-        .filter((a) => (a.minimumOccurrences ?? 0) >= 1 && !provided.has(a.id))
-        .map((a) => ({ id: a.id, name: a.name }));
-      if (missingRequired.length > 0) {
-        return okWithNext(
-          {
-            error: true,
-            instance: instance_name,
-            message:
-              `Cannot create asset "${name}": the asset type requires ${missingRequired.length} attribute(s) that were not supplied. ` +
-              `Provide values for the missing attributes (keyed by their type UUID) in "attributes", then retry.`,
-            missingRequiredAttributes: missingRequired,
-          },
-          [
-            { tool: 'describe_asset_type', args: { instance_name, asset_type_id }, why: 'Inspect required/optional attributes and eligible statuses for this asset type.' },
-            { tool: 'get_attribute_types', args: { instance_name }, why: 'Look up attribute type UUIDs to fill in the required values.' },
-          ],
-          true,
-        );
-      }
-    } catch {
-      // Assignment surface unavailable (e.g. endpoint/permission) — skip
-      // enforcement rather than block a legitimate create.
+    // Only the assignment that applies to this domain (by domain type + scope) counts.
+    const assignment = await fetchApplicableAssignment(instance_name, asset_type_id, domain_id);
+    const provided = new Set(Object.keys((attributes as Record<string, string>) || {}));
+    const missingRequired = (assignment?.attributeTypes ?? [])
+      .filter((a) => (a.minimumOccurrences ?? 0) >= 1 && !provided.has(a.id))
+      .map((a) => ({ id: a.id, name: a.name }));
+    if (missingRequired.length > 0) {
+      return okWithNext(
+        {
+          error: true,
+          instance: instance_name,
+          message:
+            `Cannot create asset "${name}": the asset type requires ${missingRequired.length} attribute(s) that were not supplied. ` +
+            `Provide values for the missing attributes (keyed by their type UUID) in "attributes", then retry.`,
+          missingRequiredAttributes: missingRequired,
+        },
+        [
+          { tool: 'describe_asset_type', args: { instance_name, asset_type_id }, why: 'Inspect required/optional attributes and eligible statuses for this asset type.' },
+          { tool: 'get_attribute_types', args: { instance_name }, why: 'Look up attribute type UUIDs to fill in the required values.' },
+        ],
+        true,
+      );
     }
+  } catch {
+    // Assignment surface unavailable (e.g. endpoint/permission) — skip
+    // enforcement rather than block a legitimate create.
+  }
 
-    // ── Pre-flight: duplicate-name gate (unless allow_duplicate=true).
-    if (!allow_duplicate) {
-      const dupUrl =
-        `/rest/2.0/assets?name=${encodeURIComponent(name)}&nameMatchMode=EXACT` +
-        `&domainId=${encodeURIComponent(domain_id)}&typeId=${encodeURIComponent(asset_type_id)}&limit=5`;
-      const dup = await client.restCall<any>(dupUrl).catch(() => ({ results: [] }));
-      const existing: any[] = dup.results || [];
-      if (existing.length > 0) {
-        return okWithNext(
-          {
-            error: true,
-            instance: instance_name,
-            message:
-              `An asset named "${name}" already exists in this domain for this asset type. ` +
-              `Pass allow_duplicate=true to create anyway, or edit the existing asset instead.`,
-            existing: existing.map((a) => ({ id: a.id, name: a.name, url: client.assetUrl(a.id) })),
-          },
-          [
-            { tool: 'get_asset_by_id', args: { instance_name, asset_id: existing[0].id }, why: 'Inspect the existing asset before duplicating.' },
-            { tool: 'edit_asset', args: { instance_name, asset_id: existing[0].id, operations: [{ op: 'update_attribute', attribute_type_id: '<id>', value: '<value>' }] }, why: 'Edit the existing asset instead of creating a duplicate.' },
-          ],
-          true,
-        );
-      }
+  // ── Pre-flight: duplicate-name gate (unless allow_duplicate=true).
+  if (!allow_duplicate) {
+    const dupUrl =
+      `/rest/2.0/assets?name=${encodeURIComponent(name)}&nameMatchMode=EXACT` +
+      `&domainId=${encodeURIComponent(domain_id)}&typeId=${encodeURIComponent(asset_type_id)}&limit=5`;
+    const dup = await client.restCall<any>(dupUrl).catch(() => ({ results: [] }));
+    const existing: any[] = dup.results || [];
+    if (existing.length > 0) {
+      return okWithNext(
+        {
+          error: true,
+          instance: instance_name,
+          message:
+            `An asset named "${name}" already exists in this domain for this asset type. ` +
+            `Pass allow_duplicate=true to create anyway, or edit the existing asset instead.`,
+          existing: existing.map((a) => ({ id: a.id, name: a.name, url: client.assetUrl(a.id) })),
+        },
+        [
+          { tool: 'get_asset_by_id', args: { instance_name, asset_id: existing[0].id }, why: 'Inspect the existing asset before duplicating.' },
+          { tool: 'edit_asset', args: { instance_name, asset_id: existing[0].id, operations: [{ op: 'update_attribute', attribute_type_id: '<id>', value: '<value>' }] }, why: 'Edit the existing asset instead of creating a duplicate.' },
+        ],
+        true,
+      );
     }
+  }
 
-    // Create the asset
-    const assetBody: any = {
-      name,
-      typeId: asset_type_id,
-      domainId: domain_id,
-    };
-    if (display_name) {
-      assetBody.displayName = display_name;
-    }
-    if (status_id) {
-      assetBody.statusId = status_id;
-    }
+  // Create the asset
+  const assetBody: any = {
+    name,
+    typeId: asset_type_id,
+    domainId: domain_id,
+  };
+  if (display_name) {
+    assetBody.displayName = display_name;
+  }
+  if (status_id) {
+    assetBody.statusId = status_id;
+  }
 
-    const assetResp = await client.restCallWithBody<any>('/rest/2.0/assets', 'POST', assetBody);
-    const assetId: string = assetResp.id;
+  const assetResp = await client.restCallWithBody<any>('/rest/2.0/assets', 'POST', assetBody);
+  const assetId: string = assetResp.id;
 
-    // Create attributes (if any) via a single bulk POST instead of N round trips
-    const createdAttributes: any[] = [];
-    const attributeErrors: any[] = [];
+  // Create attributes (if any) via a single bulk POST instead of N round trips
+  const createdAttributes: any[] = [];
+  const attributeErrors: any[] = [];
 
-    if (attributes && typeof attributes === 'object') {
-      const attrEntries = Object.entries(attributes as Record<string, string>);
-      if (attrEntries.length > 0) {
-        // Markdown → HTML for values targeting RICH_TEXT attribute types
-        const { entries: bulkBody, convertedTypeIds } = await client.convertRichTextEntries(
-          attrEntries.map(([typeId, value]) => ({ assetId, typeId, value })),
-        );
-        try {
-          const bulkResp = await client.restCallWithBody<any[]>('/rest/2.0/attributes/bulk', 'POST', bulkBody);
-          (bulkResp || []).forEach((attrResp: any, idx: number) => {
-            const { typeId, value } = bulkBody[idx];
-            createdAttributes.push({
-              typeId,
-              value,
-              attributeId: attrResp?.id,
-              ...(convertedTypeIds.includes(typeId) ? { markdownConverted: true } : {}),
-            });
+  if (attributes && typeof attributes === 'object') {
+    const attrEntries = Object.entries(attributes as Record<string, string>);
+    if (attrEntries.length > 0) {
+      // Markdown → HTML for values targeting RICH_TEXT attribute types
+      const { entries: bulkBody, convertedTypeIds } = await client.convertRichTextEntries(
+        attrEntries.map(([typeId, value]) => ({ assetId, typeId, value })),
+      );
+      try {
+        const bulkResp = await client.restCallWithBody<any[]>('/rest/2.0/attributes/bulk', 'POST', bulkBody);
+        (bulkResp || []).forEach((attrResp: any, idx: number) => {
+          const { typeId, value } = bulkBody[idx];
+          createdAttributes.push({
+            typeId,
+            value,
+            attributeId: attrResp?.id,
+            ...(convertedTypeIds.includes(typeId) ? { markdownConverted: true } : {}),
           });
-        } catch (bulkErr) {
-          // If the bulk call fails outright, surface the error per requested attribute
-          for (const { typeId, value } of bulkBody) {
-            attributeErrors.push({ typeId, value, error: (bulkErr as Error).message });
-          }
+        });
+      } catch (bulkErr) {
+        // If the bulk call fails outright, surface the error per requested attribute
+        for (const { typeId, value } of bulkBody) {
+          attributeErrors.push({ typeId, value, error: (bulkErr as Error).message });
         }
       }
     }
-
-    const output: any = {
-      success: true,
-      asset: {
-        id: assetId,
-        name: assetResp.name,
-        displayName: assetResp.displayName || null,
-        type: assetResp.type,
-        domain: assetResp.domain,
-        url: client.assetUrl(assetId),
-      },
-    };
-
-    if (createdAttributes.length > 0) {
-      output.attributesCreated = createdAttributes;
-    }
-    if (attributeErrors.length > 0) {
-      output.status = 'partial';
-      output.attributeErrors = attributeErrors;
-      output.warning =
-        'Asset was created successfully but some attributes could not be set. See attributeErrors for details.';
-    }
-
-    return okWithNext(output, [
-      { tool: 'get_asset_by_id', args: { instance_name, asset_id: assetId }, why: 'Verify the newly created asset.' },
-      { tool: 'update_asset_attribute', args: { instance_name, asset_id: assetId, attribute_type_id: '<from get_attribute_types>', new_value: '<value>' }, why: 'Add or update attributes on the new asset.' },
-      { tool: 'create_relation', args: { instance_name, source_asset_id: assetId, target_asset_id: '<business term id from search_assets_by_name>', relation_type_id: '<from get_relation_types>' }, why: 'Link a business term (or any related asset) to the new asset.' },
-    ], true);
-
-  } catch (error) {
-    return ok({
-      error: true,
-      message: (error as Error).message,
-      instance: instance_name,
-    });
   }
+
+  const output: any = {
+    success: true,
+    asset: {
+      id: assetId,
+      name: assetResp.name,
+      displayName: assetResp.displayName || null,
+      type: assetResp.type,
+      domain: assetResp.domain,
+      url: client.assetUrl(assetId),
+    },
+  };
+
+  if (createdAttributes.length > 0) {
+    output.attributesCreated = createdAttributes;
+  }
+  if (attributeErrors.length > 0) {
+    output.status = 'partial';
+    output.attributeErrors = attributeErrors;
+    output.warning =
+      'Asset was created successfully but some attributes could not be set. See attributeErrors for details.';
+  }
+
+  return okWithNext(output, [
+    { tool: 'get_asset_by_id', args: { instance_name, asset_id: assetId }, why: 'Verify the newly created asset.' },
+    { tool: 'update_asset_attribute', args: { instance_name, asset_id: assetId, attribute_type_id: '<from get_attribute_types>', new_value: '<value>' }, why: 'Add or update attributes on the new asset.' },
+    { tool: 'create_relation', args: { instance_name, source_asset_id: assetId, target_asset_id: '<business term id from search_assets_by_name>', relation_type_id: '<from get_relation_types>' }, why: 'Link a business term (or any related asset) to the new asset.' },
+  ], true);
 }

@@ -1,16 +1,14 @@
-import { withEnvelope, errorEnvelope } from '../utils/tool-result.js';
+import { withEnvelope } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
 import {
   COMMON_UA_PROPERTIES,
   USER_TYPES,
-  UsageAnalyticsApi,
   pctChange,
   pivotTimeSeries,
   previousPeriod,
-  resolveDateRange,
+  usageSession,
 } from '../utils/usage-analytics.js';
+import { clientFor } from './_context.js';
 
 const OPERATION = 'get_user_usage';
 
@@ -71,90 +69,80 @@ const TREND_VIEWS: Record<string, string> = {
 export async function executeGetUserUsage(args: any): Promise<ToolResult> {
   const { instance_name, view = 'summary', user_type = 'Active', limit = 10, compare_previous_period = true } = args;
 
-  try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
-    const api = new UsageAnalyticsApi(client);
-    const range = resolveDateRange(args);
-    const warnings: string[] = [];
-    const period = { startDate: range.startDate, endDate: range.endDate, granularity: range.granularity };
-    const lastRefreshedP = api.lastRefreshed();
+  const { client } = clientFor(instance_name);
+  const { api, range, warnings, period, dateParams, lastRefreshedP } = usageSession(client, args);
 
-    const { params: filterParams, applied } = await api.resolveFilters('users', args, range, warnings);
-    const dateParams = { startDate: range.startDate, endDate: range.endDate };
-    const base = { view, period, filters: applied };
+  const { params: filterParams, applied } = await api.resolveFilters('users', args, range, warnings);
+  const base = { view, period, filters: applied };
 
-    if (view === 'summary') {
-      const fetchCounts = async (dates: { startDate: string; endDate: string }) => {
-        const results = await Promise.all(
-          USER_TYPES.map((t) => api.get<{ count?: number }>('users', 'summary', { ...dates, summaryUserType: t, ...filterParams })),
-        );
-        return Object.fromEntries(USER_TYPES.map((t, i) => [t, results[i].count ?? 0])) as Record<string, number>;
+  if (view === 'summary') {
+    const fetchCounts = async (dates: { startDate: string; endDate: string }) => {
+      const results = await Promise.all(
+        USER_TYPES.map((t) => api.get<{ count?: number }>('users', 'summary', { ...dates, summaryUserType: t, ...filterParams })),
+      );
+      return Object.fromEntries(USER_TYPES.map((t, i) => [t, results[i].count ?? 0])) as Record<string, number>;
+    };
+    const prev = compare_previous_period ? previousPeriod(range) : null;
+    const [cur, before] = await Promise.all([fetchCounts(dateParams), prev ? fetchCounts(prev) : Promise.resolve(null)]);
+    const data: any = { ...base, lastRefreshed: await lastRefreshedP, users: cur };
+    if (prev && before) {
+      data.previousPeriod = {
+        ...prev,
+        users: before,
+        changePct: Object.fromEntries(USER_TYPES.map((t) => [t, pctChange(cur[t], before[t])])),
       };
-      const prev = compare_previous_period ? previousPeriod(range) : null;
-      const [cur, before] = await Promise.all([fetchCounts(dateParams), prev ? fetchCounts(prev) : Promise.resolve(null)]);
-      const data: any = { ...base, lastRefreshed: await lastRefreshedP, users: cur };
-      if (prev && before) {
-        data.previousPeriod = {
-          ...prev,
-          users: before,
-          changePct: Object.fromEntries(USER_TYPES.map((t) => [t, pctChange(cur[t], before[t])])),
-        };
-      }
-      return withEnvelope({ instance: instance_name, operation: OPERATION, data, warnings });
     }
-
-    if (view === 'top') {
-      const cappedLimit = Math.max(1, Math.min(Number(limit) || 10, 100));
-      const resp = await api.get('users', 'top', { ...dateParams, limit: cappedLimit, ...filterParams });
-      const users = (resp.results ?? []).map((u: any, i: number) => ({
-        rank: i + 1,
-        userId: u.id,
-        fullName: u.fullName ?? null,
-        visits: u.count ?? 0,
-      }));
-      return withEnvelope({
-        instance: instance_name,
-        operation: OPERATION,
-        data: { ...base, lastRefreshed: await lastRefreshedP, count: users.length, users },
-        warnings,
-      });
-    }
-
-    const path = TREND_VIEWS[view];
-    if (path) {
-      if (view === 'license_types' && !USER_TYPES.includes(user_type)) {
-        throw new Error(`user_type must be one of ${USER_TYPES.join(', ')} (got "${user_type}").`);
-      }
-      let granularity = range.granularity;
-      if (view === 'usage_rate' && granularity === 'Day') {
-        granularity = 'Week';
-        period.granularity = 'Week';
-        warnings.push('usage_rate does not support Day granularity; Week was used instead.');
-      }
-      const resp = await api.get('users', path, {
-        ...dateParams,
-        granularity,
-        ...(view === 'license_types' ? { userType: user_type } : {}),
-        ...filterParams,
-      });
-      const { categories, rows } = pivotTimeSeries(resp.results, 'category');
-      return withEnvelope({
-        instance: instance_name,
-        operation: OPERATION,
-        data: {
-          ...base,
-          ...(view === 'license_types' ? { userType: user_type } : {}),
-          lastRefreshed: await lastRefreshedP,
-          categories,
-          buckets: rows,
-        },
-        warnings,
-      });
-    }
-
-    throw new Error(`view must be one of summary, top, usage_rate, retention, license_types (got "${view}").`);
-  } catch (error) {
-    return errorEnvelope({ instance: instance_name, operation: OPERATION, message: (error as Error).message });
+    return withEnvelope({ instance: instance_name, operation: OPERATION, data, warnings });
   }
+
+  if (view === 'top') {
+    const cappedLimit = Math.max(1, Math.min(Number(limit) || 10, 100));
+    const resp = await api.get('users', 'top', { ...dateParams, limit: cappedLimit, ...filterParams });
+    const users = (resp.results ?? []).map((u: any, i: number) => ({
+      rank: i + 1,
+      userId: u.id,
+      fullName: u.fullName ?? null,
+      visits: u.count ?? 0,
+    }));
+    return withEnvelope({
+      instance: instance_name,
+      operation: OPERATION,
+      data: { ...base, lastRefreshed: await lastRefreshedP, count: users.length, users },
+      warnings,
+    });
+  }
+
+  const path = TREND_VIEWS[view];
+  if (path) {
+    if (view === 'license_types' && !USER_TYPES.includes(user_type)) {
+      throw new Error(`user_type must be one of ${USER_TYPES.join(', ')} (got "${user_type}").`);
+    }
+    let granularity = range.granularity;
+    if (view === 'usage_rate' && granularity === 'Day') {
+      granularity = 'Week';
+      period.granularity = 'Week';
+      warnings.push('usage_rate does not support Day granularity; Week was used instead.');
+    }
+    const resp = await api.get('users', path, {
+      ...dateParams,
+      granularity,
+      ...(view === 'license_types' ? { userType: user_type } : {}),
+      ...filterParams,
+    });
+    const { categories, rows } = pivotTimeSeries(resp.results, 'category');
+    return withEnvelope({
+      instance: instance_name,
+      operation: OPERATION,
+      data: {
+        ...base,
+        ...(view === 'license_types' ? { userType: user_type } : {}),
+        lastRefreshed: await lastRefreshedP,
+        categories,
+        buckets: rows,
+      },
+      warnings,
+    });
+  }
+
+  throw new Error(`view must be one of summary, top, usage_rate, retention, license_types (got "${view}").`);
 }

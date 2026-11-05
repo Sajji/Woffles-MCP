@@ -1,9 +1,7 @@
-import { ok, okWithNext } from '../utils/tool-result.js';
+import { okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
-
-const ASSESSMENTS_BASE = '/rest/assessments/v2';
+import { clientFor } from './_context.js';
+import { ASSESSMENTS_BASE } from '../utils/assessments.js';
 
 export const listAssessmentTemplatesTool = {
   name: 'list_assessment_templates',
@@ -69,34 +67,25 @@ export async function executeListAssessmentTemplates(args: any): Promise<ToolRes
     cursor,
   } = args;
 
-  try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+  const { client } = clientFor(instance_name);
 
-    const params = new URLSearchParams();
-    if (name) params.append('name', name);
-    if (status) params.append('status', status);
-    if (asset_type_id) params.append('assetTypeId', asset_type_id);
-    if (latest_version_only !== undefined) params.append('latestVersionOnly', String(latest_version_only));
-    params.append('limit', String(Math.min(Math.max(1, limit), 50)));
-    if (cursor) params.append('cursor', cursor);
+  const params = new URLSearchParams();
+  if (name) params.append('name', name);
+  if (status) params.append('status', status);
+  if (asset_type_id) params.append('assetTypeId', asset_type_id);
+  if (latest_version_only !== undefined) params.append('latestVersionOnly', String(latest_version_only));
+  params.append('limit', String(Math.min(Math.max(1, limit), 50)));
+  if (cursor) params.append('cursor', cursor);
 
-    const endpoint = `${ASSESSMENTS_BASE}/templates?${params.toString()}`;
-    const response = await client.restCall<any>(endpoint);
+  const endpoint = `${ASSESSMENTS_BASE}/templates?${params.toString()}`;
+  const response = await client.restCall<any>(endpoint);
 
-    return okWithNext({
-      ...response, // API fields first; our keys below take precedence
-      instance: instance_name,
-      filters: { name, status, asset_type_id, latest_version_only },
-    }, [
-      { tool: 'get_assessment_template', args: { instance_name, template_id: '<id from results>' }, why: 'Inspect template structure (questions, scoring).' },
-      { tool: 'create_assessment', args: { instance_name, template_id: '<id>', name: '<assessment name>' }, why: 'Start a new assessment from a template.' },
-    ]);
-  } catch (error) {
-    return ok({
-      error: true,
-      message: (error as Error).message,
-      instance: instance_name,
-    });
-  }
+  return okWithNext({
+    ...response, // API fields first; our keys below take precedence
+    instance: instance_name,
+    filters: { name, status, asset_type_id, latest_version_only },
+  }, [
+    { tool: 'get_assessment_template', args: { instance_name, template_id: '<id from results>' }, why: 'Inspect template structure (questions, scoring).' },
+    { tool: 'create_assessment', args: { instance_name, template_id: '<id>', name: '<assessment name>' }, why: 'Start a new assessment from a template.' },
+  ]);
 }

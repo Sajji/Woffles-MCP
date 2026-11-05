@@ -1,7 +1,6 @@
-import { withEnvelope, errorEnvelope } from '../utils/tool-result.js';
+import { withEnvelope } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
+import { clientFor } from './_context.js';
 
 export const findMappingsTool = {
   name: 'find_mappings',
@@ -52,40 +51,31 @@ export const findMappingsTool = {
 export async function executeFindMappings(args: any): Promise<ToolResult> {
   const { instance_name, external_system_id, external_entity_id, mapped_resource_id, limit = 100, offset = 0 } = args;
 
-  try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+  const { client } = clientFor(instance_name);
 
-    const qp = new URLSearchParams({ limit: String(Math.min(limit, 1000)), offset: String(offset) });
-    if (external_system_id) qp.set('externalSystemId', external_system_id);
-    if (external_entity_id) qp.set('externalEntityId', external_entity_id);
-    if (mapped_resource_id) qp.set('mappedResourceId', mapped_resource_id);
+  const qp = new URLSearchParams({ limit: String(Math.min(limit, 1000)), offset: String(offset) });
+  if (external_system_id) qp.set('externalSystemId', external_system_id);
+  if (external_entity_id) qp.set('externalEntityId', external_entity_id);
+  if (mapped_resource_id) qp.set('mappedResourceId', mapped_resource_id);
 
-    const resp = await client.restCall<any>(`/rest/2.0/mappings?${qp.toString()}`);
-    const results: any[] = resp.results || [];
+  const resp = await client.restCall<any>(`/rest/2.0/mappings?${qp.toString()}`);
+  const results: any[] = resp.results || [];
 
-    const mappings = results.map((m) => ({
-      id: m.id,
-      externalSystemId: m.externalSystemId ?? null,
-      externalEntityId: m.externalEntityId ?? null,
-      externalEntityUrl: m.externalEntityUrl ?? null,
-      mappedResource: m.mappedResource ?? (m.mappedResourceId ? { id: m.mappedResourceId } : null),
-      description: m.description ?? null,
-      lastSyncDate: m.lastSyncDate ?? null,
-      syncAction: m.syncAction ?? null,
-    }));
+  const mappings = results.map((m) => ({
+    id: m.id,
+    externalSystemId: m.externalSystemId ?? null,
+    externalEntityId: m.externalEntityId ?? null,
+    externalEntityUrl: m.externalEntityUrl ?? null,
+    mappedResource: m.mappedResource ?? (m.mappedResourceId ? { id: m.mappedResourceId } : null),
+    description: m.description ?? null,
+    lastSyncDate: m.lastSyncDate ?? null,
+    syncAction: m.syncAction ?? null,
+  }));
 
-    return withEnvelope({
-      instance: instance_name,
-      operation: 'find_mappings',
-      data: { count: mappings.length, total: resp.total ?? null, mappings },
-      pagination: { offset, limit, ...(results.length === limit ? { nextOffset: offset + limit } : {}) },
-    });
-  } catch (error) {
-    return errorEnvelope({
-      instance: instance_name,
-      operation: 'find_mappings',
-      message: (error as Error).message,
-    });
-  }
+  return withEnvelope({
+    instance: instance_name,
+    operation: 'find_mappings',
+    data: { count: mappings.length, total: resp.total ?? null, mappings },
+    pagination: { offset, limit, ...(results.length === limit ? { nextOffset: offset + limit } : {}) },
+  });
 }

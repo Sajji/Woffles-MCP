@@ -1,9 +1,9 @@
 import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient, attrKindFromDiscriminator } from '../utils/collibra-client.js';
+import { attrKindFromDiscriminator } from '../utils/collibra-client.js';
 import { fetchApplicableAssignment } from '../utils/operating-model-cache.js';
 import { narrowToExact } from '../utils/resolve.js';
+import { clientFor } from './_context.js';
 
 // Out-of-the-box Business Term asset type and Definition attribute type UUIDs.
 const BUSINESS_TERM_TYPE_ID = '00000000-0000-0000-0000-000000011001';
@@ -53,8 +53,7 @@ export async function executePrepareAddBusinessTerm(args: any): Promise<ToolResu
   const { instance_name, name, domain_id, domain_name } = args;
 
   try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+    const { client } = clientFor(instance_name);
 
     const result: any = {
       instance: instance_name,

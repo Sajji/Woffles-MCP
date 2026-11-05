@@ -1,18 +1,16 @@
-import { withEnvelope, errorEnvelope } from '../utils/tool-result.js';
+import { withEnvelope } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
 import {
   COMMON_UA_PROPERTIES,
   CONTENT_FILTER_PROPERTIES,
-  UsageAnalyticsApi,
   VISIT_TYPES,
   fetchAssetContext,
   pctChange,
   pivotTimeSeries,
   previousPeriod,
-  resolveDateRange,
+  usageSession,
 } from '../utils/usage-analytics.js';
+import { clientFor } from './_context.js';
 
 const OPERATION = 'get_content_usage';
 
@@ -79,134 +77,124 @@ export async function executeGetContentUsage(args: any): Promise<ToolResult> {
     enrich = true,
   } = args;
 
-  try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
-    const api = new UsageAnalyticsApi(client);
-    const range = resolveDateRange(args);
-    const warnings: string[] = [];
-    const period = { startDate: range.startDate, endDate: range.endDate, granularity: range.granularity };
-    const lastRefreshedP = api.lastRefreshed();
+  const { client } = clientFor(instance_name);
+  const { api, range, warnings, period, dateParams, lastRefreshedP } = usageSession(client, args);
 
-    if (view === 'filters') {
-      const filters = await api.listAllFilters('usage', range);
-      return withEnvelope({
-        instance: instance_name,
-        operation: OPERATION,
-        data: { view, period, lastRefreshed: await lastRefreshedP, filters },
-      });
-    }
-
-    const { params: filterParams, applied } = await api.resolveFilters('usage', args, range, warnings);
-    const dateParams = { startDate: range.startDate, endDate: range.endDate };
-    const base = { view, period, filters: applied };
-
-    if (view === 'summary') {
-      const toCounts = (results: any[] = []) => {
-        const counts: Record<string, number> = Object.fromEntries(VISIT_TYPES.map((t) => [t, 0]));
-        for (const r of results) counts[r.visitType] = (counts[r.visitType] ?? 0) + (r.count ?? 0);
-        return counts;
-      };
-      const prev = compare_previous_period ? previousPeriod(range) : null;
-      const [cur, before] = await Promise.all([
-        api.get('usage', 'visits/summary', { ...dateParams, ...filterParams }),
-        prev ? api.get('usage', 'visits/summary', { ...prev, ...filterParams }) : Promise.resolve(null),
-      ]);
-      const counts = toCounts(cur.results);
-      const total = Object.values(counts).reduce((a, b) => a + b, 0);
-      const data: any = { ...base, lastRefreshed: await lastRefreshedP, visits: counts, totalVisits: total };
-      if (prev && before) {
-        const prevCounts = toCounts(before.results);
-        const prevTotal = Object.values(prevCounts).reduce((a, b) => a + b, 0);
-        data.previousPeriod = {
-          ...prev,
-          visits: prevCounts,
-          totalVisits: prevTotal,
-          changePct: {
-            total: pctChange(total, prevTotal),
-            ...Object.fromEntries(Object.keys(counts).map((k) => [k, pctChange(counts[k], prevCounts[k] ?? 0)])),
-          },
-        };
-      }
-      return withEnvelope({ instance: instance_name, operation: OPERATION, data, warnings });
-    }
-
-    if (view === 'trend') {
-      const resp = await api.get('usage', 'visits/timeSeries', {
-        ...dateParams,
-        granularity: range.granularity,
-        ...filterParams,
-      });
-      const { categories, rows } = pivotTimeSeries(resp.results, 'visitType');
-      return withEnvelope({
-        instance: instance_name,
-        operation: OPERATION,
-        data: { ...base, lastRefreshed: await lastRefreshedP, visitTypes: categories, buckets: rows },
-        warnings,
-      });
-    }
-
-    if (view === 'top') {
-      if (!VISIT_TYPES.includes(visit_type)) {
-        throw new Error(`visit_type must be one of ${VISIT_TYPES.join(', ')} (got "${visit_type}").`);
-      }
-      const cappedLimit = Math.max(1, Math.min(Number(limit) || 10, 100));
-      const resp = await api.get('usage', 'visits/top', {
-        ...dateParams,
-        granularity: range.granularity,
-        visitType: visit_type,
-        limit: cappedLimit,
-        ...filterParams,
-      });
-      const results: any[] = resp.results ?? [];
-
-      let context = new Map<string, any>();
-      if (visit_type === 'Asset' && enrich && results.length) {
-        try {
-          context = await fetchAssetContext(client, results.map((r) => r.id));
-        } catch (e) {
-          warnings.push(`Asset enrichment failed: ${(e as Error).message}`);
-        }
-      }
-
-      const items = results.map((r, i) => {
-        const item: any = { rank: i + 1, id: r.id, name: r.label, visits: r.count ?? 0 };
-        if (visit_type === 'Asset') {
-          const c = context.get(r.id);
-          if (c) {
-            item.assetType = c.assetType;
-            item.domain = c.domain;
-            item.community = c.community;
-          }
-          item.url = client.assetUrl(r.id);
-        } else if (visit_type === 'Domain') {
-          item.url = client.domainUrl(r.id);
-        } else if (visit_type === 'Community') {
-          item.url = client.communityUrl(r.id);
-        }
-        return item;
-      });
-
-      return withEnvelope({
-        instance: instance_name,
-        operation: OPERATION,
-        data: { ...base, visitType: visit_type, lastRefreshed: await lastRefreshedP, count: items.length, items },
-        warnings,
-        nextActions:
-          visit_type === 'Asset' && items.length
-            ? [
-                {
-                  tool: 'get_asset_usage',
-                  args: { instance_name, asset_id: items[0].id, start_date: range.startDate, end_date: range.endDate },
-                  why: 'Drill into visit trend and top visitors for the most visited asset.',
-                },
-              ]
-            : undefined,
-      });
-    }
-
-    throw new Error(`view must be one of summary, trend, top, filters (got "${view}").`);
-  } catch (error) {
-    return errorEnvelope({ instance: instance_name, operation: OPERATION, message: (error as Error).message });
+  if (view === 'filters') {
+    const filters = await api.listAllFilters('usage', range);
+    return withEnvelope({
+      instance: instance_name,
+      operation: OPERATION,
+      data: { view, period, lastRefreshed: await lastRefreshedP, filters },
+    });
   }
+
+  const { params: filterParams, applied } = await api.resolveFilters('usage', args, range, warnings);
+  const base = { view, period, filters: applied };
+
+  if (view === 'summary') {
+    const toCounts = (results: any[] = []) => {
+      const counts: Record<string, number> = Object.fromEntries(VISIT_TYPES.map((t) => [t, 0]));
+      for (const r of results) counts[r.visitType] = (counts[r.visitType] ?? 0) + (r.count ?? 0);
+      return counts;
+    };
+    const prev = compare_previous_period ? previousPeriod(range) : null;
+    const [cur, before] = await Promise.all([
+      api.get('usage', 'visits/summary', { ...dateParams, ...filterParams }),
+      prev ? api.get('usage', 'visits/summary', { ...prev, ...filterParams }) : Promise.resolve(null),
+    ]);
+    const counts = toCounts(cur.results);
+    const total = Object.values(counts).reduce((a, b) => a + b, 0);
+    const data: any = { ...base, lastRefreshed: await lastRefreshedP, visits: counts, totalVisits: total };
+    if (prev && before) {
+      const prevCounts = toCounts(before.results);
+      const prevTotal = Object.values(prevCounts).reduce((a, b) => a + b, 0);
+      data.previousPeriod = {
+        ...prev,
+        visits: prevCounts,
+        totalVisits: prevTotal,
+        changePct: {
+          total: pctChange(total, prevTotal),
+          ...Object.fromEntries(Object.keys(counts).map((k) => [k, pctChange(counts[k], prevCounts[k] ?? 0)])),
+        },
+      };
+    }
+    return withEnvelope({ instance: instance_name, operation: OPERATION, data, warnings });
+  }
+
+  if (view === 'trend') {
+    const resp = await api.get('usage', 'visits/timeSeries', {
+      ...dateParams,
+      granularity: range.granularity,
+      ...filterParams,
+    });
+    const { categories, rows } = pivotTimeSeries(resp.results, 'visitType');
+    return withEnvelope({
+      instance: instance_name,
+      operation: OPERATION,
+      data: { ...base, lastRefreshed: await lastRefreshedP, visitTypes: categories, buckets: rows },
+      warnings,
+    });
+  }
+
+  if (view === 'top') {
+    if (!VISIT_TYPES.includes(visit_type)) {
+      throw new Error(`visit_type must be one of ${VISIT_TYPES.join(', ')} (got "${visit_type}").`);
+    }
+    const cappedLimit = Math.max(1, Math.min(Number(limit) || 10, 100));
+    const resp = await api.get('usage', 'visits/top', {
+      ...dateParams,
+      granularity: range.granularity,
+      visitType: visit_type,
+      limit: cappedLimit,
+      ...filterParams,
+    });
+    const results: any[] = resp.results ?? [];
+
+    let context = new Map<string, any>();
+    if (visit_type === 'Asset' && enrich && results.length) {
+      try {
+        context = await fetchAssetContext(client, results.map((r) => r.id));
+      } catch (e) {
+        warnings.push(`Asset enrichment failed: ${(e as Error).message}`);
+      }
+    }
+
+    const items = results.map((r, i) => {
+      const item: any = { rank: i + 1, id: r.id, name: r.label, visits: r.count ?? 0 };
+      if (visit_type === 'Asset') {
+        const c = context.get(r.id);
+        if (c) {
+          item.assetType = c.assetType;
+          item.domain = c.domain;
+          item.community = c.community;
+        }
+        item.url = client.assetUrl(r.id);
+      } else if (visit_type === 'Domain') {
+        item.url = client.domainUrl(r.id);
+      } else if (visit_type === 'Community') {
+        item.url = client.communityUrl(r.id);
+      }
+      return item;
+    });
+
+    return withEnvelope({
+      instance: instance_name,
+      operation: OPERATION,
+      data: { ...base, visitType: visit_type, lastRefreshed: await lastRefreshedP, count: items.length, items },
+      warnings,
+      nextActions:
+        visit_type === 'Asset' && items.length
+          ? [
+              {
+                tool: 'get_asset_usage',
+                args: { instance_name, asset_id: items[0].id, start_date: range.startDate, end_date: range.endDate },
+                why: 'Drill into visit trend and top visitors for the most visited asset.',
+              },
+            ]
+          : undefined,
+    });
+  }
+
+  throw new Error(`view must be one of summary, trend, top, filters (got "${view}").`);
 }

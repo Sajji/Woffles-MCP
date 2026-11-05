@@ -82,67 +82,59 @@ export async function executeInitDataContract(args: any): Promise<ToolResult> {
     return ok({ error: true, instance: instance_name, message: 'governed_asset_id is required.' });
   }
 
-  try {
-    const instance = getInstance(instance_name);
+  const instance = getInstance(instance_name);
 
-    // governedAssetId is a required form field; the rest are optional.
-    const fields: Record<string, string> = { governedAssetId: governed_asset_id };
-    if (manifest_id) fields['manifestId'] = manifest_id;
-    if (version) fields['version'] = version;
-    if (name) fields['name'] = name;
-    if (domain_id) fields['domainId'] = domain_id;
+  // governedAssetId is a required form field; the rest are optional.
+  const fields: Record<string, string> = { governedAssetId: governed_asset_id };
+  if (manifest_id) fields['manifestId'] = manifest_id;
+  if (version) fields['version'] = version;
+  if (name) fields['name'] = name;
+  if (domain_id) fields['domainId'] = domain_id;
 
-    // The manifest file part is optional: omitting it lets Collibra auto-generate it.
-    const { body, contentType } = buildMultipartBody(
-      fields,
-      manifest ? { field: 'manifest', filename: 'contract.yaml', contentType: 'application/yaml', content: manifest } : undefined,
-    );
-    const url = `${instance.baseUrl}/rest/dataProduct/v1/dataContracts`;
+  // The manifest file part is optional: omitting it lets Collibra auto-generate it.
+  const { body, contentType } = buildMultipartBody(
+    fields,
+    manifest ? { field: 'manifest', filename: 'contract.yaml', contentType: 'application/yaml', content: manifest } : undefined,
+  );
+  const url = `${instance.baseUrl}/rest/dataProduct/v1/dataContracts`;
 
-    const response = await authFetch(instance, url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': contentType,
-      },
-      body,
-    });
+  const response = await authFetch(instance, url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': contentType,
+    },
+    body,
+  });
 
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => '');
-      if (response.status === 403) {
-        throw new Error(
-          `HTTP 403 Forbidden — the authenticated user is likely missing the "dgc.data-contract" permission required to initialize data contracts.${errorBody ? ` Details: ${errorBody}` : ''}`,
-        );
-      }
-      throw new Error(`HTTP ${response.status} ${response.statusText}${errorBody ? `: ${errorBody}` : ''}`);
+  if (!response.ok) {
+    const errorBody = await response.text().catch(() => '');
+    if (response.status === 403) {
+      throw new Error(
+        `HTTP 403 Forbidden — the authenticated user is likely missing the "dgc.data-contract" permission required to initialize data contracts.${errorBody ? ` Details: ${errorBody}` : ''}`,
+      );
     }
-
-    const responseBody = (await response.json()) as any;
-
-    return okWithNext(
-      {
-        success: true,
-        instance: instance_name,
-        id: responseBody.id,
-        name: responseBody.name,
-        manifestId: responseBody.manifestId,
-        domainId: responseBody.domainId,
-        domainName: responseBody.domainName,
-        activeVersion: responseBody.activeVersion,
-        format: responseBody.manifestVersion?.format,
-      },
-      [
-        { tool: 'push_data_contract_manifest', args: { instance_name, manifest: '<next manifest version>' }, why: 'Add a further manifest version to the initialized contract.' },
-        { tool: 'pull_data_contract_manifest', args: { instance_name, data_contract_id: '<id from response>' }, why: 'Download the manifest that was generated or uploaded.' },
-        { tool: 'list_data_contract', args: { instance_name, manifest_id: '<manifestId from response>' }, why: 'See contracts associated with this manifest.' },
-      ],
-      true,
-    );
-  } catch (error) {
-    return ok({
-      error: true,
-      message: (error as Error).message,
-      instance: instance_name,
-    });
+    throw new Error(`HTTP ${response.status} ${response.statusText}${errorBody ? `: ${errorBody}` : ''}`);
   }
+
+  const responseBody = (await response.json()) as any;
+
+  return okWithNext(
+    {
+      success: true,
+      instance: instance_name,
+      id: responseBody.id,
+      name: responseBody.name,
+      manifestId: responseBody.manifestId,
+      domainId: responseBody.domainId,
+      domainName: responseBody.domainName,
+      activeVersion: responseBody.activeVersion,
+      format: responseBody.manifestVersion?.format,
+    },
+    [
+      { tool: 'push_data_contract_manifest', args: { instance_name, manifest: '<next manifest version>' }, why: 'Add a further manifest version to the initialized contract.' },
+      { tool: 'pull_data_contract_manifest', args: { instance_name, data_contract_id: '<id from response>' }, why: 'Download the manifest that was generated or uploaded.' },
+      { tool: 'list_data_contract', args: { instance_name, manifest_id: '<manifestId from response>' }, why: 'See contracts associated with this manifest.' },
+    ],
+    true,
+  );
 }

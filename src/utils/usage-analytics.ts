@@ -203,6 +203,24 @@ const FILTER_SPECS: { arg: keyof FilterArgs; kind: FilterKind; param: string; se
   { arg: 'asset_types', kind: 'assetTypes', param: 'assetTypeIds', services: ['usage'] },
 ];
 
+/**
+ * Common setup shared by the usage tools: API wrapper, resolved date range,
+ * period/date params, a warnings list, and the (never-rejecting) last-refresh
+ * lookup started in parallel.
+ */
+export function usageSession(client: CollibraClient, args: { start_date?: string; end_date?: string; granularity?: string }) {
+  const api = new UsageAnalyticsApi(client);
+  const range = resolveDateRange(args);
+  return {
+    api,
+    range,
+    warnings: [] as string[],
+    period: { startDate: range.startDate, endDate: range.endDate, granularity: range.granularity },
+    dateParams: { startDate: range.startDate, endDate: range.endDate },
+    lastRefreshedP: api.lastRefreshed(),
+  };
+}
+
 export class UsageAnalyticsApi {
   constructor(private client: CollibraClient) {}
 

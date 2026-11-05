@@ -1,9 +1,7 @@
-import { ok, okWithNext } from '../utils/tool-result.js';
+import { okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
-
-const ASSESSMENTS_BASE = '/rest/assessments/v2';
+import { clientFor } from './_context.js';
+import { ASSESSMENTS_BASE } from '../utils/assessments.js';
 
 export const getAssessmentByReviewTool = {
   name: 'get_assessment_by_review',
@@ -36,28 +34,18 @@ export const getAssessmentByReviewTool = {
 export async function executeGetAssessmentByReview(args: any): Promise<ToolResult> {
   const { instance_name, assessment_review_id } = args;
 
-  try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+  const { client } = clientFor(instance_name);
 
-    const endpoint = `${ASSESSMENTS_BASE}/assessments/by/assessmentReview/${encodeURIComponent(assessment_review_id)}`;
-    const response = await client.restCall<any>(endpoint);
+  const endpoint = `${ASSESSMENTS_BASE}/assessments/by/assessmentReview/${encodeURIComponent(assessment_review_id)}`;
+  const response = await client.restCall<any>(endpoint);
 
-    return okWithNext({
-      ...response, // API fields first; our keys below take precedence
-      instance: instance_name,
-      lookedUpBy: 'assessmentReviewId',
-      assessmentReviewId: assessment_review_id,
-    }, [
-      { tool: 'get_assessment', args: { instance_name, assessment_id: '<id from response>' }, why: 'Fetch the assessment by its own id for canonical detail.' },
-      { tool: 'edit_assessment', args: { instance_name, assessment_id: '<id from response>', operations: [{ op: 'set_status', value: '<new status>' }] }, why: 'Edit the assessment.' },
-    ]);
-  } catch (error) {
-    return ok({
-      error: true,
-      message: (error as Error).message,
-      instance: instance_name,
-      assessment_review_id,
-    });
-  }
+  return okWithNext({
+    ...response, // API fields first; our keys below take precedence
+    instance: instance_name,
+    lookedUpBy: 'assessmentReviewId',
+    assessmentReviewId: assessment_review_id,
+  }, [
+    { tool: 'get_assessment', args: { instance_name, assessment_id: '<id from response>' }, why: 'Fetch the assessment by its own id for canonical detail.' },
+    { tool: 'edit_assessment', args: { instance_name, assessment_id: '<id from response>', operations: [{ op: 'set_status', value: '<new status>' }] }, why: 'Edit the assessment.' },
+  ]);
 }

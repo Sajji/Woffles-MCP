@@ -1,9 +1,8 @@
 import { okPretty, okWithNext, ok } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
-
-const ASSESSMENTS_BASE = '/rest/assessments/v2';
+import { clientFor } from './_context.js';
+import { ASSESSMENTS_BASE } from '../utils/assessments.js';
 
 /**
  * `edit_assessment` — chip-parity tool. Applies a list of typed operations to
@@ -140,8 +139,7 @@ export async function executeEditAssessment(args: any): Promise<ToolResult> {
   const { instance_name, assessment_id, assessment_name, operations, confirm = false } = args;
 
   try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+    const { client } = clientFor(instance_name);
 
     const resolvedTarget = await resolveAssessment(client, assessment_id, assessment_name);
     if ('needsInput' in resolvedTarget) return resolvedTarget.needsInput;

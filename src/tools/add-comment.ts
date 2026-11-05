@@ -1,8 +1,7 @@
 import { okWithNext, ok } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
 import { looksLikeMarkdown, markdownToHtml } from '../utils/markdown.js';
+import { clientFor } from './_context.js';
 
 export const addCommentTool = {
   name: 'add_comment',
@@ -49,55 +48,46 @@ export const addCommentTool = {
 export async function executeAddComment(args: any): Promise<ToolResult> {
   const { instance_name, content, resource_id, resource_type = 'Asset', parent_id } = args;
 
-  try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+  const { client } = clientFor(instance_name);
 
-    if (!resource_id && !parent_id) {
-      return ok({
-        error: true,
-        message: 'Provide resource_id (new comment) or parent_id (reply).',
-        instance: instance_name,
-      });
-    }
-
-    const html = looksLikeMarkdown(content) ? markdownToHtml(content) : content;
-    const body: any = { content: html };
-    if (parent_id) {
-      body.parentId = parent_id;
-    } else {
-      body.commentableResourceId = resource_id;
-      body.commentableResourceDiscriminator = resource_type;
-    }
-
-    const created = await client.restCallWithBody<any>('/rest/2.0/comments', 'POST', body);
-
-    return okWithNext(
-      {
-        success: true,
-        comment: {
-          id: created.id,
-          content: created.content ?? html,
-          baseResource: created.baseResource ?? null,
-          parentId: created.parent?.id ?? parent_id ?? null,
-        },
-      },
-      [
-        {
-          tool: 'find_comments',
-          args: parent_id
-            ? { instance_name, parent_id }
-            : { instance_name, base_resource_id: resource_id },
-          why: 'View the comment thread.',
-        },
-      ],
-      true,
-    );
-  } catch (error) {
+  if (!resource_id && !parent_id) {
     return ok({
       error: true,
-      message: (error as Error).message,
+      message: 'Provide resource_id (new comment) or parent_id (reply).',
       instance: instance_name,
     });
   }
+
+  const html = looksLikeMarkdown(content) ? markdownToHtml(content) : content;
+  const body: any = { content: html };
+  if (parent_id) {
+    body.parentId = parent_id;
+  } else {
+    body.commentableResourceId = resource_id;
+    body.commentableResourceDiscriminator = resource_type;
+  }
+
+  const created = await client.restCallWithBody<any>('/rest/2.0/comments', 'POST', body);
+
+  return okWithNext(
+    {
+      success: true,
+      comment: {
+        id: created.id,
+        content: created.content ?? html,
+        baseResource: created.baseResource ?? null,
+        parentId: created.parent?.id ?? parent_id ?? null,
+      },
+    },
+    [
+      {
+        tool: 'find_comments',
+        args: parent_id
+          ? { instance_name, parent_id }
+          : { instance_name, base_resource_id: resource_id },
+        why: 'View the comment thread.',
+      },
+    ],
+    true,
+  );
 }

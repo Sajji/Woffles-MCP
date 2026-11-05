@@ -32,71 +32,67 @@ export const validateAgainstModelTool = {
 export async function executeValidateAgainstModel(args: any): Promise<ToolResult> {
   const { instance_name, proposal_type } = args || {};
   const operation = 'validate_against_model';
-  try {
-    const snap = loadSnapshot(instance_name);
-    if (!snap) {
-      return withEnvelope({
-        instance: instance_name, operation, pretty: true, data: null,
-        warnings: ['No cached operating model. Refresh first.'],
-        nextActions: [{ tool: 'refresh_operating_model', args: { instance_name }, why: 'Required cache.' }],
-      });
-    }
-
-    const violations: string[] = [];
-    const atIdx = new Map(snap.assetTypes.map((t) => [t.id, t]));
-    const attrIdx = new Map(snap.attributeTypes.map((t) => [t.id, t]));
-    const relIdx = new Map(snap.relationTypes.map((t) => [t.id, t]));
-    const stIdx = new Map(snap.statuses.map((s) => [s.id, s]));
-
-    if (proposal_type === 'asset') {
-      if (!args.asset_type_id || !atIdx.has(args.asset_type_id)) {
-        violations.push(`asset_type_id "${args.asset_type_id}" not found in model.`);
-      }
-      if (args.status_id && !stIdx.has(args.status_id)) {
-        violations.push(`status_id "${args.status_id}" not found in model.`);
-      }
-      for (const aid of args.attribute_type_ids || []) {
-        if (!attrIdx.has(aid)) violations.push(`attribute_type_id "${aid}" not found in model.`);
-      }
-    } else if (proposal_type === 'relation') {
-      const rt = args.relation_type_id ? relIdx.get(args.relation_type_id) : undefined;
-      if (!rt) {
-        violations.push(`relation_type_id "${args.relation_type_id}" not found in model.`);
-      } else {
-        if (args.source_asset_type_id && rt.sourceTypeId !== args.source_asset_type_id) {
-          violations.push(
-            `source asset type does not match relation type: expected ${rt.sourceTypeName} (${rt.sourceTypeId}), got ${args.source_asset_type_id}.`,
-          );
-        }
-        if (args.target_asset_type_id && rt.targetTypeId !== args.target_asset_type_id) {
-          violations.push(
-            `target asset type does not match relation type: expected ${rt.targetTypeName} (${rt.targetTypeId}), got ${args.target_asset_type_id}.`,
-          );
-        }
-      }
-    } else if (proposal_type === 'attribute') {
-      if (!args.attribute_type_id || !attrIdx.has(args.attribute_type_id)) {
-        violations.push(`attribute_type_id "${args.attribute_type_id}" not found in model.`);
-      }
-    } else {
-      return errorEnvelope({ instance: instance_name, operation, message: `Unknown proposal_type: ${proposal_type}` });
-    }
-
+  const snap = loadSnapshot(instance_name);
+  if (!snap) {
     return withEnvelope({
-      instance: instance_name,
-      operation,
-      pretty: true,
-      model: { snapshotHash: snap.snapshotHash, refreshedAt: snap.refreshedAt },
-      data: {
-        proposalType: proposal_type,
-        valid: violations.length === 0,
-        violations,
-      },
-      warnings: violations.length
-        ? ['Schema validation failed. Server may still apply additional constraints (assignments, permissions, workflow).']
-        : [],
+      instance: instance_name, operation, pretty: true, data: null,
+      warnings: ['No cached operating model. Refresh first.'],
+      nextActions: [{ tool: 'refresh_operating_model', args: { instance_name }, why: 'Required cache.' }],
     });
-  } catch (error) {
-    return errorEnvelope({ instance: instance_name, operation, message: (error as Error).message });
   }
+
+  const violations: string[] = [];
+  const atIdx = new Map(snap.assetTypes.map((t) => [t.id, t]));
+  const attrIdx = new Map(snap.attributeTypes.map((t) => [t.id, t]));
+  const relIdx = new Map(snap.relationTypes.map((t) => [t.id, t]));
+  const stIdx = new Map(snap.statuses.map((s) => [s.id, s]));
+
+  if (proposal_type === 'asset') {
+    if (!args.asset_type_id || !atIdx.has(args.asset_type_id)) {
+      violations.push(`asset_type_id "${args.asset_type_id}" not found in model.`);
+    }
+    if (args.status_id && !stIdx.has(args.status_id)) {
+      violations.push(`status_id "${args.status_id}" not found in model.`);
+    }
+    for (const aid of args.attribute_type_ids || []) {
+      if (!attrIdx.has(aid)) violations.push(`attribute_type_id "${aid}" not found in model.`);
+    }
+  } else if (proposal_type === 'relation') {
+    const rt = args.relation_type_id ? relIdx.get(args.relation_type_id) : undefined;
+    if (!rt) {
+      violations.push(`relation_type_id "${args.relation_type_id}" not found in model.`);
+    } else {
+      if (args.source_asset_type_id && rt.sourceTypeId !== args.source_asset_type_id) {
+        violations.push(
+          `source asset type does not match relation type: expected ${rt.sourceTypeName} (${rt.sourceTypeId}), got ${args.source_asset_type_id}.`,
+        );
+      }
+      if (args.target_asset_type_id && rt.targetTypeId !== args.target_asset_type_id) {
+        violations.push(
+          `target asset type does not match relation type: expected ${rt.targetTypeName} (${rt.targetTypeId}), got ${args.target_asset_type_id}.`,
+        );
+      }
+    }
+  } else if (proposal_type === 'attribute') {
+    if (!args.attribute_type_id || !attrIdx.has(args.attribute_type_id)) {
+      violations.push(`attribute_type_id "${args.attribute_type_id}" not found in model.`);
+    }
+  } else {
+    return errorEnvelope({ instance: instance_name, operation, message: `Unknown proposal_type: ${proposal_type}` });
+  }
+
+  return withEnvelope({
+    instance: instance_name,
+    operation,
+    pretty: true,
+    model: { snapshotHash: snap.snapshotHash, refreshedAt: snap.refreshedAt },
+    data: {
+      proposalType: proposal_type,
+      valid: violations.length === 0,
+      violations,
+    },
+    warnings: violations.length
+      ? ['Schema validation failed. Server may still apply additional constraints (assignments, permissions, workflow).']
+      : [],
+  });
 }

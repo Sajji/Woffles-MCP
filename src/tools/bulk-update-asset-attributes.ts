@@ -1,8 +1,7 @@
 import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
 import { applyAttributeSetPlans, getAttributeTypeInfo, planAttributeSet } from '../utils/attributes.js';
+import { clientFor } from './_context.js';
 
 export const bulkUpdateAssetAttributesTool = {
   name: 'bulk_update_asset_attributes',
@@ -67,8 +66,7 @@ export async function executeBulkUpdateAssetAttributes(args: any): Promise<ToolR
   }
 
   try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+    const { client } = clientFor(instance_name);
 
     const attrType = await getAttributeTypeInfo(client, attribute_type_id);
     const attributeType = { id: attribute_type_id, name: attrType.name, kind: attrType.kind };

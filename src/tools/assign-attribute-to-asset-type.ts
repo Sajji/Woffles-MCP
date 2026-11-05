@@ -1,7 +1,7 @@
 import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient, isNotFound } from '../utils/collibra-client.js';
+import { isNotFound } from '../utils/collibra-client.js';
+import { clientFor } from './_context.js';
 
 /**
  * Map an AssignedCharacteristicType (GET shape) to a
@@ -103,164 +103,155 @@ export async function executeAssignAttributeToAssetType(args: any): Promise<Tool
   // Preview unless explicitly confirmed (consistent with every other write tool).
   const preview = confirm !== true || dry_run === true;
 
+  const { client } = clientFor(instance_name);
+
+  // ── Resolve the new attribute type (validate existence + name for output) ──
+  let attr: any = null;
   try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
-
-    // ── Resolve the new attribute type (validate existence + name for output) ──
-    let attr: any = null;
-    try {
-      attr = await client.restCall<any>(`/rest/2.0/attributeTypes/${encodeURIComponent(attribute_type_id)}`);
-    } catch (err) {
-      if (!isNotFound(err)) throw err;
-    }
-    if (!attr || !attr.id) {
-      return ok({
-        error: true,
-        message: `Attribute type "${attribute_type_id}" not found. Create it first with create_attribute_type.`,
-        instance: instance_name,
-      });
-    }
-
-    // ── Read assignments for the asset type ──────────────────────────────
-    let raw: any = [];
-    try {
-      raw = await client.restCall<any>(`/rest/2.0/assignments/assetType/${encodeURIComponent(asset_type_id)}`);
-    } catch (err) {
-      if (!isNotFound(err)) throw err;
-    }
-    const assignments: any[] = Array.isArray(raw) ? raw : raw.results || [];
-
-    if (!assignments.length) {
-      return ok({
-        error: true,
-        message:
-          `No assignments found for asset type "${asset_type_id}". The asset type may not exist ` +
-          `or may have no domain-type assignment to attach attributes to.`,
-        instance: instance_name,
-      });
-    }
-
-    const targets = assignment_id
-      ? assignments.filter((a) => a.id === assignment_id)
-      : assignments;
-
-    if (assignment_id && !targets.length) {
-      return ok({
-        error: true,
-        message: `Assignment "${assignment_id}" not found on asset type "${asset_type_id}".`,
-        instance: instance_name,
-      });
-    }
-
-    const newMin = typeof minimum_occurrences === 'number' ? minimum_occurrences : 0;
-    // null → no upper limit (omitted from the reference); undefined → default 1.
-    const newMax: number | undefined =
-      maximum_occurrences === null ? undefined : typeof maximum_occurrences === 'number' ? maximum_occurrences : 1;
-
-    const perAssignment: any[] = [];
-    let patched = 0;
-    let alreadyAssigned = 0;
-
-    for (const a of targets) {
-      const existing: any[] = a.characteristicTypes || [];
-      const refs = existing.map(toReference).filter((r): r is NonNullable<typeof r> => r !== null);
-
-      const has = refs.some((r) => r.id === attribute_type_id);
-      if (has) {
-        alreadyAssigned++;
-        perAssignment.push({
-          assignmentId: a.id,
-          domainTypes: (a.domainTypes || []).map((d: any) => d.name),
-          status: 'already-assigned',
-          characteristicCount: refs.length,
-        });
-        continue;
-      }
-
-      const merged = [...refs, { id: attribute_type_id, type: 'AttributeType', min: newMin, max: newMax }];
-
-      if (preview) {
-        perAssignment.push({
-          assignmentId: a.id,
-          domainTypes: (a.domainTypes || []).map((d: any) => d.name),
-          status: 'would-patch',
-          before: refs.length,
-          after: merged.length,
-          mergedCharacteristicTypes: merged,
-        });
-        continue;
-      }
-
-      try {
-        await client.restCallWithBody<any>(`/rest/2.0/assignments/${encodeURIComponent(a.id)}`, 'PATCH', {
-          characteristicTypes: merged,
-        });
-      } catch (err) {
-        // Report what was already written instead of losing it in the generic catch.
-        return ok({
-          error: true,
-          status: 'partial',
-          message: `PATCH of assignment ${a.id} failed after ${patched} assignment(s) were already patched: ${(err as Error).message}`,
-          instance: instance_name,
-          assignments: perAssignment,
-        });
-      }
-      patched++;
-      perAssignment.push({
-        assignmentId: a.id,
-        domainTypes: (a.domainTypes || []).map((d: any) => d.name),
-        status: 'patched',
-        before: refs.length,
-        after: merged.length,
-      });
-    }
-
-    const payload = {
-      action: preview ? 'preview' : 'assigned',
-      instance: instance_name,
-      assetTypeId: asset_type_id,
-      attributeType: { id: attr.id, name: attr.name, kind: attr.resourceType || attr.attributeTypeDiscriminator },
-      occurrences: { minimum: newMin, maximum: newMax ?? null },
-      assignmentsTargeted: targets.length,
-      patched,
-      alreadyAssigned,
-      assignments: perAssignment,
-      message: preview
-        ? `PREVIEW — no changes made: ${targets.length} assignment(s) inspected. To apply, call again with confirm=true.`
-        : `Assigned "${attr.name}" to asset type — patched ${patched}, already assigned ${alreadyAssigned}.`,
-    };
-
-    if (preview || patched === 0) {
-      return okPretty(payload);
-    }
-
-    return okWithNext(
-      payload,
-      [
-        {
-          tool: 'refresh_operating_model',
-          args: { instance_name, force: true },
-          why: 'Refresh the cached model so the new assignment is reflected.',
-        },
-        {
-          tool: 'describe_asset_type',
-          args: { instance_name, asset_type_id },
-          why: 'Confirm the attribute now appears in the asset type\'s assignable attributes.',
-        },
-        {
-          tool: 'update_asset_attribute',
-          args: { instance_name, asset_id: '<asset>', attribute_type_id, new_value: '<value>' },
-          why: 'Set the attribute value on assets of this type now that it is assignable.',
-        },
-      ],
-      true,
-    );
-  } catch (error) {
+    attr = await client.restCall<any>(`/rest/2.0/attributeTypes/${encodeURIComponent(attribute_type_id)}`);
+  } catch (err) {
+    if (!isNotFound(err)) throw err;
+  }
+  if (!attr || !attr.id) {
     return ok({
       error: true,
-      message: (error as Error).message,
+      message: `Attribute type "${attribute_type_id}" not found. Create it first with create_attribute_type.`,
       instance: instance_name,
     });
   }
+
+  // ── Read assignments for the asset type ──────────────────────────────
+  let raw: any = [];
+  try {
+    raw = await client.restCall<any>(`/rest/2.0/assignments/assetType/${encodeURIComponent(asset_type_id)}`);
+  } catch (err) {
+    if (!isNotFound(err)) throw err;
+  }
+  const assignments: any[] = Array.isArray(raw) ? raw : raw.results || [];
+
+  if (!assignments.length) {
+    return ok({
+      error: true,
+      message:
+        `No assignments found for asset type "${asset_type_id}". The asset type may not exist ` +
+        `or may have no domain-type assignment to attach attributes to.`,
+      instance: instance_name,
+    });
+  }
+
+  const targets = assignment_id
+    ? assignments.filter((a) => a.id === assignment_id)
+    : assignments;
+
+  if (assignment_id && !targets.length) {
+    return ok({
+      error: true,
+      message: `Assignment "${assignment_id}" not found on asset type "${asset_type_id}".`,
+      instance: instance_name,
+    });
+  }
+
+  const newMin = typeof minimum_occurrences === 'number' ? minimum_occurrences : 0;
+  // null → no upper limit (omitted from the reference); undefined → default 1.
+  const newMax: number | undefined =
+    maximum_occurrences === null ? undefined : typeof maximum_occurrences === 'number' ? maximum_occurrences : 1;
+
+  const perAssignment: any[] = [];
+  let patched = 0;
+  let alreadyAssigned = 0;
+
+  for (const a of targets) {
+    const existing: any[] = a.characteristicTypes || [];
+    const refs = existing.map(toReference).filter((r): r is NonNullable<typeof r> => r !== null);
+
+    const has = refs.some((r) => r.id === attribute_type_id);
+    if (has) {
+      alreadyAssigned++;
+      perAssignment.push({
+        assignmentId: a.id,
+        domainTypes: (a.domainTypes || []).map((d: any) => d.name),
+        status: 'already-assigned',
+        characteristicCount: refs.length,
+      });
+      continue;
+    }
+
+    const merged = [...refs, { id: attribute_type_id, type: 'AttributeType', min: newMin, max: newMax }];
+
+    if (preview) {
+      perAssignment.push({
+        assignmentId: a.id,
+        domainTypes: (a.domainTypes || []).map((d: any) => d.name),
+        status: 'would-patch',
+        before: refs.length,
+        after: merged.length,
+        mergedCharacteristicTypes: merged,
+      });
+      continue;
+    }
+
+    try {
+      await client.restCallWithBody<any>(`/rest/2.0/assignments/${encodeURIComponent(a.id)}`, 'PATCH', {
+        characteristicTypes: merged,
+      });
+    } catch (err) {
+      // Report what was already written instead of losing it in the generic catch.
+      return ok({
+        error: true,
+        status: 'partial',
+        message: `PATCH of assignment ${a.id} failed after ${patched} assignment(s) were already patched: ${(err as Error).message}`,
+        instance: instance_name,
+        assignments: perAssignment,
+      });
+    }
+    patched++;
+    perAssignment.push({
+      assignmentId: a.id,
+      domainTypes: (a.domainTypes || []).map((d: any) => d.name),
+      status: 'patched',
+      before: refs.length,
+      after: merged.length,
+    });
+  }
+
+  const payload = {
+    action: preview ? 'preview' : 'assigned',
+    instance: instance_name,
+    assetTypeId: asset_type_id,
+    attributeType: { id: attr.id, name: attr.name, kind: attr.resourceType || attr.attributeTypeDiscriminator },
+    occurrences: { minimum: newMin, maximum: newMax ?? null },
+    assignmentsTargeted: targets.length,
+    patched,
+    alreadyAssigned,
+    assignments: perAssignment,
+    message: preview
+      ? `PREVIEW — no changes made: ${targets.length} assignment(s) inspected. To apply, call again with confirm=true.`
+      : `Assigned "${attr.name}" to asset type — patched ${patched}, already assigned ${alreadyAssigned}.`,
+  };
+
+  if (preview || patched === 0) {
+    return okPretty(payload);
+  }
+
+  return okWithNext(
+    payload,
+    [
+      {
+        tool: 'refresh_operating_model',
+        args: { instance_name, force: true },
+        why: 'Refresh the cached model so the new assignment is reflected.',
+      },
+      {
+        tool: 'describe_asset_type',
+        args: { instance_name, asset_type_id },
+        why: 'Confirm the attribute now appears in the asset type\'s assignable attributes.',
+      },
+      {
+        tool: 'update_asset_attribute',
+        args: { instance_name, asset_id: '<asset>', attribute_type_id, new_value: '<value>' },
+        why: 'Set the attribute value on assets of this type now that it is assignable.',
+      },
+    ],
+    true,
+  );
 }

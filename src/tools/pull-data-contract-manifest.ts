@@ -1,4 +1,4 @@
-import { ok, okWithNext } from '../utils/tool-result.js';
+import { okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { authFetch } from '../utils/auth.js';
@@ -33,38 +33,29 @@ export const pullDataContractManifestTool = {
 export async function executePullDataContractManifest(args: any): Promise<ToolResult> {
   const { instance_name, data_contract_id } = args;
 
-  try {
-    const instance = getInstance(instance_name);
+  const instance = getInstance(instance_name);
 
-    const url = `${instance.baseUrl}/rest/dataProduct/v1/dataContracts/${encodeURIComponent(data_contract_id)}/activeVersion/manifest`;
+  const url = `${instance.baseUrl}/rest/dataProduct/v1/dataContracts/${encodeURIComponent(data_contract_id)}/activeVersion/manifest`;
 
-    const response = await authFetch(instance, url, {
-      method: 'GET',
-      headers: {
-        'Accept': 'text/plain, application/yaml, application/json',
-      },
-    });
+  const response = await authFetch(instance, url, {
+    method: 'GET',
+    headers: {
+      'Accept': 'text/plain, application/yaml, application/json',
+    },
+  });
 
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => '');
-      throw new Error(`HTTP ${response.status} ${response.statusText}${errorBody ? `: ${errorBody}` : ''}`);
-    }
-
-    const manifestContent = await response.text();
-
-    return okWithNext({
-      instance: instance_name,
-      dataContractId: data_contract_id,
-      manifest: manifestContent,
-    }, [
-      { tool: 'push_data_contract_manifest', args: { instance_name, manifest: '<edited manifest>', manifest_id: '<manifest id from this contract>' }, why: 'Push an edited version of this manifest back.' },
-    ], true);
-
-  } catch (error) {
-    return ok({
-      error: true,
-      message: (error as Error).message,
-      instance: instance_name,
-    });
+  if (!response.ok) {
+    const errorBody = await response.text().catch(() => '');
+    throw new Error(`HTTP ${response.status} ${response.statusText}${errorBody ? `: ${errorBody}` : ''}`);
   }
+
+  const manifestContent = await response.text();
+
+  return okWithNext({
+    instance: instance_name,
+    dataContractId: data_contract_id,
+    manifest: manifestContent,
+  }, [
+    { tool: 'push_data_contract_manifest', args: { instance_name, manifest: '<edited manifest>', manifest_id: '<manifest id from this contract>' }, why: 'Push an edited version of this manifest back.' },
+  ], true);
 }

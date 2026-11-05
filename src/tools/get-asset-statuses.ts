@@ -1,7 +1,6 @@
-import { ok, okWithNext } from '../utils/tool-result.js';
+import { okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
+import { clientFor } from './_context.js';
 
 export const getAssetStatusesTool = {
   name: 'get_asset_statuses',
@@ -34,38 +33,28 @@ export const getAssetStatusesTool = {
 export async function executeGetAssetStatuses(args: any): Promise<ToolResult> {
   const { instance_name, name } = args;
 
-  try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+  const { client } = clientFor(instance_name);
 
-    // Small, fixed set: fetch every page instead of silently truncating at one.
-    const params: Record<string, string> = { sortField: 'NAME', sortOrder: 'ASC' };
-    if (name) {
-      params.name = name;
-      params.nameMatchMode = 'ANYWHERE';
-    }
-    const results = await client.restPaginate<any>('/rest/2.0/statuses', params);
-    const response = { results, total: results.length };
-
-    return okWithNext({
-      instance: instance_name,
-      total: response.total ?? (response.results || []).length,
-      statuses: (response.results || []).map((s: any) => ({
-        id: s.id,
-        name: s.name,
-        publicId: s.publicId || undefined,
-        description: s.description || undefined,
-      })),
-    }, [
-      { tool: 'plan_asset_creation', args: { instance_name, asset_name: '<name>', asset_type_name: '<type>', preferred_status_name: '<pick from statuses>' }, why: 'Plan an asset creation with the chosen initial status.' },
-      { tool: 'validate_against_model', args: { instance_name, proposal_type: 'asset', asset_type_id: '<asset type uuid>', status_id: '<pick from statuses>' }, why: 'Schema-validate before create_asset.' },
-    ], true);
-
-  } catch (error) {
-    return ok({
-      error: true,
-      message: (error as Error).message,
-      instance: instance_name,
-    });
+  // Small, fixed set: fetch every page instead of silently truncating at one.
+  const params: Record<string, string> = { sortField: 'NAME', sortOrder: 'ASC' };
+  if (name) {
+    params.name = name;
+    params.nameMatchMode = 'ANYWHERE';
   }
+  const results = await client.restPaginate<any>('/rest/2.0/statuses', params);
+  const response = { results, total: results.length };
+
+  return okWithNext({
+    instance: instance_name,
+    total: response.total ?? (response.results || []).length,
+    statuses: (response.results || []).map((s: any) => ({
+      id: s.id,
+      name: s.name,
+      publicId: s.publicId || undefined,
+      description: s.description || undefined,
+    })),
+  }, [
+    { tool: 'plan_asset_creation', args: { instance_name, asset_name: '<name>', asset_type_name: '<type>', preferred_status_name: '<pick from statuses>' }, why: 'Plan an asset creation with the chosen initial status.' },
+    { tool: 'validate_against_model', args: { instance_name, proposal_type: 'asset', asset_type_id: '<asset type uuid>', status_id: '<pick from statuses>' }, why: 'Schema-validate before create_asset.' },
+  ], true);
 }

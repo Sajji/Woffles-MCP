@@ -1,7 +1,6 @@
-import { ok, okWithNext } from '../utils/tool-result.js';
+import { okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
+import { clientFor } from './_context.js';
 
 const LINEAGE_BASE = '/technical_lineage_resource/rest/lineageGraphRead/v1';
 
@@ -52,40 +51,30 @@ export const searchLineageEntitiesTool = {
 export async function executeSearchLineageEntities(args: any): Promise<ToolResult> {
   const { instance_name, name_contains, entity_type, dgc_asset_id, cursor, limit = 20 } = args;
 
-  try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+  const { client } = clientFor(instance_name);
 
-    const params = new URLSearchParams();
-    if (name_contains) params.append('nameContains', name_contains);
-    if (entity_type) params.append('type', entity_type);
-    if (dgc_asset_id) params.append('dgcId', dgc_asset_id);
-    if (cursor) params.append('cursor', cursor);
-    params.append('limit', String(Math.min(limit, 100)));
+  const params = new URLSearchParams();
+  if (name_contains) params.append('nameContains', name_contains);
+  if (entity_type) params.append('type', entity_type);
+  if (dgc_asset_id) params.append('dgcId', dgc_asset_id);
+  if (cursor) params.append('cursor', cursor);
+  params.append('limit', String(Math.min(limit, 100)));
 
-    const queryString = params.toString();
-    const endpoint = `${LINEAGE_BASE}/entities${queryString ? '?' + queryString : ''}`;
-    const response = await client.restCall<any>(endpoint);
+  const queryString = params.toString();
+  const endpoint = `${LINEAGE_BASE}/entities${queryString ? '?' + queryString : ''}`;
+  const response = await client.restCall<any>(endpoint);
 
-    return okWithNext({
-      ...response, // API fields first; our keys below take precedence
-      instance: instance_name,
-      searchParams: {
-        nameContains: name_contains || null,
-        entityType: entity_type || null,
-        dgcAssetId: dgc_asset_id || null,
-      },
-    }, [
-      { tool: 'get_lineage_entity', args: { instance_name, entity_id: '<id from results>' }, why: 'Inspect a matching entity in detail.' },
-      { tool: 'get_lineage_downstream', args: { instance_name, entity_id: '<id from results>' }, why: 'Walk downstream from a match.' },
-      { tool: 'get_lineage_upstream', args: { instance_name, entity_id: '<id from results>' }, why: 'Walk upstream from a match.' },
-    ]);
-
-  } catch (error) {
-    return ok({
-      error: true,
-      message: (error as Error).message,
-      instance: instance_name,
-    });
-  }
+  return okWithNext({
+    ...response, // API fields first; our keys below take precedence
+    instance: instance_name,
+    searchParams: {
+      nameContains: name_contains || null,
+      entityType: entity_type || null,
+      dgcAssetId: dgc_asset_id || null,
+    },
+  }, [
+    { tool: 'get_lineage_entity', args: { instance_name, entity_id: '<id from results>' }, why: 'Inspect a matching entity in detail.' },
+    { tool: 'get_lineage_downstream', args: { instance_name, entity_id: '<id from results>' }, why: 'Walk downstream from a match.' },
+    { tool: 'get_lineage_upstream', args: { instance_name, entity_id: '<id from results>' }, why: 'Walk upstream from a match.' },
+  ]);
 }

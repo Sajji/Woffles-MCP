@@ -1,7 +1,6 @@
 import { okPretty, okWithNext, ok } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
+import { clientFor } from './_context.js';
 
 /**
  * `start_workflow_instance` — WRITE tool. Starting a workflow can create tasks
@@ -80,100 +79,91 @@ export async function executeStartWorkflowInstance(args: any): Promise<ToolResul
     confirm = false,
   } = args;
 
-  try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+  const { client } = clientFor(instance_name);
 
-    // Resolve the definition by UUID or exact name
-    let definition: any | null = null;
-    if (workflow_definition_id) {
-      definition = await client.restCall<any>(
-        `/rest/2.0/workflowDefinitions/${encodeURIComponent(workflow_definition_id)}`,
-      );
-    } else if (workflow_definition_name) {
-      const resp = await client.restCall<any>(
-        `/rest/2.0/workflowDefinitions?name=${encodeURIComponent(workflow_definition_name)}&limit=50`,
-      );
-      const matches: any[] = (resp.results || []).filter(
-        (d: any) => (d.name || '').toLowerCase() === workflow_definition_name.toLowerCase(),
-      );
-      if (matches.length === 1) {
-        definition = matches[0];
-      } else {
-        return okPretty({
-          status: 'needs_input',
-          message:
-            matches.length === 0
-              ? `No workflow definition found with the exact name "${workflow_definition_name}".`
-              : `Multiple workflow definitions named "${workflow_definition_name}" — re-call with workflow_definition_id.`,
-          candidates: (resp.results || []).slice(0, 10).map((d: any) => ({ id: d.id, name: d.name })),
-        });
-      }
-    } else {
-      return ok({
-        error: true,
-        message: 'Provide workflow_definition_id or workflow_definition_name.',
-        instance: instance_name,
-      });
-    }
-
-    if (!confirm) {
-      // Fetch the start-form fields so required inputs are visible before starting
-      let startFormData: any = null;
-      try {
-        // startFormData only accepts formPropertyType; business items are supplied at start time.
-        startFormData = await client.restCall<any>(
-          `/rest/2.0/workflowDefinitions/workflowDefinition/${encodeURIComponent(definition.id)}/startFormData`,
-        );
-      } catch {
-        startFormData = { note: 'Start-form data unavailable — the workflow may not define a start form.' };
-      }
-      return okPretty({
-        mode: 'PREVIEW — workflow NOT started',
-        definition: { id: definition.id, name: definition.name, description: definition.description ?? null },
-        businessItems: business_item_ids ?? [],
-        businessItemType: business_item_type,
-        formProperties: form_properties ?? {},
-        startFormData,
-        warning: 'Starting this workflow may create tasks and send notifications to real users.',
-        instructions: 'Review the start-form fields; supply any required values in form_properties, then call again with confirm=true.',
-      });
-    }
-
-    const body: any = {
-      workflowDefinitionId: definition.id,
-      sendNotification: send_notification,
-    };
-    if (business_item_ids?.length) {
-      body.businessItemIds = business_item_ids;
-      body.businessItemType = business_item_type;
-    }
-    if (form_properties && Object.keys(form_properties).length > 0) {
-      body.formProperties = form_properties;
-    }
-
-    const started = await client.restCallWithBody<any>('/rest/2.0/workflowInstances', 'POST', body);
-    const instances: any[] = Array.isArray(started) ? started : started?.results ?? [started];
-
-    return okWithNext(
-      {
-        mode: 'APPLIED',
-        definition: { id: definition.id, name: definition.name },
-        started: instances.map((i: any) => ({
-          workflowInstanceId: i?.id ?? null,
-          businessItem: i?.businessItemReference ?? i?.businessItem ?? null,
-        })),
-      },
-      [
-        { tool: 'find_workflow_tasks', args: { instance_name }, why: 'See the tasks created by the started workflow.' },
-      ],
-      true,
+  // Resolve the definition by UUID or exact name
+  let definition: any | null = null;
+  if (workflow_definition_id) {
+    definition = await client.restCall<any>(
+      `/rest/2.0/workflowDefinitions/${encodeURIComponent(workflow_definition_id)}`,
     );
-  } catch (error) {
+  } else if (workflow_definition_name) {
+    const resp = await client.restCall<any>(
+      `/rest/2.0/workflowDefinitions?name=${encodeURIComponent(workflow_definition_name)}&limit=50`,
+    );
+    const matches: any[] = (resp.results || []).filter(
+      (d: any) => (d.name || '').toLowerCase() === workflow_definition_name.toLowerCase(),
+    );
+    if (matches.length === 1) {
+      definition = matches[0];
+    } else {
+      return okPretty({
+        status: 'needs_input',
+        message:
+          matches.length === 0
+            ? `No workflow definition found with the exact name "${workflow_definition_name}".`
+            : `Multiple workflow definitions named "${workflow_definition_name}" — re-call with workflow_definition_id.`,
+        candidates: (resp.results || []).slice(0, 10).map((d: any) => ({ id: d.id, name: d.name })),
+      });
+    }
+  } else {
     return ok({
       error: true,
-      message: (error as Error).message,
+      message: 'Provide workflow_definition_id or workflow_definition_name.',
       instance: instance_name,
     });
   }
+
+  if (!confirm) {
+    // Fetch the start-form fields so required inputs are visible before starting
+    let startFormData: any = null;
+    try {
+      // startFormData only accepts formPropertyType; business items are supplied at start time.
+      startFormData = await client.restCall<any>(
+        `/rest/2.0/workflowDefinitions/workflowDefinition/${encodeURIComponent(definition.id)}/startFormData`,
+      );
+    } catch {
+      startFormData = { note: 'Start-form data unavailable — the workflow may not define a start form.' };
+    }
+    return okPretty({
+      mode: 'PREVIEW — workflow NOT started',
+      definition: { id: definition.id, name: definition.name, description: definition.description ?? null },
+      businessItems: business_item_ids ?? [],
+      businessItemType: business_item_type,
+      formProperties: form_properties ?? {},
+      startFormData,
+      warning: 'Starting this workflow may create tasks and send notifications to real users.',
+      instructions: 'Review the start-form fields; supply any required values in form_properties, then call again with confirm=true.',
+    });
+  }
+
+  const body: any = {
+    workflowDefinitionId: definition.id,
+    sendNotification: send_notification,
+  };
+  if (business_item_ids?.length) {
+    body.businessItemIds = business_item_ids;
+    body.businessItemType = business_item_type;
+  }
+  if (form_properties && Object.keys(form_properties).length > 0) {
+    body.formProperties = form_properties;
+  }
+
+  const started = await client.restCallWithBody<any>('/rest/2.0/workflowInstances', 'POST', body);
+  const instances: any[] = Array.isArray(started) ? started : started?.results ?? [started];
+
+  return okWithNext(
+    {
+      mode: 'APPLIED',
+      definition: { id: definition.id, name: definition.name },
+      started: instances.map((i: any) => ({
+        workflowInstanceId: i?.id ?? null,
+        businessItem: i?.businessItemReference ?? i?.businessItem ?? null,
+      })),
+    },
+    [
+      { tool: 'find_workflow_tasks', args: { instance_name }, why: 'See the tasks created by the started workflow.' },
+    ],
+    true,
+  );
 }

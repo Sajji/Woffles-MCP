@@ -1,7 +1,7 @@
 import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient, attrKindFromDiscriminator, clearModelCaches } from '../utils/collibra-client.js';
+import { attrKindFromDiscriminator, clearModelCaches } from '../utils/collibra-client.js';
+import { clientFor } from './_context.js';
 
 const VALID_KINDS = [
   'STRING',
@@ -93,120 +93,111 @@ export async function executeCreateAttributeType(args: any): Promise<ToolResult>
     public_id,
   } = args;
 
-  try {
-    if (!VALID_KINDS.includes(kind)) {
-      return ok({
-        error: true,
-        message: `Invalid kind "${kind}". Must be one of: ${VALID_KINDS.join(', ')}.`,
-        instance: instance_name,
-      });
-    }
-
-    const isListKind = kind === 'SINGLE_VALUE_LIST' || kind === 'MULTI_VALUE_LIST';
-    if (allowed_values && allowed_values.length && !isListKind) {
-      return ok({
-        error: true,
-        message: `allowed_values is only applicable to SINGLE_VALUE_LIST or MULTI_VALUE_LIST (got "${kind}").`,
-        instance: instance_name,
-      });
-    }
-
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
-
-    // ── Idempotency check ─────────────────────────────────────────────
-    const checkParams = new URLSearchParams({
-      name,
-      nameMatchMode: 'EXACT',
-      limit: '5',
-      offset: '0',
-    });
-
-    const existing = await client.restCall<any>(`/rest/2.0/attributeTypes?${checkParams.toString()}`);
-    const match = (existing.results || []).find((t: any) => t.name === name);
-
-    const matchKind = match
-      ? attrKindFromDiscriminator(match.resourceType ?? match.attributeTypeDiscriminator ?? match.resourceDiscriminator)
-      : null;
-    if (match && matchKind && matchKind !== kind) {
-      // Attribute type names are unique; an existing type of another kind is NOT the requested one.
-      return ok({
-        error: true,
-        status: 'conflict',
-        message:
-          `Attribute type "${name}" already exists with kind ${matchKind}, not the requested ${kind}. ` +
-          'Choose a different name or use the existing attribute type.',
-        existing: { id: match.id, name: match.name, kind: matchKind },
-        instance: instance_name,
-      });
-    }
-
-    if (match) {
-      return okPretty({
-        action: 'existing',
-        attributeType: {
-          id: match.id,
-          name: match.name,
-          kind: match.resourceType || match.attributeTypeDiscriminator || null,
-          description: match.description || null,
-          publicId: match.publicId || null,
-          allowedValues: match.allowedValues || undefined,
-        },
-        message: `Attribute type "${name}" already exists — no changes made.`,
-      });
-    }
-
-    // ── Create ────────────────────────────────────────────────────────
-    const body: any = { name, kind };
-    if (description) body.description = description;
-    if (isListKind && allowed_values && allowed_values.length) body.allowedValues = allowed_values;
-    if (kind === 'STRING' && string_type) body.stringType = string_type;
-    if (kind === 'NUMERIC' && typeof is_integer === 'boolean') body.isInteger = is_integer;
-    // Collibra requires statisticsEnabled to be explicitly set for NUMERIC and BOOLEAN kinds.
-    if (kind === 'NUMERIC' || kind === 'BOOLEAN') {
-      body.statisticsEnabled = typeof statistics_enabled === 'boolean' ? statistics_enabled : false;
-    }
-    if (public_id) body.publicId = public_id;
-
-    const created = await client.restCallWithBody<any>('/rest/2.0/attributeTypes', 'POST', body);
-    clearModelCaches(instance); // new type must be visible to cached lookups immediately
-
-    return okWithNext(
-      {
-        action: 'created',
-        attributeType: {
-          id: created.id,
-          name: created.name,
-          kind: created.resourceType || created.attributeTypeDiscriminator || kind,
-          description: created.description || null,
-          publicId: created.publicId || null,
-          allowedValues: created.allowedValues || undefined,
-        },
-      },
-      [
-        {
-          tool: 'assign_attribute_to_asset_type',
-          args: { instance_name, asset_type_id: '<asset type id>', attribute_type_id: created.id },
-          why: 'Assign the new attribute type to an asset type so its assets can carry values for it.',
-        },
-        {
-          tool: 'refresh_operating_model',
-          args: { instance_name, force: true },
-          why: 'Refresh the cached model so the new attribute type is discoverable.',
-        },
-        {
-          tool: 'validate_against_model',
-          args: { instance_name, proposal_type: 'attribute', attribute_type_id: created.id },
-          why: 'Schema-validate writes that use this attribute type.',
-        },
-      ],
-      true,
-    );
-  } catch (error) {
+  if (!VALID_KINDS.includes(kind)) {
     return ok({
       error: true,
-      message: (error as Error).message,
+      message: `Invalid kind "${kind}". Must be one of: ${VALID_KINDS.join(', ')}.`,
       instance: instance_name,
     });
   }
+
+  const isListKind = kind === 'SINGLE_VALUE_LIST' || kind === 'MULTI_VALUE_LIST';
+  if (allowed_values && allowed_values.length && !isListKind) {
+    return ok({
+      error: true,
+      message: `allowed_values is only applicable to SINGLE_VALUE_LIST or MULTI_VALUE_LIST (got "${kind}").`,
+      instance: instance_name,
+    });
+  }
+
+  const { instance, client } = clientFor(instance_name);
+
+  // ── Idempotency check ─────────────────────────────────────────────
+  const checkParams = new URLSearchParams({
+    name,
+    nameMatchMode: 'EXACT',
+    limit: '5',
+    offset: '0',
+  });
+
+  const existing = await client.restCall<any>(`/rest/2.0/attributeTypes?${checkParams.toString()}`);
+  const match = (existing.results || []).find((t: any) => t.name === name);
+
+  const matchKind = match
+    ? attrKindFromDiscriminator(match.resourceType ?? match.attributeTypeDiscriminator ?? match.resourceDiscriminator)
+    : null;
+  if (match && matchKind && matchKind !== kind) {
+    // Attribute type names are unique; an existing type of another kind is NOT the requested one.
+    return ok({
+      error: true,
+      status: 'conflict',
+      message:
+        `Attribute type "${name}" already exists with kind ${matchKind}, not the requested ${kind}. ` +
+        'Choose a different name or use the existing attribute type.',
+      existing: { id: match.id, name: match.name, kind: matchKind },
+      instance: instance_name,
+    });
+  }
+
+  if (match) {
+    return okPretty({
+      action: 'existing',
+      attributeType: {
+        id: match.id,
+        name: match.name,
+        kind: match.resourceType || match.attributeTypeDiscriminator || null,
+        description: match.description || null,
+        publicId: match.publicId || null,
+        allowedValues: match.allowedValues || undefined,
+      },
+      message: `Attribute type "${name}" already exists — no changes made.`,
+    });
+  }
+
+  // ── Create ────────────────────────────────────────────────────────
+  const body: any = { name, kind };
+  if (description) body.description = description;
+  if (isListKind && allowed_values && allowed_values.length) body.allowedValues = allowed_values;
+  if (kind === 'STRING' && string_type) body.stringType = string_type;
+  if (kind === 'NUMERIC' && typeof is_integer === 'boolean') body.isInteger = is_integer;
+  // Collibra requires statisticsEnabled to be explicitly set for NUMERIC and BOOLEAN kinds.
+  if (kind === 'NUMERIC' || kind === 'BOOLEAN') {
+    body.statisticsEnabled = typeof statistics_enabled === 'boolean' ? statistics_enabled : false;
+  }
+  if (public_id) body.publicId = public_id;
+
+  const created = await client.restCallWithBody<any>('/rest/2.0/attributeTypes', 'POST', body);
+  clearModelCaches(instance); // new type must be visible to cached lookups immediately
+
+  return okWithNext(
+    {
+      action: 'created',
+      attributeType: {
+        id: created.id,
+        name: created.name,
+        kind: created.resourceType || created.attributeTypeDiscriminator || kind,
+        description: created.description || null,
+        publicId: created.publicId || null,
+        allowedValues: created.allowedValues || undefined,
+      },
+    },
+    [
+      {
+        tool: 'assign_attribute_to_asset_type',
+        args: { instance_name, asset_type_id: '<asset type id>', attribute_type_id: created.id },
+        why: 'Assign the new attribute type to an asset type so its assets can carry values for it.',
+      },
+      {
+        tool: 'refresh_operating_model',
+        args: { instance_name, force: true },
+        why: 'Refresh the cached model so the new attribute type is discoverable.',
+      },
+      {
+        tool: 'validate_against_model',
+        args: { instance_name, proposal_type: 'attribute', attribute_type_id: created.id },
+        why: 'Schema-validate writes that use this attribute type.',
+      },
+    ],
+    true,
+  );
 }

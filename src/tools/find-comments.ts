@@ -1,7 +1,6 @@
-import { withEnvelope, errorEnvelope } from '../utils/tool-result.js';
+import { withEnvelope } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
+import { clientFor } from './_context.js';
 
 export const findCommentsTool = {
   name: 'find_comments',
@@ -76,52 +75,43 @@ export async function executeFindComments(args: any): Promise<ToolResult> {
     offset = 0,
   } = args;
 
-  try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+  const { client } = clientFor(instance_name);
 
-    const qp = new URLSearchParams({
-      limit: String(Math.min(limit, 1000)),
-      offset: String(offset),
-      sortOrder: sort_order,
-    });
-    if (base_resource_id) qp.set('baseResourceId', base_resource_id);
-    if (user_id) qp.set('userId', user_id);
-    if (parent_id) qp.set('parentId', parent_id);
-    if (root_only !== undefined) qp.set('rootComment', String(root_only));
-    if (resolved !== undefined) qp.set('resolved', String(resolved));
+  const qp = new URLSearchParams({
+    limit: String(Math.min(limit, 1000)),
+    offset: String(offset),
+    sortOrder: sort_order,
+  });
+  if (base_resource_id) qp.set('baseResourceId', base_resource_id);
+  if (user_id) qp.set('userId', user_id);
+  if (parent_id) qp.set('parentId', parent_id);
+  if (root_only !== undefined) qp.set('rootComment', String(root_only));
+  if (resolved !== undefined) qp.set('resolved', String(resolved));
 
-    const resp = await client.restCall<any>(`/rest/2.0/comments?${qp.toString()}`);
-    const results: any[] = resp.results || [];
+  const resp = await client.restCall<any>(`/rest/2.0/comments?${qp.toString()}`);
+  const results: any[] = resp.results || [];
 
-    const comments = results.map((c) => ({
-      id: c.id,
-      content: c.content ?? null,
-      createdOn: c.createdOn ?? null,
-      // Comments have no embedded user; createdBy is the author's user id.
-      createdBy: c.createdBy ?? null,
-      mentionedUsers: (c.mentionedUsers ?? []).map((u: any) => ({ id: u.id, name: u.name ?? u.userName ?? null })),
-      baseResource: c.baseResource ?? null,
-      parentId: c.parent?.id ?? null,
-      resolved: c.resolved ?? null,
-    }));
+  const comments = results.map((c) => ({
+    id: c.id,
+    content: c.content ?? null,
+    createdOn: c.createdOn ?? null,
+    // Comments have no embedded user; createdBy is the author's user id.
+    createdBy: c.createdBy ?? null,
+    mentionedUsers: (c.mentionedUsers ?? []).map((u: any) => ({ id: u.id, name: u.name ?? u.userName ?? null })),
+    baseResource: c.baseResource ?? null,
+    parentId: c.parent?.id ?? null,
+    resolved: c.resolved ?? null,
+  }));
 
-    return withEnvelope({
-      instance: instance_name,
-      operation: 'find_comments',
-      data: { count: comments.length, total: resp.total ?? null, comments },
-      pagination: { offset, limit, ...(results.length === limit ? { nextOffset: offset + limit } : {}) },
-      nextActions: comments.slice(0, 1).map((c) => ({
-        tool: 'add_comment',
-        args: { instance_name, parent_id: c.id, content: '<reply text>' },
-        why: 'Reply to a comment thread.',
-      })),
-    });
-  } catch (error) {
-    return errorEnvelope({
-      instance: instance_name,
-      operation: 'find_comments',
-      message: (error as Error).message,
-    });
-  }
+  return withEnvelope({
+    instance: instance_name,
+    operation: 'find_comments',
+    data: { count: comments.length, total: resp.total ?? null, comments },
+    pagination: { offset, limit, ...(results.length === limit ? { nextOffset: offset + limit } : {}) },
+    nextActions: comments.slice(0, 1).map((c) => ({
+      tool: 'add_comment',
+      args: { instance_name, parent_id: c.id, content: '<reply text>' },
+      why: 'Reply to a comment thread.',
+    })),
+  });
 }

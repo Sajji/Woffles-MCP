@@ -1,7 +1,6 @@
-import { ok, okWithNext } from '../utils/tool-result.js';
+import { okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
+import { clientFor } from './_context.js';
 
 const LINEAGE_BASE = '/technical_lineage_resource/rest/lineageGraphRead/v1';
 
@@ -45,35 +44,25 @@ export const searchLineageTransformationsTool = {
 export async function executeSearchLineageTransformations(args: any): Promise<ToolResult> {
   const { instance_name, name_contains, limit = 20, cursor } = args;
 
-  try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+  const { client } = clientFor(instance_name);
 
-    const params = new URLSearchParams();
-    if (name_contains) params.append('nameContains', name_contains);
-    params.append('limit', String(Math.min(limit, 100)));
-    if (cursor) params.append('cursor', cursor);
+  const params = new URLSearchParams();
+  if (name_contains) params.append('nameContains', name_contains);
+  params.append('limit', String(Math.min(limit, 100)));
+  if (cursor) params.append('cursor', cursor);
 
-    const queryString = params.toString();
-    const endpoint = `${LINEAGE_BASE}/transformations${queryString ? '?' + queryString : ''}`;
-    const response = await client.restCall<any>(endpoint);
+  const queryString = params.toString();
+  const endpoint = `${LINEAGE_BASE}/transformations${queryString ? '?' + queryString : ''}`;
+  const response = await client.restCall<any>(endpoint);
 
-    return okWithNext({
-      ...response, // API fields first; our keys below take precedence
-      instance: instance_name,
-      searchParams: {
-        nameContains: name_contains || null,
-        limit: Math.min(limit, 100),
-      },
-    }, [
-      { tool: 'get_lineage_transformation', args: { instance_name, transformation_id: '<id from results>' }, why: 'Inspect a transformation in detail.' },
-    ], true);
-
-  } catch (error) {
-    return ok({
-      error: true,
-      message: (error as Error).message,
-      instance: instance_name,
-    });
-  }
+  return okWithNext({
+    ...response, // API fields first; our keys below take precedence
+    instance: instance_name,
+    searchParams: {
+      nameContains: name_contains || null,
+      limit: Math.min(limit, 100),
+    },
+  }, [
+    { tool: 'get_lineage_transformation', args: { instance_name, transformation_id: '<id from results>' }, why: 'Inspect a transformation in detail.' },
+  ], true);
 }

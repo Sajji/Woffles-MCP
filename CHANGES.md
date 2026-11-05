@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased — Internal consolidation (Review plan, Phase 3)
+
+No tools were added, removed or renamed, and `tools/list` is unchanged. Results were compared before and after on Production and Sandbox across 80 read calls: every successful result is identical.
+
+### Changed
+- **One error boundary.** `executeTool` now catches errors from every tool and returns the standard `{ error: true, message, instance }` result, flagged as MCP `isError`.
+  - 78 tools had a try/catch that only built that same error. Those blocks were removed by a script that refused to touch any catch doing something else; 13 custom ones remain.
+  - Errors from the usage-analytics and `errorEnvelope` tools now use this standard flat shape instead of `{ errors: [...], data: null }`.
+- **One tool registry.** `src/tools/index.ts` used to keep two hand-maintained lists side by side: tool definitions and an executor map. It now has a single list of `[definition, executor]` pairs.
+- **`clientFor(instance_name)`** (`src/tools/_context.ts`) replaces the "look up the instance, then build a client" lines that were repeated in 81 tools.
+- **Duplicated code moved into shared helpers:**
+  - `src/utils/responsibilities.ts`: owner user/group lookups (now done in chunks) and the direct/inherited grouping, which `get_asset_by_id` and `get_asset_responsibilities` had copied almost line for line
+  - `src/utils/assessments.ts`: `ASSESSMENTS_BASE`, which had 10 copies, and JSON-argument parsing, which had 4
+  - `usageSession()` in `src/utils/usage-analytics.ts`: the setup code shared by the three usage tools
+- **`update_asset_description` / `bulk_update_asset_descriptions`** now run through the same shared code as the attribute update tools. As a result:
+  - Markdown in a Description is now converted to HTML, since Description is a rich-text attribute
+  - every existing value is covered, not just the first
+- Net source size: about 1,000 fewer lines (17,395 → 16,380).
+
 ## Unreleased — Read-tool fixes (Review plan, Phase 2)
 
 ### Fixed

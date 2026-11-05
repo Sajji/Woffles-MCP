@@ -1,7 +1,6 @@
-import { withEnvelope, errorEnvelope } from '../utils/tool-result.js';
+import { withEnvelope } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
+import { clientFor } from './_context.js';
 
 export const findWorkflowTasksTool = {
   name: 'find_workflow_tasks',
@@ -57,56 +56,47 @@ export const findWorkflowTasksTool = {
 export async function executeFindWorkflowTasks(args: any): Promise<ToolResult> {
   const { instance_name, title, business_item_id, business_item_type = 'ASSET', user_id, limit = 100, offset = 0 } = args;
 
-  try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+  const { client } = clientFor(instance_name);
 
-    const qp = new URLSearchParams({ limit: String(Math.min(limit, 1000)), offset: String(offset) });
-    if (title) qp.set('title', title);
-    // Singular names: the API silently ignores `businessItemIds` / `userIds`.
-    // businessItemId is also ignored unless businessItemType accompanies it.
-    if (business_item_id) {
-      qp.set('businessItemId', business_item_id);
-      qp.set('businessItemType', business_item_type);
-    }
-    if (user_id) qp.set('userId', user_id);
-    const resp = await client.restCall<any>(`/rest/2.0/workflowTasks?${qp.toString()}`);
-    const results: any[] = resp.results || [];
-
-    // Field names per the WorkflowTask schema (createTime, owner, candidateUsers, formKeyAvailable).
-    const userRef = (u: any) => (u ? { id: u.id, name: u.userName ?? u.name ?? u.fullName ?? null } : null);
-    const tasks = results.map((t) => ({
-      id: t.id,
-      title: t.title ?? null,
-      description: t.description ?? null,
-      type: t.type ?? null,
-      dueDate: t.dueDate ?? null,
-      createTime: t.createTime ?? null,
-      workflowDefinition: t.workflowDefinition ? { id: t.workflowDefinition.id, name: t.workflowDefinition.name } : null,
-      businessItem: t.businessItemReference ?? t.businessItem ?? null,
-      owner: userRef(t.owner),
-      candidateUsers: (t.candidateUsers ?? []).map(userRef),
-      formRequired: t.formRequired ?? null,
-      formKeyAvailable: t.formKeyAvailable ?? null,
-      ...(t.inError ? { inError: true, errorMessage: t.errorMessage ?? null } : {}),
-    }));
-
-    return withEnvelope({
-      instance: instance_name,
-      operation: 'find_workflow_tasks',
-      data: { count: tasks.length, total: resp.total ?? null, tasks },
-      pagination: { offset, limit, ...(results.length === limit ? { nextOffset: offset + limit } : {}) },
-      nextActions: tasks.slice(0, 1).map((t) => ({
-        tool: 'complete_workflow_task',
-        args: { instance_name, task_id: t.id },
-        why: 'Preview the task form data and complete the task.',
-      })),
-    });
-  } catch (error) {
-    return errorEnvelope({
-      instance: instance_name,
-      operation: 'find_workflow_tasks',
-      message: (error as Error).message,
-    });
+  const qp = new URLSearchParams({ limit: String(Math.min(limit, 1000)), offset: String(offset) });
+  if (title) qp.set('title', title);
+  // Singular names: the API silently ignores `businessItemIds` / `userIds`.
+  // businessItemId is also ignored unless businessItemType accompanies it.
+  if (business_item_id) {
+    qp.set('businessItemId', business_item_id);
+    qp.set('businessItemType', business_item_type);
   }
+  if (user_id) qp.set('userId', user_id);
+  const resp = await client.restCall<any>(`/rest/2.0/workflowTasks?${qp.toString()}`);
+  const results: any[] = resp.results || [];
+
+  // Field names per the WorkflowTask schema (createTime, owner, candidateUsers, formKeyAvailable).
+  const userRef = (u: any) => (u ? { id: u.id, name: u.userName ?? u.name ?? u.fullName ?? null } : null);
+  const tasks = results.map((t) => ({
+    id: t.id,
+    title: t.title ?? null,
+    description: t.description ?? null,
+    type: t.type ?? null,
+    dueDate: t.dueDate ?? null,
+    createTime: t.createTime ?? null,
+    workflowDefinition: t.workflowDefinition ? { id: t.workflowDefinition.id, name: t.workflowDefinition.name } : null,
+    businessItem: t.businessItemReference ?? t.businessItem ?? null,
+    owner: userRef(t.owner),
+    candidateUsers: (t.candidateUsers ?? []).map(userRef),
+    formRequired: t.formRequired ?? null,
+    formKeyAvailable: t.formKeyAvailable ?? null,
+    ...(t.inError ? { inError: true, errorMessage: t.errorMessage ?? null } : {}),
+  }));
+
+  return withEnvelope({
+    instance: instance_name,
+    operation: 'find_workflow_tasks',
+    data: { count: tasks.length, total: resp.total ?? null, tasks },
+    pagination: { offset, limit, ...(results.length === limit ? { nextOffset: offset + limit } : {}) },
+    nextActions: tasks.slice(0, 1).map((t) => ({
+      tool: 'complete_workflow_task',
+      args: { instance_name, task_id: t.id },
+      why: 'Preview the task form data and complete the task.',
+    })),
+  });
 }

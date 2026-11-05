@@ -1,9 +1,7 @@
-import { ok, okWithNext } from '../utils/tool-result.js';
+import { okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
-
-const ASSESSMENTS_BASE = '/rest/assessments/v2';
+import { clientFor } from './_context.js';
+import { ASSESSMENTS_BASE } from '../utils/assessments.js';
 
 export const getAssessmentTemplateTool = {
   name: 'get_assessment_template',
@@ -38,26 +36,16 @@ export const getAssessmentTemplateTool = {
 export async function executeGetAssessmentTemplate(args: any): Promise<ToolResult> {
   const { instance_name, template_id } = args;
 
-  try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+  const { client } = clientFor(instance_name);
 
-    const endpoint = `${ASSESSMENTS_BASE}/templates/${encodeURIComponent(template_id)}`;
-    const response = await client.restCall<any>(endpoint);
+  const endpoint = `${ASSESSMENTS_BASE}/templates/${encodeURIComponent(template_id)}`;
+  const response = await client.restCall<any>(endpoint);
 
-    return okWithNext({
-      ...response, // API fields first; our keys below take precedence
-      instance: instance_name,
-    }, [
-      { tool: 'list_assessments', args: { instance_name, template_id }, why: 'See existing assessments built from this template.' },
-      { tool: 'create_assessment', args: { instance_name, template_id, name: '<assessment name>' }, why: 'Start a new assessment using this template.' },
-    ]);
-  } catch (error) {
-    return ok({
-      error: true,
-      message: (error as Error).message,
-      instance: instance_name,
-      template_id,
-    });
-  }
+  return okWithNext({
+    ...response, // API fields first; our keys below take precedence
+    instance: instance_name,
+  }, [
+    { tool: 'list_assessments', args: { instance_name, template_id }, why: 'See existing assessments built from this template.' },
+    { tool: 'create_assessment', args: { instance_name, template_id, name: '<assessment name>' }, why: 'Start a new assessment using this template.' },
+  ]);
 }

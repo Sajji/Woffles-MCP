@@ -1,7 +1,6 @@
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
 import { ok, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
+import { clientFor } from './_context.js';
 
 export const getAssetRelationsTool = {
   name: 'get_asset_relations',
@@ -105,67 +104,56 @@ function buildRelationsQuery(): string {
 export async function executeGetAssetRelations(args: any): Promise<ToolResult> {
   const { instance_name, asset_id, relation_limit = 100, relation_offset = 0 } = args;
 
-  try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+  const { client } = clientFor(instance_name);
 
-    const response = await client.graphqlQuery<{ data: { assets: any[] } }>(buildRelationsQuery(), {
-      id: asset_id,
-      limit: relation_limit,
-      offset: relation_offset,
-    });
+  const response = await client.graphqlQuery<{ data: { assets: any[] } }>(buildRelationsQuery(), {
+    id: asset_id,
+    limit: relation_limit,
+    offset: relation_offset,
+  });
 
-    const asset = response.data.assets[0];
+  const asset = response.data.assets[0];
 
-    if (!asset) {
-      return ok({
-        error: true,
-        message: `Asset with ID "${asset_id}" not found.`,
-        instance: instance_name,
-        assetId: asset_id,
-      });
-    }
-
-    const enrichRelation = (r: any) => ({
-      ...r,
-      source: { ...r.source, url: client.assetUrl(r.source.id) },
-      target: { ...r.target, url: client.assetUrl(r.target.id) },
-    });
-
-    const outgoing = (asset.outgoingRelations || []).map(enrichRelation);
-    const incoming = (asset.incomingRelations || []).map(enrichRelation);
-
-    return okWithNext({
-      instance: instance_name,
-      assetId: asset_id,
-      assetUrl: client.assetUrl(asset_id),
-      assetDisplayName: asset.displayName,
-      assetFullName: asset.fullName,
-      summary: {
-        outgoing: outgoing.length,
-        incoming: incoming.length,
-        total: outgoing.length + incoming.length,
-        has_more_outgoing: outgoing.length === relation_limit,
-        has_more_incoming: incoming.length === relation_limit,
-        // Both directions page with the same offset; only offer one when either has more.
-        next_offset:
-          outgoing.length === relation_limit || incoming.length === relation_limit ? relation_offset + relation_limit : null,
-      },
-      relations: {
-        outgoing,
-        incoming,
-      },
-    }, [
-      { tool: 'get_asset_by_id', args: { instance_name, asset_id: '<id from relations.outgoing or .incoming>' }, why: 'Drill into a related asset.' },
-      { tool: 'find_traversal_path', args: { instance_name, source_asset_type_name: '<this asset type>', target_asset_type_name: '<desired type>' }, why: 'Plan multi-hop navigation using the operating model graph.' },
-    ]);
-
-  } catch (error) {
+  if (!asset) {
     return ok({
       error: true,
-      message: (error as Error).message,
+      message: `Asset with ID "${asset_id}" not found.`,
       instance: instance_name,
       assetId: asset_id,
     });
   }
+
+  const enrichRelation = (r: any) => ({
+    ...r,
+    source: { ...r.source, url: client.assetUrl(r.source.id) },
+    target: { ...r.target, url: client.assetUrl(r.target.id) },
+  });
+
+  const outgoing = (asset.outgoingRelations || []).map(enrichRelation);
+  const incoming = (asset.incomingRelations || []).map(enrichRelation);
+
+  return okWithNext({
+    instance: instance_name,
+    assetId: asset_id,
+    assetUrl: client.assetUrl(asset_id),
+    assetDisplayName: asset.displayName,
+    assetFullName: asset.fullName,
+    summary: {
+      outgoing: outgoing.length,
+      incoming: incoming.length,
+      total: outgoing.length + incoming.length,
+      has_more_outgoing: outgoing.length === relation_limit,
+      has_more_incoming: incoming.length === relation_limit,
+      // Both directions page with the same offset; only offer one when either has more.
+      next_offset:
+        outgoing.length === relation_limit || incoming.length === relation_limit ? relation_offset + relation_limit : null,
+    },
+    relations: {
+      outgoing,
+      incoming,
+    },
+  }, [
+    { tool: 'get_asset_by_id', args: { instance_name, asset_id: '<id from relations.outgoing or .incoming>' }, why: 'Drill into a related asset.' },
+    { tool: 'find_traversal_path', args: { instance_name, source_asset_type_name: '<this asset type>', target_asset_type_name: '<desired type>' }, why: 'Plan multi-hop navigation using the operating model graph.' },
+  ]);
 }

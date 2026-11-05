@@ -1,8 +1,8 @@
 import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient, isNotFound } from '../utils/collibra-client.js';
+import { isNotFound } from '../utils/collibra-client.js';
 import { relationTypeLabels } from '../utils/relations.js';
+import { clientFor } from './_context.js';
 
 export const bulkDeleteAssetsTool = {
   name: 'bulk_delete_assets',
@@ -45,80 +45,71 @@ export async function executeBulkDeleteAssets(args: any): Promise<ToolResult> {
     return ok({ error: 'asset_ids must be a non-empty array of UUIDs.' });
   }
 
-  try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+  const { client } = clientFor(instance_name);
 
-    const lookups = await Promise.all(
-      asset_ids.map(async (id: string) => {
-        try {
-          const a = await client.restCall<any>(`/rest/2.0/assets/${encodeURIComponent(id)}`);
-          return {
-            assetId: id,
-            name: a.name || 'Unknown',
-            type: a.type ? { id: a.type.id, name: a.type.name } : null,
-            domain: a.domain ? { id: a.domain.id, name: a.domain.name } : null,
-            url: client.assetUrl(id),
-            notFound: false,
-          };
-        } catch (err) {
-          // Only a genuine 404 is "not found"; permission/server errors abort
-          // the whole operation rather than silently skipping the asset.
-          if (!isNotFound(err)) throw err;
-          return { assetId: id, name: null, notFound: true, error: (err as Error).message };
-        }
-      }),
-    );
+  const lookups = await Promise.all(
+    asset_ids.map(async (id: string) => {
+      try {
+        const a = await client.restCall<any>(`/rest/2.0/assets/${encodeURIComponent(id)}`);
+        return {
+          assetId: id,
+          name: a.name || 'Unknown',
+          type: a.type ? { id: a.type.id, name: a.type.name } : null,
+          domain: a.domain ? { id: a.domain.id, name: a.domain.name } : null,
+          url: client.assetUrl(id),
+          notFound: false,
+        };
+      } catch (err) {
+        // Only a genuine 404 is "not found"; permission/server errors abort
+        // the whole operation rather than silently skipping the asset.
+        if (!isNotFound(err)) throw err;
+        return { assetId: id, name: null, notFound: true, error: (err as Error).message };
+      }
+    }),
+  );
 
-    const found = lookups.filter((l) => !l.notFound);
-    const missing = lookups.filter((l) => l.notFound);
+  const found = lookups.filter((l) => !l.notFound);
+  const missing = lookups.filter((l) => l.notFound);
 
-    if (!confirm) {
-      return okPretty({
-        mode: 'PREVIEW — no changes made',
-        totalRequested: asset_ids.length,
-        toDelete: found.length,
-        notFound: missing.length,
-        details: lookups,
-        warning: 'DELETE is irreversible. Verify every asset above before confirming.',
-        instructions: 'To apply, call again with confirm=true.',
-      });
-    }
-
-    if (found.length === 0) {
-      return okPretty({
-        mode: 'APPLIED',
-        deleted: 0,
-        notFound: missing.length,
-        message: 'No resolvable assets to delete.',
-      });
-    }
-
-    await client.restCallWithBody<void>(
-      '/rest/2.0/assets/bulk',
-      'DELETE',
-      found.map((f) => f.assetId),
-    );
-
-    return okWithNext({
-      mode: 'APPLIED',
-      deleted: found.length,
+  if (!confirm) {
+    return okPretty({
+      mode: 'PREVIEW — no changes made',
+      totalRequested: asset_ids.length,
+      toDelete: found.length,
       notFound: missing.length,
-      details: lookups.map((l) => ({
-        assetId: l.assetId,
-        name: l.name,
-        action: l.notFound ? 'NOT FOUND' : 'DELETED',
-      })),
-    }, [
-      { tool: 'query_assets', args: { instance_name, asset_type_name: '<type>' }, why: 'Re-query the affected asset type to confirm deletion.' },
-    ], true);
-  } catch (error) {
-    return ok({
-      error: true,
-      message: (error as Error).message,
-      instance: instance_name,
+      details: lookups,
+      warning: 'DELETE is irreversible. Verify every asset above before confirming.',
+      instructions: 'To apply, call again with confirm=true.',
     });
   }
+
+  if (found.length === 0) {
+    return okPretty({
+      mode: 'APPLIED',
+      deleted: 0,
+      notFound: missing.length,
+      message: 'No resolvable assets to delete.',
+    });
+  }
+
+  await client.restCallWithBody<void>(
+    '/rest/2.0/assets/bulk',
+    'DELETE',
+    found.map((f) => f.assetId),
+  );
+
+  return okWithNext({
+    mode: 'APPLIED',
+    deleted: found.length,
+    notFound: missing.length,
+    details: lookups.map((l) => ({
+      assetId: l.assetId,
+      name: l.name,
+      action: l.notFound ? 'NOT FOUND' : 'DELETED',
+    })),
+  }, [
+    { tool: 'query_assets', args: { instance_name, asset_type_name: '<type>' }, why: 'Re-query the affected asset type to confirm deletion.' },
+  ], true);
 }
 
 export const bulkDeleteRelationsTool = {
@@ -161,72 +152,63 @@ export async function executeBulkDeleteRelations(args: any): Promise<ToolResult>
     return ok({ error: 'relation_ids must be a non-empty array of UUIDs.' });
   }
 
-  try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+  const { client } = clientFor(instance_name);
 
-    const lookups = await Promise.all(
-      relation_ids.map(async (id: string) => {
-        try {
-          const r = await client.restCall<any>(`/rest/2.0/relations/${encodeURIComponent(id)}`);
-          return {
-            relationId: id,
-            source: r.source ? { id: r.source.id, name: r.source.fullName ?? r.source.name } : null,
-            target: r.target ? { id: r.target.id, name: r.target.fullName ?? r.target.name } : null,
-            // Relation payloads embed only the type id; labels come from the relation-type map.
-            type: await relationTypeLabels(client, r.type?.id),
-            notFound: false,
-          };
-        } catch (err) {
-          if (!isNotFound(err)) throw err;
-          return { relationId: id, notFound: true, error: (err as Error).message };
-        }
-      }),
-    );
+  const lookups = await Promise.all(
+    relation_ids.map(async (id: string) => {
+      try {
+        const r = await client.restCall<any>(`/rest/2.0/relations/${encodeURIComponent(id)}`);
+        return {
+          relationId: id,
+          source: r.source ? { id: r.source.id, name: r.source.fullName ?? r.source.name } : null,
+          target: r.target ? { id: r.target.id, name: r.target.fullName ?? r.target.name } : null,
+          // Relation payloads embed only the type id; labels come from the relation-type map.
+          type: await relationTypeLabels(client, r.type?.id),
+          notFound: false,
+        };
+      } catch (err) {
+        if (!isNotFound(err)) throw err;
+        return { relationId: id, notFound: true, error: (err as Error).message };
+      }
+    }),
+  );
 
-    const found = lookups.filter((l) => !l.notFound);
-    const missing = lookups.filter((l) => l.notFound);
+  const found = lookups.filter((l) => !l.notFound);
+  const missing = lookups.filter((l) => l.notFound);
 
-    if (!confirm) {
-      return okPretty({
-        mode: 'PREVIEW — no changes made',
-        totalRequested: relation_ids.length,
-        toDelete: found.length,
-        notFound: missing.length,
-        details: lookups,
-        instructions: 'To apply, call again with confirm=true.',
-      });
-    }
-
-    if (found.length === 0) {
-      return okPretty({
-        mode: 'APPLIED',
-        deleted: 0,
-        notFound: missing.length,
-        message: 'No resolvable relations to delete.',
-      });
-    }
-
-    await client.restCallWithBody<void>(
-      '/rest/2.0/relations/bulk',
-      'DELETE',
-      found.map((f) => f.relationId),
-    );
-
+  if (!confirm) {
     return okPretty({
-      mode: 'APPLIED',
-      deleted: found.length,
+      mode: 'PREVIEW — no changes made',
+      totalRequested: relation_ids.length,
+      toDelete: found.length,
       notFound: missing.length,
-      details: lookups.map((l) => ({
-        relationId: l.relationId,
-        action: l.notFound ? 'NOT FOUND' : 'DELETED',
-      })),
-    });
-  } catch (error) {
-    return ok({
-      error: true,
-      message: (error as Error).message,
-      instance: instance_name,
+      details: lookups,
+      instructions: 'To apply, call again with confirm=true.',
     });
   }
+
+  if (found.length === 0) {
+    return okPretty({
+      mode: 'APPLIED',
+      deleted: 0,
+      notFound: missing.length,
+      message: 'No resolvable relations to delete.',
+    });
+  }
+
+  await client.restCallWithBody<void>(
+    '/rest/2.0/relations/bulk',
+    'DELETE',
+    found.map((f) => f.relationId),
+  );
+
+  return okPretty({
+    mode: 'APPLIED',
+    deleted: found.length,
+    notFound: missing.length,
+    details: lookups.map((l) => ({
+      relationId: l.relationId,
+      action: l.notFound ? 'NOT FOUND' : 'DELETED',
+    })),
+  });
 }

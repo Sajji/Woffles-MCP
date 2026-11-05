@@ -1,8 +1,9 @@
-import { getInstances, getInstance, getStarWarsSource } from '../config.js';
-import { CollibraClient, enrichResponseUrls } from '../utils/collibra-client.js';
+import { getInstances, getStarWarsSource } from '../config.js';
+import { enrichResponseUrls } from '../utils/collibra-client.js';
 import { SwapiClient, SWAPI_RESOURCES, type SwapiResource, type SwapiHit } from '../utils/swapi-client.js';
 import { withEnvelope } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
+import { clientFor } from './_context.js';
 
 export const searchSubjectTool = {
   name: 'search_subject',
@@ -92,8 +93,7 @@ async function searchCollibraInstance(
   subject: string,
   limit: number,
 ): Promise<SourceResult> {
-  const instance = getInstance(instanceName);
-  const client = new CollibraClient(instance);
+  const { instance, client } = clientFor(instanceName);
 
   // Wrap the subject in wildcards (chip pattern) as the other search tools do.
   const keywords = subject.includes('*') ? subject : `*${subject}*`;

@@ -1,8 +1,9 @@
-import { getInstance } from '../config.js';
-import { CollibraClient, enrichResponseUrls } from '../utils/collibra-client.js';
+import { enrichResponseUrls } from '../utils/collibra-client.js';
 import { okWithNext } from '../utils/tool-result.js';
 import { fetchApplicableAssignment, fetchAssetTypeAssignments } from '../utils/operating-model-cache.js';
 import type { ToolResult } from '../types.js';
+import { clientFor } from './_context.js';
+import { categorizeResponsibilities, enrichResponsibilityOwners } from '../utils/responsibilities.js';
 
 export const getAssetByIdTool = {
   name: 'get_asset_by_id',
@@ -155,8 +156,7 @@ export async function executeGetAssetById(args: any): Promise<ToolResult> {
   } = args;
 
   try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+    const { instance, client } = clientFor(instance_name);
 
     // Fetch asset details via GraphQL and responsibilities via REST in parallel
     const [gqlResponse, responsibilitiesResponse, breadcrumbResponse, generatedContext] = await Promise.all([
@@ -195,77 +195,14 @@ export async function executeGetAssetById(args: any): Promise<ToolResult> {
       return { text: JSON.stringify(structured), structured };
     }
 
-    // Process responsibilities — resolve user/group names
-    let allResponsibilities = responsibilitiesResponse.results || [];
-
-    const userIds = new Set<string>();
-    const userGroupIds = new Set<string>();
-
-    allResponsibilities.forEach((r: any) => {
-      if (r.owner?.id) {
-        if (r.owner.resourceType === 'User') {
-          userIds.add(r.owner.id);
-        } else if (r.owner.resourceType === 'UserGroup') {
-          userGroupIds.add(r.owner.id);
-        }
-      }
-    });
-
-    // Batch-fetch user and group details in parallel
-    const [usersMap, userGroupsMap] = await Promise.all([
-      (async () => {
-        const map = new Map<string, any>();
-        if (userIds.size === 0) return map;
-        try {
-          const userParams = Array.from(userIds).map(id => `userId=${id}`).join('&');
-          const resp = await client.restCall<any>(`/rest/2.0/users?${userParams}&limit=1000`);
-          (resp.results || []).forEach((u: any) => map.set(u.id, u));
-        } catch { /* non-critical */ }
-        return map;
-      })(),
-      (async () => {
-        const map = new Map<string, any>();
-        if (userGroupIds.size === 0) return map;
-        try {
-          const groupParams = Array.from(userGroupIds).map(id => `userGroupId=${id}`).join('&');
-          const resp = await client.restCall<any>(`/rest/2.0/userGroups?${groupParams}&limit=1000`);
-          (resp.results || []).forEach((g: any) => map.set(g.id, g));
-        } catch { /* non-critical */ }
-        return map;
-      })(),
-    ]);
-
-    // Enrich responsibilities with full user/group details
-    allResponsibilities = allResponsibilities.map((r: any) => {
-      const enriched = { ...r };
-      if (r.owner?.id) {
-        if (r.owner.resourceType === 'User') {
-          const u = usersMap.get(r.owner.id);
-          if (u) {
-            enriched.owner = {
-              ...r.owner,
-              userName: u.userName,
-              firstName: u.firstName,
-              lastName: u.lastName,
-              fullName: `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.userName,
-              emailAddress: u.emailAddress,
-            };
-          }
-        } else if (r.owner.resourceType === 'UserGroup') {
-          const g = userGroupsMap.get(r.owner.id);
-          if (g) {
-            enriched.owner = { ...r.owner, name: g.name, description: g.description };
-          }
-        }
-      }
-      return enriched;
-    });
-
-    // Categorize responsibilities
-    const directResponsibilities = allResponsibilities.filter((r: any) => r.baseResource?.id === asset_id);
-    const inheritedResponsibilities = allResponsibilities.filter((r: any) => r.baseResource?.id !== asset_id);
-    const inheritedByCommunity = inheritedResponsibilities.filter((r: any) => r.baseResource?.resourceType === 'Community');
-    const inheritedByDomain = inheritedResponsibilities.filter((r: any) => r.baseResource?.resourceType === 'Domain');
+    // Process responsibilities — resolve user/group names, then categorize
+    const allResponsibilities = await enrichResponsibilityOwners(client, responsibilitiesResponse.results || []);
+    const {
+      direct: directResponsibilities,
+      inherited: inheritedResponsibilities,
+      inheritedByCommunity,
+      inheritedByDomain,
+    } = categorizeResponsibilities(allResponsibilities, asset_id);
 
     // Enrich relations with URLs
     const outgoing = (asset.outgoingRelations || []).map((r: any) => ({

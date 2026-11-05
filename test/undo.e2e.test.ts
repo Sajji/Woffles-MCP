@@ -44,6 +44,14 @@ beforeAll(async () => {
       const results = state.attributes.filter((a) => !typeIds.length || typeIds.includes(a.type.id));
       return send({ results, total: results.length });
     }
+    if (req.method === 'GET' && url.pathname === `/rest/2.0/attributeTypes/${DESC}`) {
+      return send({ id: DESC, name: 'Description', attributeTypeDiscriminator: 'StringAttributeType', stringType: 'RICH_TEXT' });
+    }
+    if (req.method === 'PATCH' && url.pathname === '/rest/2.0/attributes/bulk') {
+      const body = await readJson(req);
+      for (const p of body) state.attributes.find((a) => a.id === p.id)!.value = p.value;
+      return send(body.map((p: any) => ({ id: p.id })));
+    }
     if (req.method === 'PATCH' && url.pathname.startsWith('/rest/2.0/attributes/')) {
       const body = await readJson(req);
       const attr = state.attributes.find((a) => a.id === body.id)!;

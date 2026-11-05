@@ -1,7 +1,6 @@
-import { ok, okWithNext } from '../utils/tool-result.js';
+import { okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
+import { clientFor } from './_context.js';
 
 export const addDataClassificationMatchTool = {
   name: 'add_data_classification_match',
@@ -38,38 +37,28 @@ export const addDataClassificationMatchTool = {
 export async function executeAddDataClassificationMatch(args: any): Promise<ToolResult> {
   const { instance_name, asset_id, classification_id } = args;
 
-  try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+  const { client } = clientFor(instance_name);
 
-    const match = await client.restCallWithBody<any>(
-      '/rest/catalog/1.0/dataClassification/classificationMatches',
-      'POST',
-      { assetId: asset_id, classificationId: classification_id },
-    );
+  const match = await client.restCallWithBody<any>(
+    '/rest/catalog/1.0/dataClassification/classificationMatches',
+    'POST',
+    { assetId: asset_id, classificationId: classification_id },
+  );
 
-    return okWithNext({
-      success: true,
-      instance: instance_name,
-      match: {
-        id: match.id,
-        status: match.status,
-        confidence: match.confidence,
-        asset: match.asset,
-        classification: match.classification,
-        createdBy: match.createdBy,
-        createdOn: match.createdOn,
-      },
-    }, [
-      { tool: 'search_data_classification_match', args: { instance_name, asset_ids: [asset_id] }, why: 'Verify the new match exists for this asset.' },
-      { tool: 'remove_data_classification_match', args: { instance_name, classification_match_id: match.id }, why: 'Reverse the action if it was a mistake.' },
-    ], true);
-
-  } catch (error) {
-    return ok({
-      error: true,
-      message: (error as Error).message,
-      instance: instance_name,
-    });
-  }
+  return okWithNext({
+    success: true,
+    instance: instance_name,
+    match: {
+      id: match.id,
+      status: match.status,
+      confidence: match.confidence,
+      asset: match.asset,
+      classification: match.classification,
+      createdBy: match.createdBy,
+      createdOn: match.createdOn,
+    },
+  }, [
+    { tool: 'search_data_classification_match', args: { instance_name, asset_ids: [asset_id] }, why: 'Verify the new match exists for this asset.' },
+    { tool: 'remove_data_classification_match', args: { instance_name, classification_match_id: match.id }, why: 'Reverse the action if it was a mistake.' },
+  ], true);
 }

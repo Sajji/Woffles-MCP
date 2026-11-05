@@ -1,7 +1,6 @@
-import { withEnvelope, errorEnvelope } from '../utils/tool-result.js';
+import { withEnvelope } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
+import { clientFor } from './_context.js';
 
 export const findUsersTool = {
   name: 'find_users',
@@ -57,40 +56,31 @@ export const findUsersTool = {
 export async function executeFindUsers(args: any): Promise<ToolResult> {
   const { instance_name, name, name_search_fields, group_id, only_enabled, limit = 50, offset = 0 } = args;
 
-  try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+  const { client } = clientFor(instance_name);
 
-    const qp = new URLSearchParams({ limit: String(Math.min(limit, 1000)), offset: String(offset) });
-    if (name) qp.set('name', name);
-    for (const f of name_search_fields ?? []) qp.append('nameSearchFields', f);
-    if (group_id) qp.set('groupId', group_id);
-    // The API parameter is includeDisabled (default false); onlyEnabledUsers does not exist.
-    if (only_enabled === false) qp.set('includeDisabled', 'true');
+  const qp = new URLSearchParams({ limit: String(Math.min(limit, 1000)), offset: String(offset) });
+  if (name) qp.set('name', name);
+  for (const f of name_search_fields ?? []) qp.append('nameSearchFields', f);
+  if (group_id) qp.set('groupId', group_id);
+  // The API parameter is includeDisabled (default false); onlyEnabledUsers does not exist.
+  if (only_enabled === false) qp.set('includeDisabled', 'true');
 
-    const resp = await client.restCall<any>(`/rest/2.0/users?${qp.toString()}`);
-    const results: any[] = resp.results || [];
+  const resp = await client.restCall<any>(`/rest/2.0/users?${qp.toString()}`);
+  const results: any[] = resp.results || [];
 
-    const users = results.map((u) => ({
-      id: u.id,
-      userName: u.userName ?? null,
-      fullName: [u.firstName, u.lastName].filter(Boolean).join(' ') || null,
-      email: u.emailAddress ?? null,
-      enabled: u.enabled ?? null,
-      ldapUser: u.ldapUser ?? undefined,
-    }));
+  const users = results.map((u) => ({
+    id: u.id,
+    userName: u.userName ?? null,
+    fullName: [u.firstName, u.lastName].filter(Boolean).join(' ') || null,
+    email: u.emailAddress ?? null,
+    enabled: u.enabled ?? null,
+    ldapUser: u.ldapUser ?? undefined,
+  }));
 
-    return withEnvelope({
-      instance: instance_name,
-      operation: 'find_users',
-      data: { count: users.length, total: resp.total ?? null, users },
-      pagination: { offset, limit, ...(results.length === limit ? { nextOffset: offset + limit } : {}) },
-    });
-  } catch (error) {
-    return errorEnvelope({
-      instance: instance_name,
-      operation: 'find_users',
-      message: (error as Error).message,
-    });
-  }
+  return withEnvelope({
+    instance: instance_name,
+    operation: 'find_users',
+    data: { count: users.length, total: resp.total ?? null, users },
+    pagination: { offset, limit, ...(results.length === limit ? { nextOffset: offset + limit } : {}) },
+  });
 }

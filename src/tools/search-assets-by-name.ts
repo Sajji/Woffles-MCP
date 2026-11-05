@@ -1,7 +1,7 @@
-import { getInstance } from '../config.js';
-import { CollibraClient, enrichResponseUrls } from '../utils/collibra-client.js';
+import { enrichResponseUrls } from '../utils/collibra-client.js';
 import { okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
+import { clientFor } from './_context.js';
 
 export const searchAssetsByNameTool = {
   name: 'search_assets_by_name',
@@ -131,8 +131,7 @@ export async function executeSearchAssetsByName(args: any): Promise<ToolResult> 
   } = args;
 
   try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+    const { instance, client } = clientFor(instance_name);
 
     // Build search request body (chip pattern: wrap with wildcards)
     const keywords = search_term.includes('*') ? search_term : `*${search_term}*`;

@@ -1,7 +1,6 @@
 import { withEnvelope, errorEnvelope, okPretty, ok } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
+import { clientFor } from './_context.js';
 
 const SB_BASE = '/rest/semanticBlueprint/v1';
 
@@ -54,8 +53,7 @@ export async function executeListContextSpecifications(args: any): Promise<ToolR
   const { instance_name, asset_id, asset_type_public_id, limit = 50, offset = 0 } = args;
 
   try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+    const { client } = clientFor(instance_name);
 
     const qp = new URLSearchParams({ limit: String(Math.min(limit, 1000)), offset: String(offset) });
     if (asset_id) qp.set('assetId', asset_id);
@@ -122,8 +120,7 @@ export async function executeGetContextSpecification(args: any): Promise<ToolRes
   const { instance_name, context_specification_id } = args;
 
   try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+    const { client } = clientFor(instance_name);
 
     const spec = await client.restCall<any>(
       `${SB_BASE}/contextSpecifications/${encodeURIComponent(context_specification_id)}`,

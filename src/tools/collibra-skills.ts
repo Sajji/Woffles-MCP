@@ -39,19 +39,15 @@ export const listCollibraSkillsTool = {
 };
 
 export async function executeListCollibraSkills(): Promise<ToolResult> {
-  try {
-    const skills = listSkills().map((s) => ({
-      namespace: s.namespace,
-      name: s.name,
-      title: s.title,
-      summary: s.summary,
-      source: s.source,
-      references: s.references,
-    }));
-    return ok({ count: skills.length, skills });
-  } catch (error) {
-    return ok({ error: true, message: (error as Error).message });
-  }
+  const skills = listSkills().map((s) => ({
+    namespace: s.namespace,
+    name: s.name,
+    title: s.title,
+    summary: s.summary,
+    source: s.source,
+    references: s.references,
+  }));
+  return ok({ count: skills.length, skills });
 }
 
 export const loadCollibraSkillTool = {
@@ -85,25 +81,21 @@ export const loadCollibraSkillTool = {
 
 export async function executeLoadCollibraSkill(args: any): Promise<ToolResult> {
   const { namespace, name, reference } = args;
-  try {
-    const loaded = loadSkill(namespace, name, reference);
-    if (!loaded) {
-      const available = listSkills().map((s) => `${s.namespace}/${s.name}`);
-      return ok({
-        error: true,
-        message: `Skill "${namespace}/${name}" not found.`,
-        availableSkills: available,
-      });
-    }
-    return okPretty({
-      namespace: loaded.skill.namespace,
-      name: loaded.skill.name,
-      title: loaded.skill.title,
-      content: loaded.content,
-      ...(loaded.referenceContent ? { referenceContent: loaded.referenceContent } : {}),
-      references: loaded.skill.references,
+  const loaded = loadSkill(namespace, name, reference);
+  if (!loaded) {
+    const available = listSkills().map((s) => `${s.namespace}/${s.name}`);
+    return ok({
+      error: true,
+      message: `Skill "${namespace}/${name}" not found.`,
+      availableSkills: available,
     });
-  } catch (error) {
-    return ok({ error: true, message: (error as Error).message });
   }
+  return okPretty({
+    namespace: loaded.skill.namespace,
+    name: loaded.skill.name,
+    title: loaded.skill.title,
+    content: loaded.content,
+    ...(loaded.referenceContent ? { referenceContent: loaded.referenceContent } : {}),
+    references: loaded.skill.references,
+  });
 }

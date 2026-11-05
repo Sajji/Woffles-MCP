@@ -1,9 +1,7 @@
-import { ok, okWithNext } from '../utils/tool-result.js';
+import { okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
-
-const ASSESSMENTS_BASE = '/rest/assessments/v2';
+import { clientFor } from './_context.js';
+import { ASSESSMENTS_BASE } from '../utils/assessments.js';
 
 export const getAssessmentTool = {
   name: 'get_assessment',
@@ -37,27 +35,17 @@ export const getAssessmentTool = {
 export async function executeGetAssessment(args: any): Promise<ToolResult> {
   const { instance_name, assessment_id } = args;
 
-  try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+  const { client } = clientFor(instance_name);
 
-    const endpoint = `${ASSESSMENTS_BASE}/assessments/${encodeURIComponent(assessment_id)}`;
-    const response = await client.restCall<any>(endpoint);
+  const endpoint = `${ASSESSMENTS_BASE}/assessments/${encodeURIComponent(assessment_id)}`;
+  const response = await client.restCall<any>(endpoint);
 
-    return okWithNext({
-      ...response, // API fields first; our keys below take precedence
-      instance: instance_name,
-    }, [
-      { tool: 'edit_assessment', args: { instance_name, assessment_id, operations: [] }, why: 'Edit the assessment (answers, status, owner, assignees, visibility) via typed operations.' },
-      { tool: 'list_assessment_attachments', args: { instance_name, assessment_id }, why: 'List attached evidence files.' },
-      { tool: 'retake_assessment', args: { instance_name, assessment_id }, why: 'Spawn a new iteration based on this one.' },
-    ]);
-  } catch (error) {
-    return ok({
-      error: true,
-      message: (error as Error).message,
-      instance: instance_name,
-      assessment_id,
-    });
-  }
+  return okWithNext({
+    ...response, // API fields first; our keys below take precedence
+    instance: instance_name,
+  }, [
+    { tool: 'edit_assessment', args: { instance_name, assessment_id, operations: [] }, why: 'Edit the assessment (answers, status, owner, assignees, visibility) via typed operations.' },
+    { tool: 'list_assessment_attachments', args: { instance_name, assessment_id }, why: 'List attached evidence files.' },
+    { tool: 'retake_assessment', args: { instance_name, assessment_id }, why: 'Spawn a new iteration based on this one.' },
+  ]);
 }

@@ -1,7 +1,6 @@
-import { okPretty, okWithNext, ok } from '../utils/tool-result.js';
+import { okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
+import { clientFor } from './_context.js';
 
 export const completeWorkflowTaskTool = {
   name: 'complete_workflow_task',
@@ -45,60 +44,50 @@ export const completeWorkflowTaskTool = {
 export async function executeCompleteWorkflowTask(args: any): Promise<ToolResult> {
   const { instance_name, task_id, form_properties, confirm = false } = args;
 
-  try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+  const { client } = clientFor(instance_name);
 
-    const task = await client.restCall<any>(`/rest/2.0/workflowTasks/${encodeURIComponent(task_id)}`);
+  const task = await client.restCall<any>(`/rest/2.0/workflowTasks/${encodeURIComponent(task_id)}`);
 
-    if (!confirm) {
-      let taskFormData: any = null;
-      try {
-        taskFormData = await client.restCall<any>(
-          `/rest/2.0/workflowTasks/${encodeURIComponent(task_id)}/taskFormData`,
-        );
-      } catch {
-        taskFormData = { note: 'Task form data unavailable — the task may not define a form.' };
-      }
-      return okPretty({
-        mode: 'PREVIEW — task NOT completed',
-        task: {
-          id: task.id,
-          title: task.title ?? task.name ?? null,
-          description: task.description ?? null,
-          workflowDefinition: task.workflowDefinition ? { id: task.workflowDefinition.id, name: task.workflowDefinition.name } : null,
-          businessItem: task.businessItemReference ?? task.businessItem ?? null,
-        },
-        formProperties: form_properties ?? {},
-        taskFormData,
-        instructions: 'Review the form fields; supply any required values in form_properties, then call again with confirm=true.',
-      });
+  if (!confirm) {
+    let taskFormData: any = null;
+    try {
+      taskFormData = await client.restCall<any>(
+        `/rest/2.0/workflowTasks/${encodeURIComponent(task_id)}/taskFormData`,
+      );
+    } catch {
+      taskFormData = { note: 'Task form data unavailable — the task may not define a form.' };
     }
-
-    const body: any = { taskIds: [task_id] };
-    if (form_properties && Object.keys(form_properties).length > 0) {
-      body.formProperties = form_properties;
-    }
-    const resp = await client.restCallWithBody<any>('/rest/2.0/workflowTasks/completed', 'POST', body);
-    const followUps: any[] = resp?.results ?? (Array.isArray(resp) ? resp : []);
-
-    return okWithNext(
-      {
-        mode: 'APPLIED',
-        completedTaskId: task_id,
-        followUpTasks: followUps.map((t: any) => ({ id: t?.id, title: t?.title ?? t?.name ?? null })),
+    return okPretty({
+      mode: 'PREVIEW — task NOT completed',
+      task: {
+        id: task.id,
+        title: task.title ?? task.name ?? null,
+        description: task.description ?? null,
+        workflowDefinition: task.workflowDefinition ? { id: task.workflowDefinition.id, name: task.workflowDefinition.name } : null,
+        businessItem: task.businessItemReference ?? task.businessItem ?? null,
       },
-      [
-        { tool: 'find_workflow_tasks', args: { instance_name }, why: 'Check for remaining or newly created workflow tasks.' },
-      ],
-      true,
-    );
-  } catch (error) {
-    return ok({
-      error: true,
-      message: (error as Error).message,
-      instance: instance_name,
-      task_id,
+      formProperties: form_properties ?? {},
+      taskFormData,
+      instructions: 'Review the form fields; supply any required values in form_properties, then call again with confirm=true.',
     });
   }
+
+  const body: any = { taskIds: [task_id] };
+  if (form_properties && Object.keys(form_properties).length > 0) {
+    body.formProperties = form_properties;
+  }
+  const resp = await client.restCallWithBody<any>('/rest/2.0/workflowTasks/completed', 'POST', body);
+  const followUps: any[] = resp?.results ?? (Array.isArray(resp) ? resp : []);
+
+  return okWithNext(
+    {
+      mode: 'APPLIED',
+      completedTaskId: task_id,
+      followUpTasks: followUps.map((t: any) => ({ id: t?.id, title: t?.title ?? t?.name ?? null })),
+    },
+    [
+      { tool: 'find_workflow_tasks', args: { instance_name }, why: 'Check for remaining or newly created workflow tasks.' },
+    ],
+    true,
+  );
 }

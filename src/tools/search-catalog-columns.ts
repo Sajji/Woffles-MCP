@@ -1,7 +1,6 @@
 import { withEnvelope, errorEnvelope } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
+import { clientFor } from './_context.js';
 
 /**
  * `search_catalog_columns` — chip-parity tool. Finds catalog Column assets by
@@ -219,8 +218,7 @@ export async function executeSearchCatalogColumns(args: any): Promise<ToolResult
   const pageSize = Math.min(Math.max(1, limit), 500);
 
   try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+    const { client } = clientFor(instance_name);
 
     const hasFilter =
       args.description_contains || args.data_type_contains || args.steward_name_contains || related_to_name;

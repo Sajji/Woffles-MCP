@@ -1,5 +1,5 @@
 import type { ToolResult } from '../types.js';
-import { errorEnvelope, withEnvelope } from '../utils/tool-result.js';
+import { withEnvelope } from '../utils/tool-result.js';
 import { fetchOperatingModel, loadSnapshot, saveSnapshot } from '../utils/operating-model-cache.js';
 
 export const refreshOperatingModelTool = {
@@ -27,41 +27,37 @@ export const refreshOperatingModelTool = {
 export async function executeRefreshOperatingModel(args: any): Promise<ToolResult> {
   const { instance_name, force = false, max_age_hours = 24 } = args || {};
   const operation = 'refresh_operating_model';
-  try {
-    const existing = loadSnapshot(instance_name);
-    let reused = false;
-    if (!force && existing) {
-      const ageMs = Date.now() - new Date(existing.refreshedAt).getTime();
-      if (ageMs < max_age_hours * 3600_000) {
-        reused = true;
-      }
+  const existing = loadSnapshot(instance_name);
+  let reused = false;
+  if (!force && existing) {
+    const ageMs = Date.now() - new Date(existing.refreshedAt).getTime();
+    if (ageMs < max_age_hours * 3600_000) {
+      reused = true;
     }
-
-    const snapshot = reused && existing ? existing : await fetchOperatingModel(instance_name);
-    if (!reused) saveSnapshot(snapshot);
-
-    return withEnvelope({
-      instance: instance_name,
-      operation,
-      pretty: true,
-      model: { snapshotHash: snapshot.snapshotHash, stale: false, refreshedAt: snapshot.refreshedAt },
-      data: {
-        reusedCache: reused,
-        counts: {
-          assetTypes: snapshot.assetTypes.length,
-          domainTypes: snapshot.domainTypes.length,
-          attributeTypes: snapshot.attributeTypes.length,
-          relationTypes: snapshot.relationTypes.length,
-          statuses: snapshot.statuses.length,
-        },
-      },
-      summary: { snapshotHash: snapshot.snapshotHash, refreshedAt: snapshot.refreshedAt },
-      nextActions: [
-        { tool: 'get_operating_model_summary', args: { instance_name }, why: 'Get a compact, AI-friendly digest of the model.' },
-        { tool: 'describe_asset_type', args: { instance_name, name: '<asset type name>' }, why: 'Inspect attributes/relations/eligible domains for a specific asset type.' },
-      ],
-    });
-  } catch (error) {
-    return errorEnvelope({ instance: instance_name, operation, message: (error as Error).message });
   }
+
+  const snapshot = reused && existing ? existing : await fetchOperatingModel(instance_name);
+  if (!reused) saveSnapshot(snapshot);
+
+  return withEnvelope({
+    instance: instance_name,
+    operation,
+    pretty: true,
+    model: { snapshotHash: snapshot.snapshotHash, stale: false, refreshedAt: snapshot.refreshedAt },
+    data: {
+      reusedCache: reused,
+      counts: {
+        assetTypes: snapshot.assetTypes.length,
+        domainTypes: snapshot.domainTypes.length,
+        attributeTypes: snapshot.attributeTypes.length,
+        relationTypes: snapshot.relationTypes.length,
+        statuses: snapshot.statuses.length,
+      },
+    },
+    summary: { snapshotHash: snapshot.snapshotHash, refreshedAt: snapshot.refreshedAt },
+    nextActions: [
+      { tool: 'get_operating_model_summary', args: { instance_name }, why: 'Get a compact, AI-friendly digest of the model.' },
+      { tool: 'describe_asset_type', args: { instance_name, name: '<asset type name>' }, why: 'Inspect attributes/relations/eligible domains for a specific asset type.' },
+    ],
+  });
 }

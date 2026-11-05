@@ -1,7 +1,6 @@
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
 import { okWithNext } from '../utils/tool-result.js';
 import type { AssetTypesResponse, ToolResult } from '../types.js';
+import { clientFor } from './_context.js';
 
 export const getAssetTypesTool = {
   name: 'get_asset_types',
@@ -49,8 +48,7 @@ export async function executeGetAssetTypes(args: any): Promise<ToolResult> {
   const { instance_name } = args;
 
   try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+    const { client } = clientFor(instance_name);
     const response = await client.restCall<AssetTypesResponse>('/rest/2.0/assetTypes');
 
     const structured = {

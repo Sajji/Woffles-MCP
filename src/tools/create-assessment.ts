@@ -1,9 +1,7 @@
-import { ok, okWithNext } from '../utils/tool-result.js';
+import { okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
-
-const ASSESSMENTS_BASE = '/rest/assessments/v2';
+import { clientFor } from './_context.js';
+import { ASSESSMENTS_BASE, parseJsonArg } from '../utils/assessments.js';
 
 export const createAssessmentTool = {
   name: 'create_assessment',
@@ -86,64 +84,39 @@ export async function executeCreateAssessment(args: any): Promise<ToolResult> {
     content,
   } = args;
 
-  try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+  const { client } = clientFor(instance_name);
 
-    const body: any = {
-      template: { id: template_id },
-    };
+  const body: any = {
+    template: { id: template_id },
+  };
 
-    if (asset_id) body.asset = { id: asset_id };
-    if (name) body.name = name;
-    if (status) body.status = status;
-    if (owner_id) body.owner = { id: owner_id };
-    if (is_visible_to_everyone !== undefined) body.isVisibleToEveryone = is_visible_to_everyone;
-    if (assessment_review_domain_id) body.assessmentReviewDomain = { id: assessment_review_domain_id };
+  if (asset_id) body.asset = { id: asset_id };
+  if (name) body.name = name;
+  if (status) body.status = status;
+  if (owner_id) body.owner = { id: owner_id };
+  if (is_visible_to_everyone !== undefined) body.isVisibleToEveryone = is_visible_to_everyone;
+  if (assessment_review_domain_id) body.assessmentReviewDomain = { id: assessment_review_domain_id };
 
-    if (assignees) {
-      try {
-        body.assignees = JSON.parse(assignees);
-      } catch {
-        return ok({
-          error: true,
-          message: 'Invalid JSON in assignees field. Expected format: [{"type":"USER","id":"uuid"}]',
-          instance: instance_name,
-        });
-      }
-    }
-
-    if (content) {
-      try {
-        body.content = JSON.parse(content);
-      } catch {
-        return ok({
-          error: true,
-          message: 'Invalid JSON in content field. Expected format: [{"id":"questionId","answer":{"type":"BOOLEAN","value":true}}]',
-          instance: instance_name,
-        });
-      }
-    }
-
-    const response = await client.restCallWithBody<any>(
-      `${ASSESSMENTS_BASE}/assessments`,
-      'POST',
-      body
-    );
-
-    return okWithNext({
-      ...response, // API fields first; our keys below take precedence
-      instance: instance_name,
-      created: true,
-    }, [
-      { tool: 'get_assessment', args: { instance_name, assessment_id: '<id from response>' }, why: 'Verify the newly created assessment.' },
-      { tool: 'edit_assessment', args: { instance_name, assessment_id: '<id from response>', operations: [{ op: 'set_answer', question_id: '<question id>', value: '<answer>' }] }, why: 'Submit answers to questions.' },
-    ]);
-  } catch (error) {
-    return ok({
-      error: true,
-      message: (error as Error).message,
-      instance: instance_name,
-    });
+  if (assignees) {
+    body.assignees = parseJsonArg('assignees', assignees);
   }
+
+  if (content) {
+    body.content = parseJsonArg('content', content);
+  }
+
+  const response = await client.restCallWithBody<any>(
+    `${ASSESSMENTS_BASE}/assessments`,
+    'POST',
+    body
+  );
+
+  return okWithNext({
+    ...response, // API fields first; our keys below take precedence
+    instance: instance_name,
+    created: true,
+  }, [
+    { tool: 'get_assessment', args: { instance_name, assessment_id: '<id from response>' }, why: 'Verify the newly created assessment.' },
+    { tool: 'edit_assessment', args: { instance_name, assessment_id: '<id from response>', operations: [{ op: 'set_answer', question_id: '<question id>', value: '<answer>' }] }, why: 'Submit answers to questions.' },
+  ]);
 }

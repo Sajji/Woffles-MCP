@@ -1,9 +1,7 @@
-import { ok, okWithNext } from '../utils/tool-result.js';
+import { okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
-
-const ASSESSMENTS_BASE = '/rest/assessments/v2';
+import { clientFor } from './_context.js';
+import { ASSESSMENTS_BASE } from '../utils/assessments.js';
 
 export const listAssessmentAttachmentsTool = {
   name: 'list_assessment_attachments',
@@ -37,26 +35,16 @@ export const listAssessmentAttachmentsTool = {
 export async function executeListAssessmentAttachments(args: any): Promise<ToolResult> {
   const { instance_name, assessment_id } = args;
 
-  try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+  const { client } = clientFor(instance_name);
 
-    const endpoint = `${ASSESSMENTS_BASE}/assessments/${encodeURIComponent(assessment_id)}/attachments`;
-    const response = await client.restCall<any>(endpoint);
+  const endpoint = `${ASSESSMENTS_BASE}/assessments/${encodeURIComponent(assessment_id)}/attachments`;
+  const response = await client.restCall<any>(endpoint);
 
-    return okWithNext({
-      instance: instance_name,
-      assessment_id,
-      attachments: response,
-    }, [
-      { tool: 'get_assessment', args: { instance_name, assessment_id }, why: 'Fetch the parent assessment record.' },
-    ]);
-  } catch (error) {
-    return ok({
-      error: true,
-      message: (error as Error).message,
-      instance: instance_name,
-      assessment_id,
-    });
-  }
+  return okWithNext({
+    instance: instance_name,
+    assessment_id,
+    attachments: response,
+  }, [
+    { tool: 'get_assessment', args: { instance_name, assessment_id }, why: 'Fetch the parent assessment record.' },
+  ]);
 }

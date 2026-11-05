@@ -1,7 +1,6 @@
 import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
+import { clientFor } from './_context.js';
 
 export const createDomainTool = {
   name: 'create_domain',
@@ -50,74 +49,64 @@ export const createDomainTool = {
 export async function executeCreateDomain(args: any): Promise<ToolResult> {
   const { instance_name, name, community_id, type_id, description } = args;
 
-  try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+  const { client } = clientFor(instance_name);
 
-    // ── Idempotency check ─────────────────────────────────────────────
-    const checkParams = new URLSearchParams({
-      name,
-      communityId: community_id,
-      nameMatchMode: 'EXACT',
-      limit: '5',
-    });
+  // ── Idempotency check ─────────────────────────────────────────────
+  const checkParams = new URLSearchParams({
+    name,
+    communityId: community_id,
+    nameMatchMode: 'EXACT',
+    limit: '5',
+  });
 
-    const existing = await client.restCall<any>(`/rest/2.0/domains?${checkParams.toString()}`);
-    const match = (existing.results || []).find((d: any) => d.name === name);
+  const existing = await client.restCall<any>(`/rest/2.0/domains?${checkParams.toString()}`);
+  const match = (existing.results || []).find((d: any) => d.name === name);
 
-    if (match && type_id && match.type?.id && match.type.id !== type_id) {
-      // Same name, different domain type: this is NOT the requested domain.
-      return ok({
-        error: true,
-        status: 'conflict',
-        message:
-          `A domain named "${name}" already exists in this community but has type "${match.type.name}" (${match.type.id}), ` +
-          `not the requested type ${type_id}. Choose a different name or use the existing domain.`,
-        existing: { id: match.id, name: match.name, type: { id: match.type.id, name: match.type.name } },
-        instance: instance_name,
-      });
-    }
-
-    if (match) {
-      return okPretty({
-        action: 'existing',
-        domain: {
-          id: match.id,
-          name: match.name,
-          description: match.description || null,
-          community: match.community ? { id: match.community.id, name: match.community.name } : null,
-          type: match.type ? { id: match.type.id, name: match.type.name } : null,
-        },
-        message: `Domain "${name}" already exists in community "${match.community?.name}" — no changes made.`,
-      });
-    }
-
-    // ── Create ────────────────────────────────────────────────────────
-    const body: any = { name, communityId: community_id, typeId: type_id };
-    if (description) body.description = description;
-
-    const created = await client.restCallWithBody<any>('/rest/2.0/domains', 'POST', body);
-
-    return okWithNext({
-      action: 'created',
-      domain: {
-        id: created.id,
-        name: created.name,
-        description: created.description || null,
-        community: created.community ? { id: created.community.id, name: created.community.name } : null,
-        type: created.type ? { id: created.type.id, name: created.type.name } : null,
-      },
-    }, [
-      { tool: 'prepare_create_asset', args: { instance_name, asset_name: '<asset name>', asset_type_id: '<asset type id>', domain_id: created.id }, why: 'Begin creating assets inside the new domain.' },
-      { tool: 'plan_asset_creation', args: { instance_name, asset_name: '<asset name>', asset_type_id: '<asset type id>', domain_id: created.id }, why: 'See assignable attributes and eligible statuses for the new domain.' },
-      { tool: 'get_domains', args: { instance_name, community_id: created.community?.id }, why: 'List domains in the community to confirm visibility.' },
-    ], true);
-
-  } catch (error) {
+  if (match && type_id && match.type?.id && match.type.id !== type_id) {
+    // Same name, different domain type: this is NOT the requested domain.
     return ok({
       error: true,
-      message: (error as Error).message,
+      status: 'conflict',
+      message:
+        `A domain named "${name}" already exists in this community but has type "${match.type.name}" (${match.type.id}), ` +
+        `not the requested type ${type_id}. Choose a different name or use the existing domain.`,
+      existing: { id: match.id, name: match.name, type: { id: match.type.id, name: match.type.name } },
       instance: instance_name,
     });
   }
+
+  if (match) {
+    return okPretty({
+      action: 'existing',
+      domain: {
+        id: match.id,
+        name: match.name,
+        description: match.description || null,
+        community: match.community ? { id: match.community.id, name: match.community.name } : null,
+        type: match.type ? { id: match.type.id, name: match.type.name } : null,
+      },
+      message: `Domain "${name}" already exists in community "${match.community?.name}" — no changes made.`,
+    });
+  }
+
+  // ── Create ────────────────────────────────────────────────────────
+  const body: any = { name, communityId: community_id, typeId: type_id };
+  if (description) body.description = description;
+
+  const created = await client.restCallWithBody<any>('/rest/2.0/domains', 'POST', body);
+
+  return okWithNext({
+    action: 'created',
+    domain: {
+      id: created.id,
+      name: created.name,
+      description: created.description || null,
+      community: created.community ? { id: created.community.id, name: created.community.name } : null,
+      type: created.type ? { id: created.type.id, name: created.type.name } : null,
+    },
+  }, [
+    { tool: 'prepare_create_asset', args: { instance_name, asset_name: '<asset name>', asset_type_id: '<asset type id>', domain_id: created.id }, why: 'Begin creating assets inside the new domain.' },
+    { tool: 'plan_asset_creation', args: { instance_name, asset_name: '<asset name>', asset_type_id: '<asset type id>', domain_id: created.id }, why: 'See assignable attributes and eligible statuses for the new domain.' },
+    { tool: 'get_domains', args: { instance_name, community_id: created.community?.id }, why: 'List domains in the community to confirm visibility.' },
+  ], true);
 }

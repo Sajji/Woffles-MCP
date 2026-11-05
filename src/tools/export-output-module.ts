@@ -1,7 +1,6 @@
 import { okPretty, ok } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
+import { clientFor } from './_context.js';
 
 /**
  * `export_output_module` — run an Output Module TableViewConfig/ViewConfig
@@ -53,8 +52,7 @@ export async function executeExportOutputModule(args: any): Promise<ToolResult> 
   const { instance_name, view_config, validate = false } = args;
 
   try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+    const { client } = clientFor(instance_name);
 
     if (!view_config || typeof view_config !== 'object' || (!view_config.TableViewConfig && !view_config.ViewConfig)) {
       return ok({

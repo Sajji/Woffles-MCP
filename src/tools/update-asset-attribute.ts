@@ -1,8 +1,7 @@
 import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
 import { applyAttributeSetPlans, getAttributeTypeInfo, planAttributeSet } from '../utils/attributes.js';
+import { clientFor } from './_context.js';
 
 export const updateAssetAttributeTool = {
   name: 'update_asset_attribute',
@@ -53,8 +52,7 @@ export async function executeUpdateAssetAttribute(args: any): Promise<ToolResult
   const { instance_name, asset_id, attribute_type_id, new_value, confirm = false } = args;
 
   try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+    const { client } = clientFor(instance_name);
 
     const [asset, attrType] = await Promise.all([
       client.restCall<any>(`/rest/2.0/assets/${encodeURIComponent(asset_id)}`),

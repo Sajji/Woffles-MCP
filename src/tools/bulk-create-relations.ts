@@ -1,7 +1,6 @@
 import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
+import { clientFor } from './_context.js';
 
 export const bulkCreateRelationsTool = {
   name: 'bulk_create_relations',
@@ -56,113 +55,104 @@ export async function executeBulkCreateRelations(args: any): Promise<ToolResult>
     return ok({ error: 'relations must be a non-empty array of relation descriptors.' });
   }
 
-  try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+  const { client } = clientFor(instance_name);
 
-    // Group by (sourceId, typeId) so we issue at most one GET per unique pair
-    const groupKey = (r: any) => `${r.source_asset_id}|${r.relation_type_id}`;
-    const groups = new Map<string, { source_asset_id: string; relation_type_id: string }>();
-    for (const r of relations) {
-      groups.set(groupKey(r), { source_asset_id: r.source_asset_id, relation_type_id: r.relation_type_id });
-    }
+  // Group by (sourceId, typeId) so we issue at most one GET per unique pair
+  const groupKey = (r: any) => `${r.source_asset_id}|${r.relation_type_id}`;
+  const groups = new Map<string, { source_asset_id: string; relation_type_id: string }>();
+  for (const r of relations) {
+    groups.set(groupKey(r), { source_asset_id: r.source_asset_id, relation_type_id: r.relation_type_id });
+  }
 
-    // For each unique pair, fetch existing target IDs. `relationTypeId` is the
-    // API's type filter (`typeId` is silently ignored and returns every type).
-    // Lookup failures propagate: guessing "nothing exists" would create duplicates.
-    const existingByKey = new Map<string, Set<string>>();
-    await Promise.all(
-      Array.from(groups.values()).map(async (g) => {
-        const rels = await client.restPaginate<any>('/rest/2.0/relations', {
-          sourceId: g.source_asset_id,
-          relationTypeId: g.relation_type_id,
-        });
-        const targets = new Set<string>(
-          rels.filter((r) => r.type?.id === g.relation_type_id).map((r) => r.target?.id).filter(Boolean),
-        );
-        existingByKey.set(groupKey(g), targets);
-      }),
-    );
+  // For each unique pair, fetch existing target IDs. `relationTypeId` is the
+  // API's type filter (`typeId` is silently ignored and returns every type).
+  // Lookup failures propagate: guessing "nothing exists" would create duplicates.
+  const existingByKey = new Map<string, Set<string>>();
+  await Promise.all(
+    Array.from(groups.values()).map(async (g) => {
+      const rels = await client.restPaginate<any>('/rest/2.0/relations', {
+        sourceId: g.source_asset_id,
+        relationTypeId: g.relation_type_id,
+      });
+      const targets = new Set<string>(
+        rels.filter((r) => r.type?.id === g.relation_type_id).map((r) => r.target?.id).filter(Boolean),
+      );
+      existingByKey.set(groupKey(g), targets);
+    }),
+  );
 
-    // Classify; a triple repeated within the same request is created only once.
-    const seen = new Set<string>();
-    const classified = relations.map((r: any) => {
-      const targets = existingByKey.get(groupKey(r)) || new Set<string>();
-      const triple = `${groupKey(r)}|${r.target_asset_id}`;
-      const duplicateInRequest = seen.has(triple);
-      seen.add(triple);
-      return { input: r, existing: targets.has(r.target_asset_id) || duplicateInRequest, duplicateInRequest };
+  // Classify; a triple repeated within the same request is created only once.
+  const seen = new Set<string>();
+  const classified = relations.map((r: any) => {
+    const targets = existingByKey.get(groupKey(r)) || new Set<string>();
+    const triple = `${groupKey(r)}|${r.target_asset_id}`;
+    const duplicateInRequest = seen.has(triple);
+    seen.add(triple);
+    return { input: r, existing: targets.has(r.target_asset_id) || duplicateInRequest, duplicateInRequest };
+  });
+
+  const newOnes = classified.filter((c) => !c.existing);
+  const existingOnes = classified.filter((c) => c.existing);
+
+  if (!confirm) {
+    return okPretty({
+      mode: 'PREVIEW — no changes made',
+      totalRequested: relations.length,
+      toCreate: newOnes.length,
+      alreadyExist: existingOnes.length,
+      details: classified.map((c) => ({
+        source_asset_id: c.input.source_asset_id,
+        target_asset_id: c.input.target_asset_id,
+        relation_type_id: c.input.relation_type_id,
+        action: c.duplicateInRequest ? 'SKIP (duplicate in request)' : c.existing ? 'SKIP (already exists)' : 'CREATE',
+      })),
+      instructions: 'To apply, call again with confirm=true.',
     });
+  }
 
-    const newOnes = classified.filter((c) => !c.existing);
-    const existingOnes = classified.filter((c) => c.existing);
-
-    if (!confirm) {
-      return okPretty({
-        mode: 'PREVIEW — no changes made',
-        totalRequested: relations.length,
-        toCreate: newOnes.length,
-        alreadyExist: existingOnes.length,
-        details: classified.map((c) => ({
-          source_asset_id: c.input.source_asset_id,
-          target_asset_id: c.input.target_asset_id,
-          relation_type_id: c.input.relation_type_id,
-          action: c.duplicateInRequest ? 'SKIP (duplicate in request)' : c.existing ? 'SKIP (already exists)' : 'CREATE',
-        })),
-        instructions: 'To apply, call again with confirm=true.',
-      });
-    }
-
-    if (newOnes.length === 0) {
-      return okPretty({
-        mode: 'APPLIED',
-        totalRequested: relations.length,
-        created: 0,
-        skipped: existingOnes.length,
-        message: 'All requested relations already exist — nothing to do.',
-      });
-    }
-
-    const bulkBody = newOnes.map((c) => ({
-      sourceId: c.input.source_asset_id,
-      targetId: c.input.target_asset_id,
-      typeId: c.input.relation_type_id,
-    }));
-
-    const created = await client.restCallWithBody<any[]>('/rest/2.0/relations/bulk', 'POST', bulkBody);
-
-    return okWithNext({
+  if (newOnes.length === 0) {
+    return okPretty({
       mode: 'APPLIED',
       totalRequested: relations.length,
-      created: created.length,
+      created: 0,
       skipped: existingOnes.length,
-      details: classified.map((c, idx) => {
-        if (c.existing) {
-          return {
-            source_asset_id: c.input.source_asset_id,
-            target_asset_id: c.input.target_asset_id,
-            relation_type_id: c.input.relation_type_id,
-            action: 'SKIPPED (existing)',
-          };
-        }
-        const createdIndex = newOnes.findIndex((n) => n === c);
-        const r = created[createdIndex];
+      message: 'All requested relations already exist — nothing to do.',
+    });
+  }
+
+  const bulkBody = newOnes.map((c) => ({
+    sourceId: c.input.source_asset_id,
+    targetId: c.input.target_asset_id,
+    typeId: c.input.relation_type_id,
+  }));
+
+  const created = await client.restCallWithBody<any[]>('/rest/2.0/relations/bulk', 'POST', bulkBody);
+
+  return okWithNext({
+    mode: 'APPLIED',
+    totalRequested: relations.length,
+    created: created.length,
+    skipped: existingOnes.length,
+    details: classified.map((c, idx) => {
+      if (c.existing) {
         return {
           source_asset_id: c.input.source_asset_id,
           target_asset_id: c.input.target_asset_id,
           relation_type_id: c.input.relation_type_id,
-          action: 'CREATED',
-          relationId: r?.id,
+          action: 'SKIPPED (existing)',
         };
-      }),
-    }, [
-      { tool: 'get_asset_relations', args: { instance_name, asset_id: '<any source_asset_id>' }, why: 'Verify the new relations appear on the source asset.' },
-    ], true);
-  } catch (error) {
-    return ok({
-      error: true,
-      message: (error as Error).message,
-      instance: instance_name,
-    });
-  }
+      }
+      const createdIndex = newOnes.findIndex((n) => n === c);
+      const r = created[createdIndex];
+      return {
+        source_asset_id: c.input.source_asset_id,
+        target_asset_id: c.input.target_asset_id,
+        relation_type_id: c.input.relation_type_id,
+        action: 'CREATED',
+        relationId: r?.id,
+      };
+    }),
+  }, [
+    { tool: 'get_asset_relations', args: { instance_name, asset_id: '<any source_asset_id>' }, why: 'Verify the new relations appear on the source asset.' },
+  ], true);
 }

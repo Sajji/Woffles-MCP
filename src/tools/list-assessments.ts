@@ -1,9 +1,7 @@
-import { ok, okWithNext } from '../utils/tool-result.js';
+import { okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
-
-const ASSESSMENTS_BASE = '/rest/assessments/v2';
+import { clientFor } from './_context.js';
+import { ASSESSMENTS_BASE } from '../utils/assessments.js';
 
 export const listAssessmentsTool = {
   name: 'list_assessments',
@@ -82,37 +80,28 @@ export async function executeListAssessments(args: any): Promise<ToolResult> {
     cursor,
   } = args;
 
-  try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+  const { client } = clientFor(instance_name);
 
-    const params = new URLSearchParams();
-    if (asset_id) params.append('assetId', asset_id);
-    if (status) params.append('status', status);
-    if (name) params.append('name', name);
-    if (template_id) params.append('templateId', template_id);
-    if (template_version) params.append('templateVersion', template_version);
-    if (last_modified_from) params.append('lastModifiedFrom', last_modified_from);
-    if (last_modified_to) params.append('lastModifiedTo', last_modified_to);
-    params.append('limit', String(Math.min(Math.max(1, limit), 50)));
-    if (cursor) params.append('cursor', cursor);
+  const params = new URLSearchParams();
+  if (asset_id) params.append('assetId', asset_id);
+  if (status) params.append('status', status);
+  if (name) params.append('name', name);
+  if (template_id) params.append('templateId', template_id);
+  if (template_version) params.append('templateVersion', template_version);
+  if (last_modified_from) params.append('lastModifiedFrom', last_modified_from);
+  if (last_modified_to) params.append('lastModifiedTo', last_modified_to);
+  params.append('limit', String(Math.min(Math.max(1, limit), 50)));
+  if (cursor) params.append('cursor', cursor);
 
-    const endpoint = `${ASSESSMENTS_BASE}/assessments?${params.toString()}`;
-    const response = await client.restCall<any>(endpoint);
+  const endpoint = `${ASSESSMENTS_BASE}/assessments?${params.toString()}`;
+  const response = await client.restCall<any>(endpoint);
 
-    return okWithNext({
-      ...response, // API fields first; our keys below take precedence
-      instance: instance_name,
-      filters: { asset_id, status, name, template_id, template_version },
-    }, [
-      { tool: 'get_assessment', args: { instance_name, assessment_id: '<id from results>' }, why: 'Fetch full assessment detail.' },
-      { tool: 'list_assessment_templates', args: { instance_name }, why: 'Browse available templates to filter by templateId.' },
-    ]);
-  } catch (error) {
-    return ok({
-      error: true,
-      message: (error as Error).message,
-      instance: instance_name,
-    });
-  }
+  return okWithNext({
+    ...response, // API fields first; our keys below take precedence
+    instance: instance_name,
+    filters: { asset_id, status, name, template_id, template_version },
+  }, [
+    { tool: 'get_assessment', args: { instance_name, assessment_id: '<id from results>' }, why: 'Fetch full assessment detail.' },
+    { tool: 'list_assessment_templates', args: { instance_name }, why: 'Browse available templates to filter by templateId.' },
+  ]);
 }

@@ -1,7 +1,6 @@
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
 import { okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
+import { clientFor } from './_context.js';
 
 export const queryAssetsTool = {
   name: 'query_assets',
@@ -179,8 +178,7 @@ export async function executeQueryAssets(args: any): Promise<ToolResult> {
   const limit: number = args.limit ?? defaultLimit;
 
   try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+    const { client } = clientFor(instance_name);
 
     const where = asset_type_name ? { type: { name: { eq: asset_type_name } } } : undefined;
     const query = detail_level === 'full' ? buildFullQuery(!!where) : buildSummaryQuery(!!where);

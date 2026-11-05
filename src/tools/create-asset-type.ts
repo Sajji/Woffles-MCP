@@ -1,7 +1,6 @@
 import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
+import { clientFor } from './_context.js';
 
 export const createAssetTypeTool = {
   name: 'create_asset_type',
@@ -54,77 +53,67 @@ export const createAssetTypeTool = {
 export async function executeCreateAssetType(args: any): Promise<ToolResult> {
   const { instance_name, name, description, parent_id, color, symbol_type } = args;
 
-  try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+  const { client } = clientFor(instance_name);
 
-    // ── Idempotency check ─────────────────────────────────────────────
-    const checkParams = new URLSearchParams({
-      name,
-      nameMatchMode: 'EXACT',
-      limit: '5',
-      offset: '0',
-    });
+  // ── Idempotency check ─────────────────────────────────────────────
+  const checkParams = new URLSearchParams({
+    name,
+    nameMatchMode: 'EXACT',
+    limit: '5',
+    offset: '0',
+  });
 
-    const existing = await client.restCall<any>(`/rest/2.0/assetTypes?${checkParams.toString()}`);
-    const match = (existing.results || []).find((t: any) => t.name === name);
+  const existing = await client.restCall<any>(`/rest/2.0/assetTypes?${checkParams.toString()}`);
+  const match = (existing.results || []).find((t: any) => t.name === name);
 
-    if (match && parent_id && match.parent?.id !== parent_id) {
-      // Asset type names are unique; an existing type under another parent is NOT the requested one.
-      return ok({
-        error: true,
-        status: 'conflict',
-        message:
-          `Asset type "${name}" already exists with parent "${match.parent?.name ?? '(none)'}" (${match.parent?.id ?? 'none'}), ` +
-          `not the requested parent ${parent_id}. Choose a different name or use the existing type.`,
-        existing: { id: match.id, name: match.name, parent: match.parent ? { id: match.parent.id, name: match.parent.name } : null },
-        instance: instance_name,
-      });
-    }
-
-    if (match) {
-      return okPretty({
-        action: 'existing',
-        assetType: {
-          id: match.id,
-          name: match.name,
-          description: match.description || null,
-          publicId: match.publicId || null,
-          parent: match.parent ? { id: match.parent.id, name: match.parent.name } : null,
-        },
-        message: `Asset type "${name}" already exists — no changes made.`,
-      });
-    }
-
-    // ── Create ────────────────────────────────────────────────────────
-    const body: any = { name };
-    if (description) body.description = description;
-    if (parent_id) body.parentId = parent_id;
-    if (color) body.color = color;
-    if (symbol_type) body.symbolType = symbol_type;
-
-    const created = await client.restCallWithBody<any>('/rest/2.0/assetTypes', 'POST', body);
-
-    return okWithNext({
-      action: 'created',
-      assetType: {
-        id: created.id,
-        name: created.name,
-        description: created.description || null,
-        publicId: created.publicId || null,
-        parent: created.parent ? { id: created.parent.id, name: created.parent.name } : null,
-      },
-    }, [
-      { tool: 'refresh_operating_model', args: { instance_name, force: true }, why: 'Refresh the cached model so the new asset type is discoverable.' },
-      { tool: 'describe_asset_type', args: { instance_name, asset_type_id: created.id }, why: 'Inspect assignable attributes/relations once assignments are configured.' },
-      { tool: 'create_relation_type', args: { instance_name, role: '<role>', corole: '<corole>', source_asset_type_id: created.id, target_asset_type_id: '<target type id>' }, why: 'Connect this type into the graph by adding relation types.' },
-    ], true);
-
-  } catch (error) {
+  if (match && parent_id && match.parent?.id !== parent_id) {
+    // Asset type names are unique; an existing type under another parent is NOT the requested one.
     return ok({
       error: true,
-      message: (error as Error).message,
+      status: 'conflict',
+      message:
+        `Asset type "${name}" already exists with parent "${match.parent?.name ?? '(none)'}" (${match.parent?.id ?? 'none'}), ` +
+        `not the requested parent ${parent_id}. Choose a different name or use the existing type.`,
+      existing: { id: match.id, name: match.name, parent: match.parent ? { id: match.parent.id, name: match.parent.name } : null },
       instance: instance_name,
     });
   }
+
+  if (match) {
+    return okPretty({
+      action: 'existing',
+      assetType: {
+        id: match.id,
+        name: match.name,
+        description: match.description || null,
+        publicId: match.publicId || null,
+        parent: match.parent ? { id: match.parent.id, name: match.parent.name } : null,
+      },
+      message: `Asset type "${name}" already exists — no changes made.`,
+    });
+  }
+
+  // ── Create ────────────────────────────────────────────────────────
+  const body: any = { name };
+  if (description) body.description = description;
+  if (parent_id) body.parentId = parent_id;
+  if (color) body.color = color;
+  if (symbol_type) body.symbolType = symbol_type;
+
+  const created = await client.restCallWithBody<any>('/rest/2.0/assetTypes', 'POST', body);
+
+  return okWithNext({
+    action: 'created',
+    assetType: {
+      id: created.id,
+      name: created.name,
+      description: created.description || null,
+      publicId: created.publicId || null,
+      parent: created.parent ? { id: created.parent.id, name: created.parent.name } : null,
+    },
+  }, [
+    { tool: 'refresh_operating_model', args: { instance_name, force: true }, why: 'Refresh the cached model so the new asset type is discoverable.' },
+    { tool: 'describe_asset_type', args: { instance_name, asset_type_id: created.id }, why: 'Inspect assignable attributes/relations once assignments are configured.' },
+    { tool: 'create_relation_type', args: { instance_name, role: '<role>', corole: '<corole>', source_asset_type_id: created.id, target_asset_type_id: '<target type id>' }, why: 'Connect this type into the graph by adding relation types.' },
+  ], true);
 }

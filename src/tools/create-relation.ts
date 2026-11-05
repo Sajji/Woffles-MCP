@@ -1,8 +1,7 @@
-import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
+import { okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
 import { findRelation, relationTypeLabels } from '../utils/relations.js';
+import { clientFor } from './_context.js';
 
 export const createRelationTool = {
   name: 'create_relation',
@@ -49,59 +48,49 @@ export const createRelationTool = {
 export async function executeCreateRelation(args: any): Promise<ToolResult> {
   const { instance_name, source_asset_id, target_asset_id, relation_type_id } = args;
 
-  try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+  const { client } = clientFor(instance_name);
 
-    // ── Idempotency check ─────────────────────────────────────────────
-    // Exact (source, target, type) triple — a relation of a different type
-    // between the same assets must NOT count as a duplicate.
-    const match = await findRelation(client, {
-      sourceId: source_asset_id,
-      targetId: target_asset_id,
-      relationTypeId: relation_type_id,
-    });
+  // ── Idempotency check ─────────────────────────────────────────────
+  // Exact (source, target, type) triple — a relation of a different type
+  // between the same assets must NOT count as a duplicate.
+  const match = await findRelation(client, {
+    sourceId: source_asset_id,
+    targetId: target_asset_id,
+    relationTypeId: relation_type_id,
+  });
 
-    if (match) {
-      return okPretty({
-        action: 'existing',
-        relation: {
-          id: match.id,
-          type: await relationTypeLabels(client, match.type?.id),
-          source: { id: match.source?.id, name: match.source?.fullName ?? match.source?.name },
-          target: { id: match.target?.id, name: match.target?.fullName ?? match.target?.name },
-        },
-        message: 'Relation already exists — no changes made.',
-      });
-    }
-
-    // ── Create ────────────────────────────────────────────────────────
-    const body = {
-      sourceId: source_asset_id,
-      targetId: target_asset_id,
-      typeId: relation_type_id,
-    };
-
-    const created = await client.restCallWithBody<any>('/rest/2.0/relations', 'POST', body);
-
-    return okWithNext({
-      action: 'created',
+  if (match) {
+    return okPretty({
+      action: 'existing',
       relation: {
-        id: created.id,
-        type: await relationTypeLabels(client, created.type?.id ?? relation_type_id),
-        source: { id: created.source?.id, name: created.source?.fullName ?? created.source?.name },
-        target: { id: created.target?.id, name: created.target?.fullName ?? created.target?.name },
+        id: match.id,
+        type: await relationTypeLabels(client, match.type?.id),
+        source: { id: match.source?.id, name: match.source?.fullName ?? match.source?.name },
+        target: { id: match.target?.id, name: match.target?.fullName ?? match.target?.name },
       },
-    }, [
-      { tool: 'get_asset_relations', args: { instance_name, asset_id: source_asset_id }, why: 'Verify the new relation appears on the source asset.' },
-      { tool: 'get_asset_by_id', args: { instance_name, asset_id: target_asset_id }, why: 'Inspect the target asset.' },
-    ], true);
-
-  } catch (error) {
-    return ok({
-      error: true,
-      message: (error as Error).message,
-      instance: instance_name,
+      message: 'Relation already exists — no changes made.',
     });
   }
+
+  // ── Create ────────────────────────────────────────────────────────
+  const body = {
+    sourceId: source_asset_id,
+    targetId: target_asset_id,
+    typeId: relation_type_id,
+  };
+
+  const created = await client.restCallWithBody<any>('/rest/2.0/relations', 'POST', body);
+
+  return okWithNext({
+    action: 'created',
+    relation: {
+      id: created.id,
+      type: await relationTypeLabels(client, created.type?.id ?? relation_type_id),
+      source: { id: created.source?.id, name: created.source?.fullName ?? created.source?.name },
+      target: { id: created.target?.id, name: created.target?.fullName ?? created.target?.name },
+    },
+  }, [
+    { tool: 'get_asset_relations', args: { instance_name, asset_id: source_asset_id }, why: 'Verify the new relation appears on the source asset.' },
+    { tool: 'get_asset_by_id', args: { instance_name, asset_id: target_asset_id }, why: 'Inspect the target asset.' },
+  ], true);
 }

@@ -1,8 +1,7 @@
-import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
+import { okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
 import { authFetch } from '../utils/auth.js';
+import { clientFor } from './_context.js';
 
 export const removeDataClassificationMatchTool = {
   name: 'remove_data_classification_match',
@@ -42,54 +41,44 @@ export const removeDataClassificationMatchTool = {
 export async function executeRemoveDataClassificationMatch(args: any): Promise<ToolResult> {
   const { instance_name, classification_match_id, confirm = false } = args;
 
-  try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+  const { instance, client } = clientFor(instance_name);
 
-    // Fetch the match first so we can show what will be deleted (best effort:
-    // the preview still works with just the ID if the lookup is unavailable).
-    const matchDetails: any = await client
-      .restCall<any>(`/rest/catalog/1.0/dataClassification/classificationMatches/${encodeURIComponent(classification_match_id)}`)
-      .catch(() => null);
+  // Fetch the match first so we can show what will be deleted (best effort:
+  // the preview still works with just the ID if the lookup is unavailable).
+  const matchDetails: any = await client
+    .restCall<any>(`/rest/catalog/1.0/dataClassification/classificationMatches/${encodeURIComponent(classification_match_id)}`)
+    .catch(() => null);
 
-    if (!confirm) {
-      return okPretty({
-        mode: 'PREVIEW — no changes made',
-        instance: instance_name,
-        classificationMatchId: classification_match_id,
-        matchDetails: matchDetails || '(details not available — the match will be deleted if it exists)',
-        instructions: 'To delete this classification match, call this tool again with confirm=true.',
-      });
-    }
-
-    // DELETE the match
-    const url = `${instance.baseUrl}/rest/catalog/1.0/dataClassification/classificationMatches/${encodeURIComponent(classification_match_id)}`;
-    const response = await authFetch(instance, url, {
-      method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok && response.status !== 204) {
-      const errorBody = await response.text().catch(() => '');
-      throw new Error(`DELETE failed: ${response.status} ${response.statusText}${errorBody ? ` - ${errorBody}` : ''}`);
-    }
-
-    return okWithNext({
-      mode: 'DELETED',
+  if (!confirm) {
+    return okPretty({
+      mode: 'PREVIEW — no changes made',
       instance: instance_name,
       classificationMatchId: classification_match_id,
-      success: true,
-    }, [
-      { tool: 'search_data_classification_match', args: { instance_name }, why: 'Verify the match is gone.' },
-    ], true);
-
-  } catch (error) {
-    return ok({
-      error: true,
-      message: (error as Error).message,
-      instance: instance_name,
+      matchDetails: matchDetails || '(details not available — the match will be deleted if it exists)',
+      instructions: 'To delete this classification match, call this tool again with confirm=true.',
     });
   }
+
+  // DELETE the match
+  const url = `${instance.baseUrl}/rest/catalog/1.0/dataClassification/classificationMatches/${encodeURIComponent(classification_match_id)}`;
+  const response = await authFetch(instance, url, {
+    method: 'DELETE',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok && response.status !== 204) {
+    const errorBody = await response.text().catch(() => '');
+    throw new Error(`DELETE failed: ${response.status} ${response.statusText}${errorBody ? ` - ${errorBody}` : ''}`);
+  }
+
+  return okWithNext({
+    mode: 'DELETED',
+    instance: instance_name,
+    classificationMatchId: classification_match_id,
+    success: true,
+  }, [
+    { tool: 'search_data_classification_match', args: { instance_name }, why: 'Verify the match is gone.' },
+  ], true);
 }

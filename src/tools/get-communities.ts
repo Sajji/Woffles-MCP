@@ -1,7 +1,7 @@
-import { getInstance } from '../config.js';
-import { CollibraClient, enrichResponseUrls } from '../utils/collibra-client.js';
-import { ok, okWithNext } from '../utils/tool-result.js';
+import { enrichResponseUrls } from '../utils/collibra-client.js';
+import { okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
+import { clientFor } from './_context.js';
 
 export const getCommunitiesTool = {
   name: 'get_communities',
@@ -62,111 +62,99 @@ interface Community {
 export async function executeGetCommunities(args: any): Promise<ToolResult> {
   const { instance_name, parent_id, name, show_hierarchy = true, limit = 1000, offset = 0 } = args;
 
-  try {
-    // Get the instance configuration
-    const instance = getInstance(instance_name);
+  // Get the instance configuration
+  const { instance, client } = clientFor(instance_name);
 
-    // Create a client for this instance
-    const client = new CollibraClient(instance);
+  // Build query parameters
+  const params = new URLSearchParams({
+    limit: Math.min(limit, 1000).toString(),
+    offset: String(offset),
+    excludeMeta: 'true',
+    sortField: 'NAME',
+    sortOrder: 'ASC',
+  });
 
-    // Build query parameters
-    const params = new URLSearchParams({
-      limit: Math.min(limit, 1000).toString(),
-      offset: String(offset),
-      excludeMeta: 'true',
-      sortField: 'NAME',
-      sortOrder: 'ASC',
-    });
-
-    if (parent_id) {
-      params.append('parentId', parent_id);
-    }
-
-    if (name) {
-      params.append('name', name);
-      params.append('nameMatchMode', 'ANYWHERE');
-    }
-
-    // Make the REST API call
-    const endpoint = `/rest/2.0/communities?${params.toString()}`;
-    const response = await client.restCall<any>(endpoint);
-
-    const communities: Community[] = response.results || [];
-
-    // Organize by hierarchy if requested
-    let hierarchicalView = null;
-    let topLevelCommunities: Community[] = [];
-    let childCommunities: Community[] = [];
-
-    if (show_hierarchy && !parent_id) {
-      // A community is a root of THIS view when its parent isn't in the result
-      // set (true top-level, or its parent was excluded by the name filter /
-      // paging) — otherwise filtered children would silently disappear.
-      const returnedIds = new Set(communities.map(c => c.id));
-      topLevelCommunities = communities.filter(c => !c.parent?.id || !returnedIds.has(c.parent.id));
-      childCommunities = communities.filter(c => c.parent?.id && returnedIds.has(c.parent.id));
-
-      // Build hierarchy tree
-      const communityMap = new Map<string, any>();
-      
-      // Initialize all communities in the map
-      communities.forEach(community => {
-        communityMap.set(community.id, {
-          ...community,
-          children: [],
-        });
-      });
-
-      // Build parent-child relationships
-      childCommunities.forEach(community => {
-        if (community.parent?.id) {
-          const parentCommunity = communityMap.get(community.parent.id);
-          if (parentCommunity) {
-            parentCommunity.children.push(communityMap.get(community.id));
-          }
-        }
-      });
-
-      // Get only top-level communities with their children
-      hierarchicalView = topLevelCommunities.map(c => communityMap.get(c.id));
-    }
-
-    // Return formatted response
-    const result: any = {
-      instance: instance_name,
-      filters: {
-        parentId: parent_id || 'All levels',
-        name: name || 'All communities',
-      },
-      summary: {
-        total: response.total || 0,
-        returned: communities.length,
-        topLevel: topLevelCommunities.length,
-        children: childCommunities.length,
-      },
-      ...(communities.length === Math.min(limit, 1000) ? { nextOffset: offset + communities.length } : {}),
-    };
-
-    if (show_hierarchy && !parent_id && hierarchicalView) {
-      result.hierarchy = hierarchicalView;
-      result.flat = {
-        topLevel: topLevelCommunities,
-        children: childCommunities,
-      };
-    } else {
-      result.communities = communities;
-    }
-
-    return okWithNext(enrichResponseUrls(instance.baseUrl, result) as Record<string, unknown>, [
-      { tool: 'get_domains', args: { instance_name, community_id: '<pick from communities>' }, why: 'List domains under a chosen community.' },
-      { tool: 'create_domain', args: { instance_name, name: '<domain name>', community_id: '<pick from communities>', type_id: '<from get_domain_types>' }, why: 'Create a domain inside a community.' },
-    ]);
-
-  } catch (error) {
-    return ok({
-      error: true,
-      message: (error as Error).message,
-      instance: instance_name,
-    });
+  if (parent_id) {
+    params.append('parentId', parent_id);
   }
+
+  if (name) {
+    params.append('name', name);
+    params.append('nameMatchMode', 'ANYWHERE');
+  }
+
+  // Make the REST API call
+  const endpoint = `/rest/2.0/communities?${params.toString()}`;
+  const response = await client.restCall<any>(endpoint);
+
+  const communities: Community[] = response.results || [];
+
+  // Organize by hierarchy if requested
+  let hierarchicalView = null;
+  let topLevelCommunities: Community[] = [];
+  let childCommunities: Community[] = [];
+
+  if (show_hierarchy && !parent_id) {
+    // A community is a root of THIS view when its parent isn't in the result
+    // set (true top-level, or its parent was excluded by the name filter /
+    // paging) — otherwise filtered children would silently disappear.
+    const returnedIds = new Set(communities.map(c => c.id));
+    topLevelCommunities = communities.filter(c => !c.parent?.id || !returnedIds.has(c.parent.id));
+    childCommunities = communities.filter(c => c.parent?.id && returnedIds.has(c.parent.id));
+
+    // Build hierarchy tree
+    const communityMap = new Map<string, any>();
+    
+    // Initialize all communities in the map
+    communities.forEach(community => {
+      communityMap.set(community.id, {
+        ...community,
+        children: [],
+      });
+    });
+
+    // Build parent-child relationships
+    childCommunities.forEach(community => {
+      if (community.parent?.id) {
+        const parentCommunity = communityMap.get(community.parent.id);
+        if (parentCommunity) {
+          parentCommunity.children.push(communityMap.get(community.id));
+        }
+      }
+    });
+
+    // Get only top-level communities with their children
+    hierarchicalView = topLevelCommunities.map(c => communityMap.get(c.id));
+  }
+
+  // Return formatted response
+  const result: any = {
+    instance: instance_name,
+    filters: {
+      parentId: parent_id || 'All levels',
+      name: name || 'All communities',
+    },
+    summary: {
+      total: response.total || 0,
+      returned: communities.length,
+      topLevel: topLevelCommunities.length,
+      children: childCommunities.length,
+    },
+    ...(communities.length === Math.min(limit, 1000) ? { nextOffset: offset + communities.length } : {}),
+  };
+
+  if (show_hierarchy && !parent_id && hierarchicalView) {
+    result.hierarchy = hierarchicalView;
+    result.flat = {
+      topLevel: topLevelCommunities,
+      children: childCommunities,
+    };
+  } else {
+    result.communities = communities;
+  }
+
+  return okWithNext(enrichResponseUrls(instance.baseUrl, result) as Record<string, unknown>, [
+    { tool: 'get_domains', args: { instance_name, community_id: '<pick from communities>' }, why: 'List domains under a chosen community.' },
+    { tool: 'create_domain', args: { instance_name, name: '<domain name>', community_id: '<pick from communities>', type_id: '<from get_domain_types>' }, why: 'Create a domain inside a community.' },
+  ]);
 }

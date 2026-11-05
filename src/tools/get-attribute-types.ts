@@ -1,7 +1,6 @@
-import { ok, okWithNext } from '../utils/tool-result.js';
+import { okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
+import { clientFor } from './_context.js';
 
 export const getAttributeTypesTool = {
   name: 'get_attribute_types',
@@ -53,48 +52,38 @@ export const getAttributeTypesTool = {
 export async function executeGetAttributeTypes(args: any): Promise<ToolResult> {
   const { instance_name, name, name_match_mode, kind, limit = 100, offset = 0 } = args;
 
-  try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+  const { client } = clientFor(instance_name);
 
-    const params = new URLSearchParams();
-    params.set('offset', String(offset));
-    params.set('limit', String(Math.min(limit, 1000)));
+  const params = new URLSearchParams();
+  params.set('offset', String(offset));
+  params.set('limit', String(Math.min(limit, 1000)));
 
-    if (name) {
-      params.set('name', name);
-      params.set('nameMatchMode', name_match_mode || 'ANYWHERE');
-    }
-    if (kind) {
-      params.set('kind', kind);
-    }
-    params.set('sortField', 'NAME');
-    params.set('sortOrder', 'ASC');
-
-    const response = await client.restCall<any>(`/rest/2.0/attributeTypes?${params.toString()}`);
-
-    return okWithNext({
-      instance: instance_name,
-      total: response.total,
-      attributeTypes: (response.results || []).map((t: any) => ({
-        id: t.id,
-        name: t.name,
-        kind: t.resourceType || t.attributeTypeDiscriminator,
-        description: t.description || undefined,
-        statisticsEnabled: t.statisticsEnabled,
-        isInteger: t.isInteger,
-      })),
-      ...((response.results || []).length === Math.min(limit, 1000) ? { nextOffset: offset + (response.results || []).length } : {}),
-    }, [
-      { tool: 'validate_against_model', args: { instance_name, proposal_type: 'attribute', attribute_type_id: '<pick from attributeTypes>' }, why: 'Schema-validate an attribute write before calling update_asset_attribute.' },
-      { tool: 'update_asset_attribute', args: { instance_name, asset_id: '<asset>', attribute_type_id: '<pick from attributeTypes>', new_value: '<value>' }, why: 'Write the attribute once you have the UUID.' },
-    ], true);
-
-  } catch (error) {
-    return ok({
-      error: true,
-      message: (error as Error).message,
-      instance: instance_name,
-    });
+  if (name) {
+    params.set('name', name);
+    params.set('nameMatchMode', name_match_mode || 'ANYWHERE');
   }
+  if (kind) {
+    params.set('kind', kind);
+  }
+  params.set('sortField', 'NAME');
+  params.set('sortOrder', 'ASC');
+
+  const response = await client.restCall<any>(`/rest/2.0/attributeTypes?${params.toString()}`);
+
+  return okWithNext({
+    instance: instance_name,
+    total: response.total,
+    attributeTypes: (response.results || []).map((t: any) => ({
+      id: t.id,
+      name: t.name,
+      kind: t.resourceType || t.attributeTypeDiscriminator,
+      description: t.description || undefined,
+      statisticsEnabled: t.statisticsEnabled,
+      isInteger: t.isInteger,
+    })),
+    ...((response.results || []).length === Math.min(limit, 1000) ? { nextOffset: offset + (response.results || []).length } : {}),
+  }, [
+    { tool: 'validate_against_model', args: { instance_name, proposal_type: 'attribute', attribute_type_id: '<pick from attributeTypes>' }, why: 'Schema-validate an attribute write before calling update_asset_attribute.' },
+    { tool: 'update_asset_attribute', args: { instance_name, asset_id: '<asset>', attribute_type_id: '<pick from attributeTypes>', new_value: '<value>' }, why: 'Write the attribute once you have the UUID.' },
+  ], true);
 }

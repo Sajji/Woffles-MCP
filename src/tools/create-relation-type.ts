@@ -1,7 +1,7 @@
-import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
+import { okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient, clearModelCaches } from '../utils/collibra-client.js';
+import { clearModelCaches } from '../utils/collibra-client.js';
+import { clientFor } from './_context.js';
 
 export const createRelationTypeTool = {
   name: 'create_relation_type',
@@ -53,74 +53,64 @@ export const createRelationTypeTool = {
 export async function executeCreateRelationType(args: any): Promise<ToolResult> {
   const { instance_name, role, corole, source_asset_type_id, target_asset_type_id, description } = args;
 
-  try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+  const { instance, client } = clientFor(instance_name);
 
-    // ── Idempotency check ─────────────────────────────────────────────
-    // Filter by role; then match co-role + source + target from results
-    const checkParams = new URLSearchParams({
-      role,
-      limit: '100',
-      offset: '0',
-    });
+  // ── Idempotency check ─────────────────────────────────────────────
+  // Filter by role; then match co-role + source + target from results
+  const checkParams = new URLSearchParams({
+    role,
+    limit: '100',
+    offset: '0',
+  });
 
-    const existing = await client.restCall<any>(`/rest/2.0/relationTypes?${checkParams.toString()}`);
-    const match = (existing.results || []).find(
-      (rt: any) =>
-        rt.role === role &&
-        (rt.coRole ?? rt.corole) === corole &&
-        rt.sourceType?.id === source_asset_type_id &&
-        rt.targetType?.id === target_asset_type_id,
-    );
+  const existing = await client.restCall<any>(`/rest/2.0/relationTypes?${checkParams.toString()}`);
+  const match = (existing.results || []).find(
+    (rt: any) =>
+      rt.role === role &&
+      (rt.coRole ?? rt.corole) === corole &&
+      rt.sourceType?.id === source_asset_type_id &&
+      rt.targetType?.id === target_asset_type_id,
+  );
 
-    if (match) {
-      return okPretty({
-        action: 'existing',
-        relationType: {
-          id: match.id,
-          role: match.role,
-          corole: match.coRole ?? match.corole,
-          sourceType: match.sourceType ? { id: match.sourceType.id, name: match.sourceType.name } : null,
-          targetType: match.targetType ? { id: match.targetType.id, name: match.targetType.name } : null,
-        },
-        message: `Relation type "${role} / ${corole}" already exists — no changes made.`,
-      });
-    }
-
-    // ── Create ────────────────────────────────────────────────────────
-    // Collibra's addRelationType expects the camelCase field `coRole`.
-    const body: any = {
-      role,
-      coRole: corole,
-      sourceTypeId: source_asset_type_id,
-      targetTypeId: target_asset_type_id,
-    };
-    if (description) body.description = description;
-
-    const created = await client.restCallWithBody<any>('/rest/2.0/relationTypes', 'POST', body);
-    clearModelCaches(instance); // new type must be visible to cached lookups immediately
-
-    return okWithNext({
-      action: 'created',
+  if (match) {
+    return okPretty({
+      action: 'existing',
       relationType: {
-        id: created.id,
-        role: created.role,
-        corole: created.coRole ?? created.corole,
-        sourceType: created.sourceType ? { id: created.sourceType.id, name: created.sourceType.name } : null,
-        targetType: created.targetType ? { id: created.targetType.id, name: created.targetType.name } : null,
+        id: match.id,
+        role: match.role,
+        corole: match.coRole ?? match.corole,
+        sourceType: match.sourceType ? { id: match.sourceType.id, name: match.sourceType.name } : null,
+        targetType: match.targetType ? { id: match.targetType.id, name: match.targetType.name } : null,
       },
-    }, [
-      { tool: 'refresh_operating_model', args: { instance_name, force: true }, why: 'Refresh cached model so the new relation type is discoverable.' },
-      { tool: 'find_traversal_path', args: { instance_name, source_asset_type_name: created.sourceType?.name, target_asset_type_name: created.targetType?.name }, why: 'Confirm the new edge is in the traversal graph.' },
-      { tool: 'create_relation', args: { instance_name, source_asset_id: '<source asset id>', target_asset_id: '<target asset id>', relation_type_id: created.id }, why: 'Create actual relations using the new type.' },
-    ], true);
-
-  } catch (error) {
-    return ok({
-      error: true,
-      message: (error as Error).message,
-      instance: instance_name,
+      message: `Relation type "${role} / ${corole}" already exists — no changes made.`,
     });
   }
+
+  // ── Create ────────────────────────────────────────────────────────
+  // Collibra's addRelationType expects the camelCase field `coRole`.
+  const body: any = {
+    role,
+    coRole: corole,
+    sourceTypeId: source_asset_type_id,
+    targetTypeId: target_asset_type_id,
+  };
+  if (description) body.description = description;
+
+  const created = await client.restCallWithBody<any>('/rest/2.0/relationTypes', 'POST', body);
+  clearModelCaches(instance); // new type must be visible to cached lookups immediately
+
+  return okWithNext({
+    action: 'created',
+    relationType: {
+      id: created.id,
+      role: created.role,
+      corole: created.coRole ?? created.corole,
+      sourceType: created.sourceType ? { id: created.sourceType.id, name: created.sourceType.name } : null,
+      targetType: created.targetType ? { id: created.targetType.id, name: created.targetType.name } : null,
+    },
+  }, [
+    { tool: 'refresh_operating_model', args: { instance_name, force: true }, why: 'Refresh cached model so the new relation type is discoverable.' },
+    { tool: 'find_traversal_path', args: { instance_name, source_asset_type_name: created.sourceType?.name, target_asset_type_name: created.targetType?.name }, why: 'Confirm the new edge is in the traversal graph.' },
+    { tool: 'create_relation', args: { instance_name, source_asset_id: '<source asset id>', target_asset_id: '<target asset id>', relation_type_id: created.id }, why: 'Create actual relations using the new type.' },
+  ], true);
 }

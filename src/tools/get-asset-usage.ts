@@ -1,16 +1,15 @@
-import { withEnvelope, errorEnvelope } from '../utils/tool-result.js';
+import { withEnvelope } from '../utils/tool-result.js';
 import { isUuid } from '../utils/validation.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
 import {
   COMMON_UA_PROPERTIES,
-  UsageAnalyticsApi,
   fetchAssetContext,
   fetchUserNames,
   pivotTimeSeries,
-  resolveDateRange,
+  usageSession,
 } from '../utils/usage-analytics.js';
+import { clientFor } from './_context.js';
 
 const OPERATION = 'get_asset_usage';
 
@@ -68,75 +67,66 @@ async function resolveAssetId(client: CollibraClient, assetId?: string, assetNam
 export async function executeGetAssetUsage(args: any): Promise<ToolResult> {
   const { instance_name, asset_id, asset_name, visitor_limit = 10 } = args;
 
-  try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
-    const api = new UsageAnalyticsApi(client);
-    const range = resolveDateRange(args);
-    const warnings: string[] = [];
-    const id = await resolveAssetId(client, asset_id, asset_name);
-    const lastRefreshedP = api.lastRefreshed();
+  const { client } = clientFor(instance_name);
+  const { api, range, warnings, period, dateParams, lastRefreshedP } = usageSession(client, args);
+  const id = await resolveAssetId(client, asset_id, asset_name);
 
-    const { params: filterParams, applied } = await api.resolveFilters('usage', args, range, warnings);
-    const dateParams = { startDate: range.startDate, endDate: range.endDate };
-    const cappedLimit = Math.max(1, Math.min(Number(visitor_limit) || 10, 100));
+  const { params: filterParams, applied } = await api.resolveFilters('usage', args, range, warnings);
+  const cappedLimit = Math.max(1, Math.min(Number(visitor_limit) || 10, 100));
 
-    const [contextMap, summary, series, visitors] = await Promise.all([
-      fetchAssetContext(client, [id]).catch((e) => {
-        warnings.push(`Asset lookup failed: ${(e as Error).message}`);
-        return new Map();
-      }),
-      api.get(`usage`, `assets/${id}/summary`, { ...dateParams, ...filterParams }),
-      api.get(`usage`, `assets/${id}/visits/timeseries`, { ...dateParams, granularity: range.granularity, ...filterParams }),
-      api.get(`usage`, `assets/${id}/visitors/top`, { ...dateParams, limit: cappedLimit, ...filterParams }),
-    ]);
+  const [contextMap, summary, series, visitors] = await Promise.all([
+    fetchAssetContext(client, [id]).catch((e) => {
+      warnings.push(`Asset lookup failed: ${(e as Error).message}`);
+      return new Map();
+    }),
+    api.get(`usage`, `assets/${id}/summary`, { ...dateParams, ...filterParams }),
+    api.get(`usage`, `assets/${id}/visits/timeseries`, { ...dateParams, granularity: range.granularity, ...filterParams }),
+    api.get(`usage`, `assets/${id}/visitors/top`, { ...dateParams, limit: cappedLimit, ...filterParams }),
+  ]);
 
-    const visitorRows: any[] = visitors.results ?? [];
-    const names = await fetchUserNames(client, visitorRows.map((v) => v.userId));
-    const topVisitors = visitorRows.map((v, i) => {
-      const n = names.get(v.userId);
-      return {
-        rank: i + 1,
-        userId: v.userId,
-        fullName: n?.fullName ?? null,
-        userName: n?.userName ?? null,
-        visits: v.visits ?? 0,
-      };
-    });
+  const visitorRows: any[] = visitors.results ?? [];
+  const names = await fetchUserNames(client, visitorRows.map((v) => v.userId));
+  const topVisitors = visitorRows.map((v, i) => {
+    const n = names.get(v.userId);
+    return {
+      rank: i + 1,
+      userId: v.userId,
+      fullName: n?.fullName ?? null,
+      userName: n?.userName ?? null,
+      visits: v.visits ?? 0,
+    };
+  });
 
-    const { rows } = pivotTimeSeries(series.results);
-    const ctx = contextMap.get(id);
-    if (!ctx) warnings.push('Asset metadata not found (the asset may have been deleted).');
+  const { rows } = pivotTimeSeries(series.results);
+  const ctx = contextMap.get(id);
+  if (!ctx) warnings.push('Asset metadata not found (the asset may have been deleted).');
 
-    return withEnvelope({
-      instance: instance_name,
-      operation: OPERATION,
-      data: {
-        asset: {
-          id,
-          name: ctx?.name ?? null,
-          assetType: ctx?.assetType ?? null,
-          domain: ctx?.domain ?? null,
-          community: ctx?.community ?? null,
-          url: client.assetUrl(id),
-        },
-        period: { startDate: range.startDate, endDate: range.endDate, granularity: range.granularity },
-        filters: applied,
-        lastRefreshed: await lastRefreshedP,
-        allTime: {
-          totalVisits: summary.totalVisitCount ?? 0,
-          uniqueVisitors: summary.uniqueVisitorCount ?? 0,
-          firstVisitDate: summary.firstVisitDate ?? null,
-        },
-        trend: {
-          totalVisitsInPeriod: rows.reduce((sum, r) => sum + (r.count ?? 0), 0),
-          buckets: rows,
-        },
-        topVisitors,
+  return withEnvelope({
+    instance: instance_name,
+    operation: OPERATION,
+    data: {
+      asset: {
+        id,
+        name: ctx?.name ?? null,
+        assetType: ctx?.assetType ?? null,
+        domain: ctx?.domain ?? null,
+        community: ctx?.community ?? null,
+        url: client.assetUrl(id),
       },
-      warnings,
-    });
-  } catch (error) {
-    return errorEnvelope({ instance: instance_name, operation: OPERATION, message: (error as Error).message });
-  }
+      period,
+      filters: applied,
+      lastRefreshed: await lastRefreshedP,
+      allTime: {
+        totalVisits: summary.totalVisitCount ?? 0,
+        uniqueVisitors: summary.uniqueVisitorCount ?? 0,
+        firstVisitDate: summary.firstVisitDate ?? null,
+      },
+      trend: {
+        totalVisitsInPeriod: rows.reduce((sum, r) => sum + (r.count ?? 0), 0),
+        buckets: rows,
+      },
+      topVisitors,
+    },
+    warnings,
+  });
 }

@@ -1,9 +1,8 @@
 import { ok, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
 import { fetchRelations, SEMANTIC_RELATION_TYPES as REL } from '../utils/relations.js';
 import { mapLimit } from '../utils/concurrency.js';
+import { clientFor } from './_context.js';
 const { COLUMN_TO_TABLE: COLUMN_TO_TABLE_REL_ID, DATA_ATTRIBUTE_1: DATA_ATTRIBUTE_REL_ID_1, DATA_ATTRIBUTE_2: DATA_ATTRIBUTE_REL_ID_2, GENERIC_CONNECTED_ASSET: GENERIC_CONNECTED_ASSET_REL_ID, DATA_ATTRIBUTE_REPRESENTS_MEASURE: DATA_ATTRIBUTE_REPRESENTS_MEASURE_REL_ID } = REL;
 
 
@@ -38,104 +37,94 @@ export const getMeasureDataTool = {
 export async function executeGetMeasureData(args: any): Promise<ToolResult> {
   const { instance_name, measure_asset_id } = args;
 
-  try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+  const { client } = clientFor(instance_name);
 
-    // Step 1: Find Data Attributes linked to this measure
-    const dataAttributeRelTypeIds = [
-      DATA_ATTRIBUTE_REPRESENTS_MEASURE_REL_ID,
-      DATA_ATTRIBUTE_REL_ID_1,
-      DATA_ATTRIBUTE_REL_ID_2,
-      GENERIC_CONNECTED_ASSET_REL_ID,
-    ];
+  // Step 1: Find Data Attributes linked to this measure
+  const dataAttributeRelTypeIds = [
+    DATA_ATTRIBUTE_REPRESENTS_MEASURE_REL_ID,
+    DATA_ATTRIBUTE_REL_ID_1,
+    DATA_ATTRIBUTE_REL_ID_2,
+    GENERIC_CONNECTED_ASSET_REL_ID,
+  ];
 
-    const relResults = await Promise.all(
-      dataAttributeRelTypeIds.flatMap((relTypeId) => [
-        fetchRelations(client, relTypeId, measure_asset_id),
-        fetchRelations(client, relTypeId, undefined, measure_asset_id),
-      ]),
-    );
+  const relResults = await Promise.all(
+    dataAttributeRelTypeIds.flatMap((relTypeId) => [
+      fetchRelations(client, relTypeId, measure_asset_id),
+      fetchRelations(client, relTypeId, undefined, measure_asset_id),
+    ]),
+  );
 
-    const dataAttrMap = new Map<string, any>();
-    for (const relations of relResults) {
-      for (const rel of relations) {
-        const other = rel.source.id === measure_asset_id ? rel.target : rel.source;
-        if (!dataAttrMap.has(other.id)) {
-          dataAttrMap.set(other.id, {
-            id: other.id,
-            name: other.name,
-            url: client.assetUrl(other.id),
-          });
-        }
+  const dataAttrMap = new Map<string, any>();
+  for (const relations of relResults) {
+    for (const rel of relations) {
+      const other = rel.source.id === measure_asset_id ? rel.target : rel.source;
+      if (!dataAttrMap.has(other.id)) {
+        dataAttrMap.set(other.id, {
+          id: other.id,
+          name: other.name,
+          url: client.assetUrl(other.id),
+        });
       }
     }
+  }
 
-    const dataAttributes = Array.from(dataAttrMap.values());
+  const dataAttributes = Array.from(dataAttrMap.values());
 
-    if (dataAttributes.length === 0) {
-      return ok({
-        instance: instance_name,
-        measureId: measure_asset_id,
-        measureUrl: client.assetUrl(measure_asset_id),
-        message: 'No data attributes found linked to this measure.',
-        dataAttributes: [],
-      });
-    }
-
-    // Step 2: For each data attribute, find linked Columns
-    // Bounded fan-out: each data attribute costs 6 requests plus one per column.
-    const enrichedDAs = await mapLimit(dataAttributes, 6, async (da: any) => {
-        const colRelTypeIds = [DATA_ATTRIBUTE_REL_ID_1, DATA_ATTRIBUTE_REL_ID_2, GENERIC_CONNECTED_ASSET_REL_ID];
-        const colResults = await Promise.all(
-          colRelTypeIds.flatMap((relTypeId) => [
-            fetchRelations(client, relTypeId, da.id),
-            fetchRelations(client, relTypeId, undefined, da.id),
-          ]),
-        );
-
-        const colMap = new Map<string, any>();
-        for (const relations of colResults) {
-          for (const rel of relations) {
-            const other = rel.source.id === da.id ? rel.target : rel.source;
-            // The generic relation type also links back to the measure and to
-            // sibling data attributes; those are not columns.
-            if (other.id === measure_asset_id || dataAttrMap.has(other.id)) continue;
-            if (!colMap.has(other.id)) {
-              colMap.set(other.id, { id: other.id, name: other.name, url: client.assetUrl(other.id) });
-            }
-          }
-        }
-
-        const columns = Array.from(colMap.values());
-
-        // Step 3: For each column, find the parent table
-        const enrichedCols = await mapLimit(columns, 4, async (col: any) => {
-            const tableRels = await fetchRelations(client, COLUMN_TO_TABLE_REL_ID, col.id);
-            const table = tableRels.length > 0
-              ? { id: tableRels[0].target.id, name: tableRels[0].target.name, url: client.assetUrl(tableRels[0].target.id) }
-              : null;
-            return { ...col, table };
-          });
-
-        return { ...da, columns: enrichedCols };
-      });
-
-    return okWithNext({
+  if (dataAttributes.length === 0) {
+    return ok({
       instance: instance_name,
       measureId: measure_asset_id,
       measureUrl: client.assetUrl(measure_asset_id),
-      dataAttributes: enrichedDAs,
-    }, [
-      { tool: 'get_asset_by_id', args: { instance_name, asset_id: measure_asset_id }, why: 'Get full measure asset detail.' },
-      { tool: 'get_column_semantics', args: { instance_name, column_asset_id: '<column id from dataAttributes.columns>' }, why: 'Drill into a linked column.' },
-    ], true);
-
-  } catch (error) {
-    return ok({
-      error: true,
-      message: (error as Error).message,
-      instance: instance_name,
+      message: 'No data attributes found linked to this measure.',
+      dataAttributes: [],
     });
   }
+
+  // Step 2: For each data attribute, find linked Columns
+  // Bounded fan-out: each data attribute costs 6 requests plus one per column.
+  const enrichedDAs = await mapLimit(dataAttributes, 6, async (da: any) => {
+      const colRelTypeIds = [DATA_ATTRIBUTE_REL_ID_1, DATA_ATTRIBUTE_REL_ID_2, GENERIC_CONNECTED_ASSET_REL_ID];
+      const colResults = await Promise.all(
+        colRelTypeIds.flatMap((relTypeId) => [
+          fetchRelations(client, relTypeId, da.id),
+          fetchRelations(client, relTypeId, undefined, da.id),
+        ]),
+      );
+
+      const colMap = new Map<string, any>();
+      for (const relations of colResults) {
+        for (const rel of relations) {
+          const other = rel.source.id === da.id ? rel.target : rel.source;
+          // The generic relation type also links back to the measure and to
+          // sibling data attributes; those are not columns.
+          if (other.id === measure_asset_id || dataAttrMap.has(other.id)) continue;
+          if (!colMap.has(other.id)) {
+            colMap.set(other.id, { id: other.id, name: other.name, url: client.assetUrl(other.id) });
+          }
+        }
+      }
+
+      const columns = Array.from(colMap.values());
+
+      // Step 3: For each column, find the parent table
+      const enrichedCols = await mapLimit(columns, 4, async (col: any) => {
+          const tableRels = await fetchRelations(client, COLUMN_TO_TABLE_REL_ID, col.id);
+          const table = tableRels.length > 0
+            ? { id: tableRels[0].target.id, name: tableRels[0].target.name, url: client.assetUrl(tableRels[0].target.id) }
+            : null;
+          return { ...col, table };
+        });
+
+      return { ...da, columns: enrichedCols };
+    });
+
+  return okWithNext({
+    instance: instance_name,
+    measureId: measure_asset_id,
+    measureUrl: client.assetUrl(measure_asset_id),
+    dataAttributes: enrichedDAs,
+  }, [
+    { tool: 'get_asset_by_id', args: { instance_name, asset_id: measure_asset_id }, why: 'Get full measure asset detail.' },
+    { tool: 'get_column_semantics', args: { instance_name, column_asset_id: '<column id from dataAttributes.columns>' }, why: 'Drill into a linked column.' },
+  ], true);
 }

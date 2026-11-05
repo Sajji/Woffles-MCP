@@ -1,7 +1,6 @@
-import { withEnvelope, errorEnvelope } from '../utils/tool-result.js';
+import { withEnvelope } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
+import { clientFor } from './_context.js';
 
 const CATEGORIES = [
   'ATTRIBUTE', 'ATTACHMENT', 'RELATION', 'COMMENT', 'STATUS', 'WORKFLOW',
@@ -108,43 +107,34 @@ export async function executeGetActivities(args: any): Promise<ToolResult> {
     offset = 0,
   } = args;
 
-  try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+  const { client } = clientFor(instance_name);
 
-    const qp = new URLSearchParams({ limit: String(Math.min(limit, 1000)), offset: String(offset) });
-    if (context_id) qp.set('contextId', context_id);
-    if (performed_by_user_id) qp.set('performedByUserId', performed_by_user_id);
-    for (const c of categories ?? []) qp.append('categories', c);
-    for (const d of resource_discriminators ?? []) qp.append('resourceDiscriminators', d);
-    if (start_date) qp.set('startDate', String(toEpochMs(start_date, 'start_date')));
-    if (end_date) qp.set('endDate', String(toEpochMs(end_date, 'end_date')));
+  const qp = new URLSearchParams({ limit: String(Math.min(limit, 1000)), offset: String(offset) });
+  if (context_id) qp.set('contextId', context_id);
+  if (performed_by_user_id) qp.set('performedByUserId', performed_by_user_id);
+  for (const c of categories ?? []) qp.append('categories', c);
+  for (const d of resource_discriminators ?? []) qp.append('resourceDiscriminators', d);
+  if (start_date) qp.set('startDate', String(toEpochMs(start_date, 'start_date')));
+  if (end_date) qp.set('endDate', String(toEpochMs(end_date, 'end_date')));
 
-    const resp = await client.restCall<any>(`/rest/2.0/activities?${qp.toString()}`);
-    const results: any[] = resp.results || [];
+  const resp = await client.restCall<any>(`/rest/2.0/activities?${qp.toString()}`);
+  const results: any[] = resp.results || [];
 
-    const activities = results.map((a) => ({
-      id: a.id,
-      timestamp: a.timestamp ?? null,
-      timestampIso: a.timestamp ? new Date(a.timestamp).toISOString() : null,
-      activityType: a.activityType ?? null,
-      ...describeActivity(a.description),
-      cause: a.cause ?? null,
-      callId: a.callId ?? null,
-      user: a.user ? { id: a.user.id, userName: a.user.userName ?? null } : null,
-    }));
+  const activities = results.map((a) => ({
+    id: a.id,
+    timestamp: a.timestamp ?? null,
+    timestampIso: a.timestamp ? new Date(a.timestamp).toISOString() : null,
+    activityType: a.activityType ?? null,
+    ...describeActivity(a.description),
+    cause: a.cause ?? null,
+    callId: a.callId ?? null,
+    user: a.user ? { id: a.user.id, userName: a.user.userName ?? null } : null,
+  }));
 
-    return withEnvelope({
-      instance: instance_name,
-      operation: 'get_activities',
-      data: { count: activities.length, activities },
-      pagination: { offset, limit, ...(results.length === limit ? { nextOffset: offset + limit } : {}) },
-    });
-  } catch (error) {
-    return errorEnvelope({
-      instance: instance_name,
-      operation: 'get_activities',
-      message: (error as Error).message,
-    });
-  }
+  return withEnvelope({
+    instance: instance_name,
+    operation: 'get_activities',
+    data: { count: activities.length, activities },
+    pagination: { offset, limit, ...(results.length === limit ? { nextOffset: offset + limit } : {}) },
+  });
 }

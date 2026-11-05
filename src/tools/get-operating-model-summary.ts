@@ -1,5 +1,5 @@
 import type { ToolResult } from '../types.js';
-import { errorEnvelope, withEnvelope } from '../utils/tool-result.js';
+import { withEnvelope } from '../utils/tool-result.js';
 import { loadSnapshot } from '../utils/operating-model-cache.js';
 
 export const getOperatingModelSummaryTool = {
@@ -22,63 +22,59 @@ export const getOperatingModelSummaryTool = {
 export async function executeGetOperatingModelSummary(args: any): Promise<ToolResult> {
   const { instance_name } = args || {};
   const operation = 'get_operating_model_summary';
-  try {
-    const snap = loadSnapshot(instance_name);
-    if (!snap) {
-      return withEnvelope({
-        instance: instance_name,
-        operation,
-        pretty: true,
-        data: null,
-        warnings: ['No cached operating model for this instance.'],
-        nextActions: [
-          { tool: 'refresh_operating_model', args: { instance_name }, why: 'Build the cache before summarizing.' },
-        ],
-      });
-    }
-
-    const byParent = new Map<string, string[]>();
-    for (const t of snap.assetTypes) {
-      const key = t.parentName || '(root)';
-      if (!byParent.has(key)) byParent.set(key, []);
-      byParent.get(key)!.push(t.name);
-    }
-    // Top-level families: parent buckets sorted by size, descending.
-    // Works regardless of whether the customer model has explicit roots.
-    const topLevelAssetTypeFamilies = Array.from(byParent.entries())
-      .map(([parent, children]) => ({ parent, childCount: children.length }))
-      .sort((a, b) => b.childCount - a.childCount)
-      .slice(0, 15);
-
-    const attrKindCounts: Record<string, number> = {};
-    for (const a of snap.attributeTypes) {
-      attrKindCounts[a.kind] = (attrKindCounts[a.kind] || 0) + 1;
-    }
-
+  const snap = loadSnapshot(instance_name);
+  if (!snap) {
     return withEnvelope({
       instance: instance_name,
       operation,
       pretty: true,
-      model: { snapshotHash: snap.snapshotHash, refreshedAt: snap.refreshedAt, stale: false },
-      data: {
-        counts: {
-          assetTypes: snap.assetTypes.length,
-          domainTypes: snap.domainTypes.length,
-          attributeTypes: snap.attributeTypes.length,
-          relationTypes: snap.relationTypes.length,
-          statuses: snap.statuses.length,
-        },
-        topLevelAssetTypeFamilies,
-        attributeKindDistribution: attrKindCounts,
-        statuses: snap.statuses.map((s) => s.name),
-        domainTypes: snap.domainTypes.map((d) => d.name),
-      },
+      data: null,
+      warnings: ['No cached operating model for this instance.'],
       nextActions: [
-        { tool: 'describe_asset_type', args: { instance_name, name: '<pick from topLevelAssetTypeFamilies>' }, why: 'Inspect attributes/relations/statuses for a specific asset type.' },
-        { tool: 'resolve_model_term', args: { instance_name, term: '<user term>' }, why: 'Map a free-text term to model elements.' },
+        { tool: 'refresh_operating_model', args: { instance_name }, why: 'Build the cache before summarizing.' },
       ],
     });
-  } catch (error) {
-    return errorEnvelope({ instance: instance_name, operation, message: (error as Error).message });
   }
+
+  const byParent = new Map<string, string[]>();
+  for (const t of snap.assetTypes) {
+    const key = t.parentName || '(root)';
+    if (!byParent.has(key)) byParent.set(key, []);
+    byParent.get(key)!.push(t.name);
+  }
+  // Top-level families: parent buckets sorted by size, descending.
+  // Works regardless of whether the customer model has explicit roots.
+  const topLevelAssetTypeFamilies = Array.from(byParent.entries())
+    .map(([parent, children]) => ({ parent, childCount: children.length }))
+    .sort((a, b) => b.childCount - a.childCount)
+    .slice(0, 15);
+
+  const attrKindCounts: Record<string, number> = {};
+  for (const a of snap.attributeTypes) {
+    attrKindCounts[a.kind] = (attrKindCounts[a.kind] || 0) + 1;
+  }
+
+  return withEnvelope({
+    instance: instance_name,
+    operation,
+    pretty: true,
+    model: { snapshotHash: snap.snapshotHash, refreshedAt: snap.refreshedAt, stale: false },
+    data: {
+      counts: {
+        assetTypes: snap.assetTypes.length,
+        domainTypes: snap.domainTypes.length,
+        attributeTypes: snap.attributeTypes.length,
+        relationTypes: snap.relationTypes.length,
+        statuses: snap.statuses.length,
+      },
+      topLevelAssetTypeFamilies,
+      attributeKindDistribution: attrKindCounts,
+      statuses: snap.statuses.map((s) => s.name),
+      domainTypes: snap.domainTypes.map((d) => d.name),
+    },
+    nextActions: [
+      { tool: 'describe_asset_type', args: { instance_name, name: '<pick from topLevelAssetTypeFamilies>' }, why: 'Inspect attributes/relations/statuses for a specific asset type.' },
+      { tool: 'resolve_model_term', args: { instance_name, term: '<user term>' }, why: 'Map a free-text term to model elements.' },
+    ],
+  });
 }

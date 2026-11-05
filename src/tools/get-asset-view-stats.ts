@@ -1,7 +1,6 @@
-import { withEnvelope, errorEnvelope } from '../utils/tool-result.js';
+import { withEnvelope } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
+import { clientFor } from './_context.js';
 
 export const getAssetViewStatsTool = {
   name: 'get_asset_view_stats',
@@ -46,35 +45,26 @@ export const getAssetViewStatsTool = {
 export async function executeGetAssetViewStats(args: any): Promise<ToolResult> {
   const { instance_name, mode = 'most_viewed', limit = 25, offset = 0 } = args;
 
-  try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+  const { client } = clientFor(instance_name);
 
-    const qp = new URLSearchParams({ limit: String(Math.min(limit, 1000)), offset: String(offset) });
-    const resp = await client.restCall<any>(`/rest/2.0/navigation/${encodeURIComponent(mode)}?${qp.toString()}`);
-    const results: any[] = resp.results || [];
+  const qp = new URLSearchParams({ limit: String(Math.min(limit, 1000)), offset: String(offset) });
+  const resp = await client.restCall<any>(`/rest/2.0/navigation/${encodeURIComponent(mode)}?${qp.toString()}`);
+  const results: any[] = resp.results || [];
 
-    // NavigationStatisticsEntry is flat: { assetId, name, numberOfViews, lastViewedDate } (no type).
-    const entries = results.map((e) => ({
-      assetId: e.assetId ?? null,
-      name: e.name ?? null,
-      viewCount: e.numberOfViews ?? null,
-      lastViewedDate: e.lastViewedDate ?? null,
-      lastViewedIso: e.lastViewedDate ? new Date(e.lastViewedDate).toISOString() : null,
-      url: e.assetId ? client.assetUrl(e.assetId) : null,
-    }));
+  // NavigationStatisticsEntry is flat: { assetId, name, numberOfViews, lastViewedDate } (no type).
+  const entries = results.map((e) => ({
+    assetId: e.assetId ?? null,
+    name: e.name ?? null,
+    viewCount: e.numberOfViews ?? null,
+    lastViewedDate: e.lastViewedDate ?? null,
+    lastViewedIso: e.lastViewedDate ? new Date(e.lastViewedDate).toISOString() : null,
+    url: e.assetId ? client.assetUrl(e.assetId) : null,
+  }));
 
-    return withEnvelope({
-      instance: instance_name,
-      operation: 'get_asset_view_stats',
-      data: { mode, count: entries.length, entries },
-      pagination: { offset, limit, ...(results.length === limit ? { nextOffset: offset + limit } : {}) },
-    });
-  } catch (error) {
-    return errorEnvelope({
-      instance: instance_name,
-      operation: 'get_asset_view_stats',
-      message: (error as Error).message,
-    });
-  }
+  return withEnvelope({
+    instance: instance_name,
+    operation: 'get_asset_view_stats',
+    data: { mode, count: entries.length, entries },
+    pagination: { offset, limit, ...(results.length === limit ? { nextOffset: offset + limit } : {}) },
+  });
 }

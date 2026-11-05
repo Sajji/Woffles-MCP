@@ -1,7 +1,6 @@
-import { withEnvelope, errorEnvelope } from '../utils/tool-result.js';
+import { withEnvelope } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
-import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
+import { clientFor } from './_context.js';
 
 export const findTagsTool = {
   name: 'find_tags',
@@ -53,51 +52,42 @@ export const findTagsTool = {
 export async function executeFindTags(args: any): Promise<ToolResult> {
   const { instance_name, name, include_assets = false, assets_per_tag = 25, limit = 100, offset = 0 } = args;
 
-  try {
-    const instance = getInstance(instance_name);
-    const client = new CollibraClient(instance);
+  const { client } = clientFor(instance_name);
 
-    const qp = new URLSearchParams({ limit: String(Math.min(limit, 1000)), offset: String(offset) });
-    if (name) qp.set('name', name);
-    const resp = await client.restCall<any>(`/rest/2.0/tags?${qp.toString()}`);
-    const results: any[] = resp.results || [];
+  const qp = new URLSearchParams({ limit: String(Math.min(limit, 1000)), offset: String(offset) });
+  if (name) qp.set('name', name);
+  const resp = await client.restCall<any>(`/rest/2.0/tags?${qp.toString()}`);
+  const results: any[] = resp.results || [];
 
-    const tags: any[] = results.map((t) => ({
-      id: t.id,
-      name: t.name,
-      description: t.description ?? null,
-      assetsCount: t.assetsCount ?? null,
-    }));
+  const tags: any[] = results.map((t) => ({
+    id: t.id,
+    name: t.name,
+    description: t.description ?? null,
+    assetsCount: t.assetsCount ?? null,
+  }));
 
-    if (include_assets) {
-      for (const tag of tags) {
-        try {
-          const assetsResp = await client.restCall<any>(
-            `/rest/2.0/assets?tagNames=${encodeURIComponent(tag.name)}&limit=${Math.min(assets_per_tag, 1000)}`,
-          );
-          tag.assets = (assetsResp.results || []).map((a: any) => ({
-            id: a.id,
-            name: a.name,
-            type: a.type?.name ?? null,
-            url: client.assetUrl(a.id),
-          }));
-        } catch (err) {
-          tag.assetsError = (err as Error).message;
-        }
+  if (include_assets) {
+    for (const tag of tags) {
+      try {
+        const assetsResp = await client.restCall<any>(
+          `/rest/2.0/assets?tagNames=${encodeURIComponent(tag.name)}&limit=${Math.min(assets_per_tag, 1000)}`,
+        );
+        tag.assets = (assetsResp.results || []).map((a: any) => ({
+          id: a.id,
+          name: a.name,
+          type: a.type?.name ?? null,
+          url: client.assetUrl(a.id),
+        }));
+      } catch (err) {
+        tag.assetsError = (err as Error).message;
       }
     }
-
-    return withEnvelope({
-      instance: instance_name,
-      operation: 'find_tags',
-      data: { count: tags.length, total: resp.total ?? null, tags },
-      pagination: { offset, limit, ...(results.length === limit ? { nextOffset: offset + limit } : {}) },
-    });
-  } catch (error) {
-    return errorEnvelope({
-      instance: instance_name,
-      operation: 'find_tags',
-      message: (error as Error).message,
-    });
   }
+
+  return withEnvelope({
+    instance: instance_name,
+    operation: 'find_tags',
+    data: { count: tags.length, total: resp.total ?? null, tags },
+    pagination: { offset, limit, ...(results.length === limit ? { nextOffset: offset + limit } : {}) },
+  });
 }
