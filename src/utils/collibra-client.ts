@@ -47,6 +47,29 @@ const CURSOR_CAPABLE_PATHS = new Set([
  * a 2026.10 tenant: Basic and session auth both fail, and Collibra's hosted
  * MCP fails identically, so the cause is instance provisioning, not the client.
  */
+/**
+ * Error thrown for a non-2xx Collibra response. Carries the HTTP status so
+ * callers can distinguish "not found" (404) from permission/server failures
+ * instead of parsing the message text.
+ */
+export class CollibraHttpError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = 'CollibraHttpError';
+  }
+}
+
+/** True when the error is a Collibra 404 Not Found. */
+export function isNotFound(error: unknown): boolean {
+  return error instanceof CollibraHttpError && error.status === 404;
+}
+
+/** Re-wrap an error with a prefix, preserving the HTTP status when present. */
+function wrapError(prefix: string, error: unknown): Error {
+  const message = `${prefix}: ${(error as Error).message}`;
+  return error instanceof CollibraHttpError ? new CollibraHttpError(message, error.status) : new Error(message);
+}
+
 export const LINEAGE_UNAVAILABLE_MESSAGE =
   'Technical lineage is not available for this user on this instance (lineage service returned 401 "Unauthorized User Token"). ' +
   'Credentials are valid; the lineage service rejected the user mapping. Ask a Collibra admin to confirm that technical lineage is ' +
@@ -108,26 +131,26 @@ export class CollibraClient {
 
       if (!response.ok) {
         if (response.status === 403) {
-          throw new Error(
+          throw new CollibraHttpError(
             `REST API call failed: 403 Forbidden — the authenticated user is likely missing a required Collibra permission or DGC scope for this operation.`,
+            403,
           );
         }
         if (response.status === 401 && endpoint.startsWith('/technical_lineage_resource')) {
           const body = await response.text().catch(() => '');
           if (body.includes('Unauthorized User Token')) {
-            throw new Error(LINEAGE_UNAVAILABLE_MESSAGE);
+            throw new CollibraHttpError(LINEAGE_UNAVAILABLE_MESSAGE, 401);
           }
         }
-        throw new Error(
-          `REST API call failed: ${response.status} ${response.statusText}`
+        throw new CollibraHttpError(
+          `REST API call failed: ${response.status} ${response.statusText}`,
+          response.status,
         );
       }
 
       return await response.json() as T;
     } catch (error) {
-      throw new Error(
-        `Failed to call Collibra REST API at ${url}: ${(error as Error).message}`
-      );
+      throw wrapError(`Failed to call Collibra REST API at ${url}`, error);
     }
   }
 
@@ -155,15 +178,16 @@ export class CollibraClient {
           detail = errorBody.slice(0, 300);
         }
         if (response.status === 403) {
-          throw new Error(
+          throw new CollibraHttpError(
             `403 Forbidden — the authenticated user is likely missing the required Collibra permission (e.g. Insights/Usage Analytics view).${detail ? ` ${detail}` : ''}`,
+            403,
           );
         }
-        throw new Error(`${response.status} ${response.statusText}${detail ? ` - ${detail}` : ''}`);
+        throw new CollibraHttpError(`${response.status} ${response.statusText}${detail ? ` - ${detail}` : ''}`, response.status);
       }
       return (await response.json()) as T;
     } catch (error) {
-      throw new Error(`Failed to call Collibra session API at ${url}: ${(error as Error).message}`);
+      throw wrapError(`Failed to call Collibra session API at ${url}`, error);
     }
   }
 
@@ -186,12 +210,14 @@ export class CollibraClient {
       if (!response.ok) {
         const errorBody = await response.text().catch(() => '');
         if (response.status === 403) {
-          throw new Error(
+          throw new CollibraHttpError(
             `REST API call failed: 403 Forbidden — the authenticated user is likely missing a required Collibra permission or DGC scope for this operation.${errorBody ? ` - ${errorBody}` : ''}`,
+            403,
           );
         }
-        throw new Error(
-          `REST API call failed: ${response.status} ${response.statusText}${errorBody ? ` - ${errorBody}` : ''}`
+        throw new CollibraHttpError(
+          `REST API call failed: ${response.status} ${response.statusText}${errorBody ? ` - ${errorBody}` : ''}`,
+          response.status,
         );
       }
 
@@ -199,9 +225,7 @@ export class CollibraClient {
       if (!text) return {} as T;
       return JSON.parse(text) as T;
     } catch (error) {
-      throw new Error(
-        `Failed to call Collibra REST API (${method}) at ${url}: ${(error as Error).message}`
-      );
+      throw wrapError(`Failed to call Collibra REST API (${method}) at ${url}`, error);
     }
   }
 

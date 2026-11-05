@@ -1,7 +1,7 @@
 import { okWithNext, ok } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
+import { CollibraClient, isNotFound } from '../utils/collibra-client.js';
 
 export const addMappingTool = {
   name: 'add_mapping',
@@ -54,12 +54,30 @@ export async function executeAddMapping(args: any): Promise<ToolResult> {
     const instance = getInstance(instance_name);
     const client = new CollibraClient(instance);
 
-    // Idempotency: return the existing mapping for this external pair if present
-    const existing = await client
-      .restCall<any>(
+    // Idempotency: return the existing mapping for this external pair if present.
+    // Only a 404 means "no mapping"; auth/server errors must not fall through to a POST.
+    let existing: any = null;
+    try {
+      existing = await client.restCall<any>(
         `/rest/2.0/mappings/externalSystem/${encodeURIComponent(external_system_id)}/externalEntity/${encodeURIComponent(external_entity_id)}`,
-      )
-      .catch(() => null);
+      );
+    } catch (err) {
+      if (!isNotFound(err)) throw err;
+    }
+    const existingTarget = existing?.mappedResource?.id;
+    if (existing?.id && existingTarget && existingTarget !== mapped_resource_id) {
+      // The external entity is already mapped to a DIFFERENT Collibra resource.
+      return ok({
+        error: true,
+        status: 'conflict',
+        message:
+          `External entity "${external_entity_id}" (system "${external_system_id}") is already mapped to ` +
+          `${existing.mappedResource?.name ?? existingTarget} (${existingTarget}), not ${mapped_resource_id}. ` +
+          'Remove the existing mapping first (remove_mapping) if it should be re-pointed.',
+        mapping: existing,
+        instance: instance_name,
+      });
+    }
     if (existing?.id) {
       return okWithNext(
         {

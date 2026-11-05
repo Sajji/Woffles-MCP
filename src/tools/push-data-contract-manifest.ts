@@ -2,6 +2,7 @@ import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { authFetch } from '../utils/auth.js';
+import { buildMultipartBody } from '../utils/multipart.js';
 
 export const pushDataContractManifestTool = {
   name: 'push_data_contract_manifest',
@@ -51,41 +52,6 @@ export const pushDataContractManifestTool = {
   },
 };
 
-/**
- * Build a multipart/form-data body manually, avoiding any external form-data dependency.
- */
-function buildMultipartBody(
-  manifest: string,
-  fields: Record<string, string>,
-): { body: Buffer; contentType: string } {
-  const boundary = `----CollibraMCPBoundary${Date.now().toString(16)}`;
-  const parts: Buffer[] = [];
-
-  // File part
-  const fileHeader =
-    `--${boundary}\r\n` +
-    `Content-Disposition: form-data; name="manifest"; filename="contract.yaml"\r\n` +
-    `Content-Type: application/yaml\r\n\r\n`;
-  parts.push(Buffer.from(fileHeader, 'utf8'));
-  parts.push(Buffer.from(manifest, 'utf8'));
-  parts.push(Buffer.from('\r\n', 'utf8'));
-
-  // String fields
-  for (const [name, value] of Object.entries(fields)) {
-    const fieldPart =
-      `--${boundary}\r\n` +
-      `Content-Disposition: form-data; name="${name}"\r\n\r\n` +
-      `${value}\r\n`;
-    parts.push(Buffer.from(fieldPart, 'utf8'));
-  }
-
-  parts.push(Buffer.from(`--${boundary}--\r\n`, 'utf8'));
-  return {
-    body: Buffer.concat(parts),
-    contentType: `multipart/form-data; boundary=${boundary}`,
-  };
-}
-
 export async function executePushDataContractManifest(args: any): Promise<ToolResult> {
   const { instance_name, manifest, manifest_id, version, force = false, active = true } = args;
 
@@ -95,10 +61,16 @@ export async function executePushDataContractManifest(args: any): Promise<ToolRe
     const fields: Record<string, string> = {};
     if (manifest_id) fields['manifestId'] = manifest_id;
     if (version) fields['version'] = version;
-    if (force) fields['force'] = 'true';
-    if (active) fields['active'] = 'true';
+    // Send both flags explicitly so false is honoured even if the server defaults to true.
+    fields['force'] = String(force === true);
+    fields['active'] = String(active !== false);
 
-    const { body, contentType } = buildMultipartBody(manifest, fields);
+    const { body, contentType } = buildMultipartBody(fields, {
+      field: 'manifest',
+      filename: 'contract.yaml',
+      contentType: 'application/yaml',
+      content: manifest,
+    });
     const url = `${instance.baseUrl}/rest/dataProduct/v1/dataContracts/addFromManifest`;
 
     const response = await authFetch(instance, url, {

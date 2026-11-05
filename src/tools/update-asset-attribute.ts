@@ -2,6 +2,7 @@ import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
+import { applyAttributeSetPlans, getAttributeTypeInfo, planAttributeSet } from '../utils/attributes.js';
 
 export const updateAssetAttributeTool = {
   name: 'update_asset_attribute',
@@ -55,88 +56,44 @@ export async function executeUpdateAssetAttribute(args: any): Promise<ToolResult
     const instance = getInstance(instance_name);
     const client = new CollibraClient(instance);
 
-    // Fetch asset info, current attribute value, and attribute type metadata in parallel
-    const [asset, attributesResponse, attrTypeResponse] = await Promise.all([
-      client.restCall<any>(`/rest/2.0/assets/${asset_id}`),
-      client.restCall<any>(
-        `/rest/2.0/attributes?assetId=${asset_id}&typeIds=${attribute_type_id}&limit=1`
-      ),
-      client.restCall<any>(
-        `/rest/2.0/attributeTypes?offset=0&limit=1&nameMatchMode=EXACT`
-      ).catch(() => null), // non-critical — we'll try to fetch the specific type
+    const [asset, attrType] = await Promise.all([
+      client.restCall<any>(`/rest/2.0/assets/${encodeURIComponent(asset_id)}`),
+      getAttributeTypeInfo(client, attribute_type_id),
     ]);
-
-    // Also fetch the specific attribute type by ID for its name
-    let attrTypeName = 'Unknown';
-    try {
-      const attrType = await client.restCall<any>(`/rest/2.0/attributeTypes/${attribute_type_id}`);
-      attrTypeName = attrType.name || 'Unknown';
-    } catch {
-      // Fall back — not critical
-    }
+    // Coerces the value by kind (DATE→epoch ms, MULTI_VALUE_LIST→split, RICH_TEXT→HTML…)
+    // and covers every existing value record, not just the first.
+    const plan = await planAttributeSet(client, asset_id, attrType, new_value);
 
     const assetName = asset.name || 'Unknown';
-    const existingAttributes = attributesResponse.results || [];
-    const existingAttr = existingAttributes[0];
-    const currentValue = existingAttr?.value ?? '(not set)';
+    const currentValue = plan.current.length === 0 ? '(not set)' : plan.current.length === 1 ? plan.current[0] : plan.current;
+    const proposedValue = plan.proposed.length === 1 ? plan.proposed[0] : plan.proposed;
+    const attributeType = { id: attribute_type_id, name: attrType.name, kind: attrType.kind };
 
     // Preview mode
     if (!confirm) {
-      const preview: any = {
+      return okPretty({
         mode: 'PREVIEW — no changes made',
-        asset: {
-          id: asset_id,
-          name: assetName,
-          url: client.assetUrl(asset_id),
-        },
-        attributeType: {
-          id: attribute_type_id,
-          name: attrTypeName,
-        },
+        asset: { id: asset_id, name: assetName, url: client.assetUrl(asset_id) },
+        attributeType,
         currentValue,
-        proposedValue: new_value,
+        proposedValue,
+        action: plan.action,
         instructions: 'To apply this change, call this tool again with confirm=true.',
-      };
-      return okPretty(preview);
+      });
     }
 
     // Confirm mode — apply the change
-    let result: any;
-
-    if (existingAttr) {
-      // PATCH existing attribute
-      result = await client.restCallWithBody<any>(
-        `/rest/2.0/attributes/${existingAttr.id}`,
-        'PATCH',
-        { id: existingAttr.id, value: new_value },
-      );
-    } else {
-      // POST a new attribute (asset doesn't have one for this type yet)
-      result = await client.restCallWithBody<any>(
-        '/rest/2.0/attributes',
-        'POST',
-        {
-          assetId: asset_id,
-          typeId: attribute_type_id,
-          value: new_value,
-        },
-      );
-    }
+    const result = await applyAttributeSetPlans(client, [plan]);
 
     const output: any = {
       mode: 'APPLIED',
-      asset: {
-        id: asset_id,
-        name: assetName,
-        url: client.assetUrl(asset_id),
-      },
-      attributeType: {
-        id: attribute_type_id,
-        name: attrTypeName,
-      },
+      asset: { id: asset_id, name: assetName, url: client.assetUrl(asset_id) },
+      attributeType,
       previousValue: currentValue,
-      newValue: new_value,
-      attributeId: result.id || existingAttr?.id,
+      newValue: proposedValue,
+      action: plan.action,
+      attributeIds: [...result.patched, ...result.posted].map((a: any) => a?.id).filter(Boolean),
+      ...(result.deleted.length ? { deletedAttributeIds: result.deleted } : {}),
     };
 
     return okWithNext(output, [
@@ -144,7 +101,9 @@ export async function executeUpdateAssetAttribute(args: any): Promise<ToolResult
     ], true);
   } catch (error) {
     return ok({
-      error: `Failed to update asset attribute: ${(error as Error).message}`,
+      error: true,
+      message: `Failed to update asset attribute: ${(error as Error).message}`,
+      instance: instance_name,
     });
   }
 }

@@ -1,7 +1,7 @@
 import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
+import { CollibraClient, attrKindFromDiscriminator } from '../utils/collibra-client.js';
 
 const VALID_KINDS = [
   'STRING',
@@ -124,6 +124,22 @@ export async function executeCreateAttributeType(args: any): Promise<ToolResult>
 
     const existing = await client.restCall<any>(`/rest/2.0/attributeTypes?${checkParams.toString()}`);
     const match = (existing.results || []).find((t: any) => t.name === name);
+
+    const matchKind = match
+      ? attrKindFromDiscriminator(match.resourceType ?? match.attributeTypeDiscriminator ?? match.resourceDiscriminator)
+      : null;
+    if (match && matchKind && matchKind !== kind) {
+      // Attribute type names are unique; an existing type of another kind is NOT the requested one.
+      return ok({
+        error: true,
+        status: 'conflict',
+        message:
+          `Attribute type "${name}" already exists with kind ${matchKind}, not the requested ${kind}. ` +
+          'Choose a different name or use the existing attribute type.',
+        existing: { id: match.id, name: match.name, kind: matchKind },
+        instance: instance_name,
+      });
+    }
 
     if (match) {
       return okPretty({

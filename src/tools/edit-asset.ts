@@ -1,7 +1,16 @@
 import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
+import { CollibraClient, isNotFound } from '../utils/collibra-client.js';
+import { findRelation } from '../utils/relations.js';
+import { pickExact } from '../utils/resolve.js';
+import {
+  coerceAttributeValues,
+  getAttributeTypeInfo,
+  planAttributeSet,
+  type AttributeSetPlan,
+  type AttributeTypeInfo,
+} from '../utils/attributes.js';
 
 /**
  * `edit_asset` — chip-inspired multi-op tool that lets the agent apply a
@@ -107,8 +116,10 @@ interface ResolvedOp {
   current?: unknown;
   /** Proposed value/target (for preview). */
   proposed?: unknown;
-  /** Existing attribute IDs matching the op (for update_attribute/remove_attribute). */
+  /** Existing attribute IDs matching the op (for remove_attribute). */
   existingAttributeIds?: string[];
+  /** Planned attribute writes (for update_attribute / add_attribute). */
+  attrPlan?: AttributeSetPlan;
   /** Existing relation ID (for remove_relation / dedup of add_relation). */
   existingRelationId?: string;
   /** For add_tag: whether the tag is already present (so apply is a no-op). */
@@ -128,70 +139,83 @@ function isUuid(v: string): boolean {
   return typeof v === 'string' && UUID_RE.test(v.trim());
 }
 
+type Resolved<T> = { ok: true; value: T } | { ok: false; error: string };
+
 /**
- * Resolve a resource role by UUID or by (case-insensitive) name. Returns the
- * role's id and canonical name, or null when no role matches.
+ * Resolve a resource role by UUID or by exact (case-insensitive) name.
+ * Never guesses: a partial-name hit or several exact hits is an error.
  */
 async function resolveRoleId(
   client: CollibraClient,
   role: string,
-): Promise<{ id: string; name: string } | null> {
+): Promise<Resolved<{ id: string; name: string }>> {
   if (isUuid(role)) {
     try {
-      const r = await client.restCall<any>(`/rest/2.0/roles/${role}`);
-      return { id: r.id, name: r.name };
-    } catch {
-      return { id: role, name: role };
+      const r = await client.restCall<any>(`/rest/2.0/roles/${encodeURIComponent(role.trim())}`);
+      return { ok: true, value: { id: r.id, name: r.name } };
+    } catch (err) {
+      if (isNotFound(err)) return { ok: false, error: `Role with UUID "${role}" not found.` };
+      throw err;
     }
   }
-  const resp = await client
-    .restCall<any>(`/rest/2.0/roles?name=${encodeURIComponent(role)}&limit=100`)
-    .catch(() => ({ results: [] }));
-  const results: any[] = resp.results || [];
-  const exact = results.find((x) => x.name?.toLowerCase() === role.toLowerCase());
-  const pick = exact || results[0];
-  return pick ? { id: pick.id, name: pick.name } : null;
+  const params = new URLSearchParams({ name: role, limit: '100' });
+  const resp = await client.restCall<any>(`/rest/2.0/roles?${params.toString()}`);
+  const pick = pickExact<any>(resp.results || [], role, (x) => [x.name], (x) => x.name, 'role');
+  return pick.ok ? { ok: true, value: { id: pick.match.id, name: pick.match.name } } : { ok: false, error: pick.message };
 }
 
 /**
- * Resolve an owner (user or group) by UUID, username, email, or group name.
- * Users are tried before groups. Returns the owner id, its type, and a label.
+ * Resolve an owner (user or group) by UUID, or by exact username / email /
+ * group name. Users are tried before groups. Never guesses on partial matches.
  */
 async function resolveOwnerId(
   client: CollibraClient,
   owner: string,
-): Promise<{ id: string; type: 'User' | 'UserGroup'; label: string } | null> {
+): Promise<Resolved<{ id: string; type: 'User' | 'UserGroup'; label: string }>> {
   if (isUuid(owner)) {
+    const id = encodeURIComponent(owner.trim());
     try {
-      const u = await client.restCall<any>(`/rest/2.0/users/${owner}`);
-      return { id: u.id, type: 'User', label: u.userName };
-    } catch { /* fall through to group */ }
+      const u = await client.restCall<any>(`/rest/2.0/users/${id}`);
+      return { ok: true, value: { id: u.id, type: 'User', label: u.userName } };
+    } catch (err) {
+      if (!isNotFound(err)) throw err;
+    }
     try {
-      const g = await client.restCall<any>(`/rest/2.0/userGroups/${owner}`);
-      return { id: g.id, type: 'UserGroup', label: g.name };
-    } catch { /* fall through */ }
-    return { id: owner, type: 'User', label: owner };
+      const g = await client.restCall<any>(`/rest/2.0/userGroups/${id}`);
+      return { ok: true, value: { id: g.id, type: 'UserGroup', label: g.name } };
+    } catch (err) {
+      if (!isNotFound(err)) throw err;
+    }
+    return { ok: false, error: `No user or user group with UUID "${owner}".` };
   }
-  // Try user by name/email
-  try {
-    const u = await client.restCall<any>(`/rest/2.0/users?name=${encodeURIComponent(owner)}&limit=10`);
-    const results: any[] = u.results || [];
-    const match =
-      results.find(
-        (x) =>
-          x.userName?.toLowerCase() === owner.toLowerCase() ||
-          x.emailAddress?.toLowerCase() === owner.toLowerCase(),
-      ) || results[0];
-    if (match) return { id: match.id, type: 'User', label: match.userName };
-  } catch { /* fall through to group */ }
-  // Try group by name
-  try {
-    const g = await client.restCall<any>(`/rest/2.0/userGroups?name=${encodeURIComponent(owner)}&limit=10`);
-    const results: any[] = g.results || [];
-    const match = results.find((x) => x.name?.toLowerCase() === owner.toLowerCase()) || results[0];
-    if (match) return { id: match.id, type: 'UserGroup', label: match.name };
-  } catch { /* fall through */ }
-  return null;
+
+  const userResp = await client.restCall<any>(
+    `/rest/2.0/users?${new URLSearchParams({ name: owner, limit: '25' }).toString()}`,
+  );
+  const users = pickExact<any>(
+    userResp.results || [],
+    owner,
+    (x) => [x.userName, x.emailAddress],
+    (x) => `${x.userName}${x.emailAddress ? ` <${x.emailAddress}>` : ''}`,
+    'user',
+  );
+  if (users.ok) return { ok: true, value: { id: users.match.id, type: 'User', label: users.match.userName } };
+  if (users.reason === 'ambiguous') return { ok: false, error: users.message };
+
+  const groupResp = await client.restCall<any>(
+    `/rest/2.0/userGroups?${new URLSearchParams({ name: owner, limit: '25' }).toString()}`,
+  );
+  const groups = pickExact<any>(groupResp.results || [], owner, (x) => [x.name], (x) => x.name, 'user group');
+  if (groups.ok) return { ok: true, value: { id: groups.match.id, type: 'UserGroup', label: groups.match.name } };
+  if (groups.reason === 'ambiguous') return { ok: false, error: groups.message };
+
+  const similar = [...users.candidates, ...groups.candidates].slice(0, 10);
+  return {
+    ok: false,
+    error:
+      `No user (username/email) or user group named exactly "${owner}".` +
+      (similar.length ? ` Similar: ${similar.join(', ')}. Use the exact name or the UUID.` : ''),
+  };
 }
 
 export async function executeEditAsset(args: any): Promise<ToolResult> {
@@ -200,13 +224,17 @@ export async function executeEditAsset(args: any): Promise<ToolResult> {
   if (!Array.isArray(operations) || operations.length === 0) {
     return ok({ error: 'operations must be a non-empty array.' });
   }
+  if (!isUuid(asset_id)) {
+    return ok({ error: true, message: `asset_id must be a UUID (got "${asset_id}").`, instance: instance_name });
+  }
 
   try {
     const instance = getInstance(instance_name);
     const client = new CollibraClient(instance);
+    const assetPath = `/rest/2.0/assets/${encodeURIComponent(asset_id)}`;
 
     // Fetch the asset once
-    const asset = await client.restCall<any>(`/rest/2.0/assets/${asset_id}`);
+    const asset = await client.restCall<any>(assetPath);
 
     // Resolve all ops up front: figure out current state, distinguish PATCH vs POST etc.
     const resolved: ResolvedOp[] = await Promise.all(
@@ -218,26 +246,52 @@ export async function executeEditAsset(args: any): Promise<ToolResult> {
             if (!raw.attribute_type_id) {
               return { op: raw.op, raw, error: 'attribute_type_id is required.' };
             }
-            const resp = await client.restCall<any>(
-              `/rest/2.0/attributes?assetId=${asset_id}&typeIds=${raw.attribute_type_id}&limit=100`,
-            );
-            const existing = (resp.results || []) as any[];
-            const ids = existing.map((a) => a.id);
             if (raw.op === 'remove_attribute') {
-              return { op: raw.op, raw, current: existing.map((a) => a.value), proposed: null, existingAttributeIds: ids };
+              const existing = await client.restPaginate<any>('/rest/2.0/attributes', {
+                assetId: asset_id,
+                typeIds: raw.attribute_type_id,
+              });
+              return { op: raw.op, raw, current: existing.map((a) => a.value), proposed: null, existingAttributeIds: existing.map((a) => a.id) };
             }
-            if (raw.op === 'add_attribute') {
-              return { op: raw.op, raw, current: existing.map((a) => a.value), proposed: raw.value, existingAttributeIds: ids };
+            let typeInfo: AttributeTypeInfo;
+            try {
+              typeInfo = await getAttributeTypeInfo(client, raw.attribute_type_id);
+            } catch (err) {
+              return { op: raw.op, raw, error: (err as Error).message };
             }
-            // update_attribute → PATCH if exists else POST
-            return {
-              op: raw.op,
-              raw,
-              current: existing[0]?.value ?? '(not set)',
-              proposed: raw.value,
-              existingAttributeIds: ids,
-              notes: existing.length > 0 ? 'PATCH (existing)' : 'POST (new)',
-            };
+            try {
+              if (raw.op === 'add_attribute') {
+                const existing = await client.restPaginate<any>('/rest/2.0/attributes', {
+                  assetId: asset_id,
+                  typeIds: raw.attribute_type_id,
+                });
+                const values = coerceAttributeValues(typeInfo, raw.value);
+                return {
+                  op: raw.op,
+                  raw,
+                  current: existing.map((a) => a.value),
+                  proposed: values,
+                  attrPlan: {
+                    assetId: asset_id, typeId: typeInfo.id, current: existing.map((a) => a.value), proposed: values,
+                    patch: [], post: values.map((value) => ({ assetId: asset_id, typeId: typeInfo.id, value })), delete: [],
+                    action: 'ADD (POST)',
+                  },
+                };
+              }
+              // update_attribute → set the attribute to exactly this value (coerced by
+              // kind; surplus values of a multi-value attribute are deleted).
+              const plan = await planAttributeSet(client, asset_id, typeInfo, raw.value);
+              return {
+                op: raw.op,
+                raw,
+                current: plan.current.length === 0 ? '(not set)' : plan.current.length === 1 ? plan.current[0] : plan.current,
+                proposed: plan.proposed.length === 1 ? plan.proposed[0] : plan.proposed,
+                attrPlan: plan,
+                notes: plan.action,
+              };
+            } catch (err) {
+              return { op: raw.op, raw, error: (err as Error).message };
+            }
           }
           case 'update_property': {
             if (!raw.property || raw.value === undefined) {
@@ -254,14 +308,14 @@ export async function executeEditAsset(args: any): Promise<ToolResult> {
             if (!raw.target_asset_id || !raw.relation_type_id) {
               return { op: raw.op, raw, error: 'target_asset_id and relation_type_id are required.' };
             }
-            const params = new URLSearchParams({
+            if (!isUuid(raw.target_asset_id) || !isUuid(raw.relation_type_id)) {
+              return { op: raw.op, raw, error: 'target_asset_id and relation_type_id must be UUIDs.' };
+            }
+            const match = await findRelation(client, {
               sourceId: asset_id,
-              typeId: raw.relation_type_id,
-              limit: '1000',
-              offset: '0',
+              targetId: raw.target_asset_id,
+              relationTypeId: raw.relation_type_id,
             });
-            const resp = await client.restCall<any>(`/rest/2.0/relations?${params.toString()}`);
-            const match = (resp.results || []).find((r: any) => r.target?.id === raw.target_asset_id);
             const existingId = match?.id;
             return {
               op: raw.op,
@@ -279,9 +333,7 @@ export async function executeEditAsset(args: any): Promise<ToolResult> {
             if (!raw.tag) {
               return { op: raw.op, raw, error: 'tag is required.' };
             }
-            const resp = await client
-              .restCall<any>(`/rest/2.0/assets/${asset_id}/tags`)
-              .catch(() => []);
+            const resp = await client.restCall<any>(`${assetPath}/tags`);
             const existing: string[] = (Array.isArray(resp) ? resp : resp.results || []).map(
               (t: any) => (typeof t === 'string' ? t : t.name),
             );
@@ -300,18 +352,18 @@ export async function executeEditAsset(args: any): Promise<ToolResult> {
             if (!raw.role || !raw.owner) {
               return { op: raw.op, raw, error: 'role and owner are required.' };
             }
-            const roleRes = await resolveRoleId(client, raw.role);
-            if (!roleRes) {
-              return { op: raw.op, raw, error: `Role "${raw.role}" not found.` };
-            }
-            const ownerRes = await resolveOwnerId(client, raw.owner);
-            if (!ownerRes) {
-              return { op: raw.op, raw, error: `Owner "${raw.owner}" not found.` };
-            }
-            const resp = await client
-              .restCall<any>(`/rest/2.0/responsibilities?resourceIds=${asset_id}&includeInherited=false&limit=1000`)
-              .catch(() => ({ results: [] }));
-            const results: any[] = resp.results || [];
+            const roleLookup = await resolveRoleId(client, raw.role);
+            if (!roleLookup.ok) return { op: raw.op, raw, error: roleLookup.error };
+            const ownerLookup = await resolveOwnerId(client, raw.owner);
+            if (!ownerLookup.ok) return { op: raw.op, raw, error: ownerLookup.error };
+            const roleRes = roleLookup.value;
+            const ownerRes = ownerLookup.value;
+            const results = await client.restPaginate<any>('/rest/2.0/responsibilities', {
+              resourceIds: asset_id,
+              roleIds: roleRes.id,
+              ownerIds: ownerRes.id,
+              includeInherited: 'false',
+            });
             const match = results.find(
               (r) => r.role?.id === roleRes.id && r.owner?.id === ownerRes.id && r.baseResource?.id === asset_id,
             );
@@ -365,19 +417,23 @@ export async function executeEditAsset(args: any): Promise<ToolResult> {
         body[r.raw.property] = r.raw.value;
       }
       try {
-        await client.restCallWithBody<any>(`/rest/2.0/assets/${asset_id}`, 'PATCH', body);
+        await client.restCallWithBody<any>(assetPath, 'PATCH', body);
         propOps.forEach((r) => applied.push({ op: r.op, property: r.raw.property, newValue: r.raw.value, status: 'APPLIED' }));
       } catch (err) {
         propOps.forEach((r) => errors.push({ op: r.op, input: r.raw, error: (err as Error).message }));
       }
     }
 
-    // 2. Attribute removals → one DELETE per attribute id (Collibra has no /attributes/bulk DELETE)
+    // 2. Attribute removals → one DELETE per attribute id (Collibra has no /attributes/bulk DELETE).
+    //    Includes surplus values that update_attribute removes from multi-value attributes.
     const removeAttrOps = resolved.filter((r) => r.op === 'remove_attribute' && !r.error);
-    for (const r of removeAttrOps) {
+    const surplusOps = resolved
+      .filter((r) => r.op === 'update_attribute' && !r.error && (r.attrPlan?.delete.length ?? 0) > 0)
+      .map((r) => ({ ...r, existingAttributeIds: r.attrPlan!.delete }));
+    for (const r of [...removeAttrOps, ...surplusOps]) {
       for (const aid of r.existingAttributeIds || []) {
         try {
-          await client.restCallWithBody<void>(`/rest/2.0/attributes/${aid}`, 'DELETE', undefined as any);
+          await client.restCallWithBody<void>(`/rest/2.0/attributes/${encodeURIComponent(aid)}`, 'DELETE', undefined as any);
           applied.push({ op: r.op, attribute_type_id: r.raw.attribute_type_id, attributeId: aid, status: 'DELETED' });
         } catch (err) {
           errors.push({ op: r.op, input: r.raw, attributeId: aid, error: (err as Error).message });
@@ -385,32 +441,13 @@ export async function executeEditAsset(args: any): Promise<ToolResult> {
       }
     }
 
-    // 3. Attribute updates/adds → batch into /attributes/bulk PATCH + POST
-    const updateOps = resolved.filter((r) => r.op === 'update_attribute' && !r.error);
-    const addOps = resolved.filter((r) => r.op === 'add_attribute' && !r.error);
-
-    // Markdown → HTML for values targeting RICH_TEXT attribute types
-    const richTextValues = new Map<any, string>();
-    for (const r of [...updateOps, ...addOps]) {
-      const { entries } = await client.convertRichTextEntries([
-        { typeId: r.raw.attribute_type_id, value: r.raw.value },
-      ]);
-      richTextValues.set(r, entries[0].value);
-    }
-
-    const patchBody: { id: string; value: string }[] = [];
-    const postBody: { assetId: string; typeId: string; value: string }[] = [];
-
-    for (const r of updateOps) {
-      const value = richTextValues.get(r) ?? r.raw.value;
-      const existingId = r.existingAttributeIds?.[0];
-      if (existingId) patchBody.push({ id: existingId, value });
-      else postBody.push({ assetId: asset_id, typeId: r.raw.attribute_type_id, value });
-    }
-    for (const r of addOps) {
-      const value = richTextValues.get(r) ?? r.raw.value;
-      postBody.push({ assetId: asset_id, typeId: r.raw.attribute_type_id, value });
-    }
+    // 3. Attribute updates/adds → batch into /attributes/bulk PATCH + POST.
+    //    Values were already coerced by kind (incl. Markdown → HTML for RICH_TEXT) in the plan.
+    const attrPlans = resolved
+      .filter((r) => (r.op === 'update_attribute' || r.op === 'add_attribute') && !r.error && r.attrPlan)
+      .map((r) => r.attrPlan!);
+    const patchBody = attrPlans.flatMap((p) => p.patch);
+    const postBody = attrPlans.flatMap((p) => p.post);
 
     if (patchBody.length > 0) {
       try {
@@ -461,7 +498,8 @@ export async function executeEditAsset(args: any): Promise<ToolResult> {
     if (tagOps.length > 0) {
       const tagNames = tagOps.map((r) => r.raw.tag);
       try {
-        await client.restCallWithBody<any>(`/rest/2.0/assets/${asset_id}/tags`, 'POST', tagNames);
+        // Body is AddAssetTagsRequest: { tagNames: string[] } (a bare array is rejected).
+        await client.restCallWithBody<any>(`${assetPath}/tags`, 'POST', { tagNames });
         tagOps.forEach((r) => applied.push({ op: 'add_tag', tag: r.raw.tag, status: 'ADDED' }));
       } catch (err) {
         tagOps.forEach((r) => errors.push({ op: 'add_tag', input: r.raw, error: (err as Error).message }));
@@ -472,10 +510,12 @@ export async function executeEditAsset(args: any): Promise<ToolResult> {
     const addRespOps = resolved.filter((r) => r.op === 'set_responsibility' && !r.error && !r.existingResponsibilityId);
     for (const r of addRespOps) {
       try {
+        // resourceType is required alongside resourceId (400 "Value not allowed" otherwise).
         await client.restCallWithBody<any>('/rest/2.0/responsibilities', 'POST', {
           roleId: r.roleId,
           ownerId: r.ownerId,
           resourceId: asset_id,
+          resourceType: 'Asset',
         });
         applied.push({ op: 'set_responsibility', role: r.raw.role, owner: r.raw.owner, ownerType: r.ownerType, status: 'ASSIGNED' });
       } catch (err) {
@@ -485,7 +525,7 @@ export async function executeEditAsset(args: any): Promise<ToolResult> {
     const removeRespOps = resolved.filter((r) => r.op === 'remove_responsibility' && !r.error && r.existingResponsibilityId);
     for (const r of removeRespOps) {
       try {
-        await client.restCallWithBody<void>(`/rest/2.0/responsibilities/${r.existingResponsibilityId}`, 'DELETE', undefined as any);
+        await client.restCallWithBody<void>(`/rest/2.0/responsibilities/${encodeURIComponent(r.existingResponsibilityId!)}`, 'DELETE', undefined as any);
         applied.push({ op: 'remove_responsibility', role: r.raw.role, owner: r.raw.owner, status: 'UNASSIGNED' });
       } catch (err) {
         errors.push({ op: 'remove_responsibility', input: r.raw, error: (err as Error).message });

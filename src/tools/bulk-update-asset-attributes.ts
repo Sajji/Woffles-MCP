@@ -2,6 +2,7 @@ import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
+import { applyAttributeSetPlans, getAttributeTypeInfo, planAttributeSet } from '../utils/attributes.js';
 
 export const bulkUpdateAssetAttributesTool = {
   name: 'bulk_update_asset_attributes',
@@ -69,117 +70,65 @@ export async function executeBulkUpdateAssetAttributes(args: any): Promise<ToolR
     const instance = getInstance(instance_name);
     const client = new CollibraClient(instance);
 
-    // Fetch attribute type name
-    let attrTypeName = 'Unknown';
-    try {
-      const attrType = await client.restCall<any>(`/rest/2.0/attributeTypes/${attribute_type_id}`);
-      attrTypeName = attrType.name || 'Unknown';
-    } catch {
-      // non-critical
-    }
+    const attrType = await getAttributeTypeInfo(client, attribute_type_id);
+    const attributeType = { id: attribute_type_id, name: attrType.name, kind: attrType.kind };
+    const show = (values: unknown[]) => (values.length === 0 ? '(not set)' : values.length === 1 ? values[0] : values);
 
-    // Fetch asset info and current attribute value for every asset in parallel
+    // Fetch asset info and plan the value change for every asset in parallel.
+    // planAttributeSet coerces values by kind and covers all existing value records.
     const lookups = await Promise.all(
       updates.map(async (u: any) => {
-        const [asset, attributesResponse] = await Promise.all([
-          client.restCall<any>(`/rest/2.0/assets/${u.asset_id}`),
-          client.restCall<any>(
-            `/rest/2.0/attributes?assetId=${u.asset_id}&typeIds=${attribute_type_id}&limit=1`
-          ),
+        const [asset, plan] = await Promise.all([
+          client.restCall<any>(`/rest/2.0/assets/${encodeURIComponent(u.asset_id)}`),
+          planAttributeSet(client, u.asset_id, attrType, u.new_value),
         ]);
-
-        const existingAttr = (attributesResponse.results || [])[0] ?? null;
-
-        return {
-          assetId: u.asset_id,
-          assetName: asset.name || 'Unknown',
-          newValue: u.new_value,
-          existingAttr,
-          currentValue: existingAttr?.value ?? '(not set)',
-        };
+        return { assetId: u.asset_id, assetName: asset.name || 'Unknown', plan };
       }),
     );
 
     // Preview mode
     if (!confirm) {
-      const preview = {
+      return okPretty({
         mode: 'PREVIEW — no changes made',
-        attributeType: {
-          id: attribute_type_id,
-          name: attrTypeName,
-        },
+        attributeType,
         totalAssets: lookups.length,
-        assetsToUpdate: lookups.filter((l) => l.existingAttr).length,
-        assetsToAdd: lookups.filter((l) => !l.existingAttr).length,
+        assetsToUpdate: lookups.filter((l) => l.plan.current.length > 0 && l.plan.action !== 'NO CHANGE').length,
+        assetsToAdd: lookups.filter((l) => l.plan.current.length === 0).length,
         details: lookups.map((l) => ({
           assetId: l.assetId,
           assetName: l.assetName,
           assetUrl: client.assetUrl(l.assetId),
-          currentValue: l.currentValue,
-          proposedValue: l.newValue,
-          action: l.existingAttr ? 'UPDATE (PATCH)' : 'ADD (POST)',
+          currentValue: show(l.plan.current),
+          proposedValue: show(l.plan.proposed),
+          action: l.plan.action,
         })),
         instructions: 'To apply all changes, call this tool again with confirm=true.',
-      };
-      return okPretty(preview);
+      });
     }
 
-    // Confirm mode — apply via bulk endpoints
-    const toUpdate = lookups.filter((l) => l.existingAttr);
-    const toAdd = lookups.filter((l) => !l.existingAttr);
-
-    let patchResults: any[] = [];
-    let postResults: any[] = [];
-
-    // PATCH existing attributes in bulk
-    if (toUpdate.length > 0) {
-      const patchBody = toUpdate.map((l) => ({
-        id: l.existingAttr.id,
-        value: l.newValue,
-      }));
-      patchResults = await client.restCallWithBody<any[]>(
-        '/rest/2.0/attributes/bulk',
-        'PATCH',
-        patchBody,
-      );
-    }
-
-    // POST new attributes in bulk
-    if (toAdd.length > 0) {
-      const postBody = toAdd.map((l) => ({
-        assetId: l.assetId,
-        typeId: attribute_type_id,
-        value: l.newValue,
-      }));
-      postResults = await client.restCallWithBody<any[]>(
-        '/rest/2.0/attributes/bulk',
-        'POST',
-        postBody,
-      );
-    }
+    // Confirm mode — one bulk PATCH + one bulk POST (+ DELETEs of surplus multi-values)
+    const result = await applyAttributeSetPlans(client, lookups.map((l) => l.plan));
 
     const output = {
       mode: 'APPLIED',
-      attributeType: {
-        id: attribute_type_id,
-        name: attrTypeName,
-      },
+      attributeType,
       totalAssets: lookups.length,
-      updated: toUpdate.length,
-      added: toAdd.length,
+      updated: lookups.filter((l) => l.plan.current.length > 0 && l.plan.action !== 'NO CHANGE').length,
+      added: lookups.filter((l) => l.plan.current.length === 0).length,
       details: lookups.map((l) => {
-        const matchedResult = l.existingAttr
-          ? (patchResults || []).find((r: any) => r.id === l.existingAttr.id)
-          : (postResults || []).find((r: any) => r.asset?.id === l.assetId);
-
+        const patchedIds = new Set(l.plan.patch.map((p) => p.id));
+        const ids = [
+          ...result.patched.filter((r: any) => patchedIds.has(r?.id)),
+          ...result.posted.filter((r: any) => r?.asset?.id === l.assetId),
+        ].map((r: any) => r.id);
         return {
           assetId: l.assetId,
           assetName: l.assetName,
           assetUrl: client.assetUrl(l.assetId),
-          previousValue: l.currentValue,
-          newValue: l.newValue,
-          action: l.existingAttr ? 'UPDATED' : 'ADDED',
-          attributeId: matchedResult?.id || l.existingAttr?.id,
+          previousValue: show(l.plan.current),
+          newValue: show(l.plan.proposed),
+          action: l.plan.current.length === 0 ? 'ADDED' : l.plan.action === 'NO CHANGE' ? 'UNCHANGED' : 'UPDATED',
+          attributeIds: ids,
         };
       }),
     };
@@ -190,7 +139,9 @@ export async function executeBulkUpdateAssetAttributes(args: any): Promise<ToolR
     ], true);
   } catch (error) {
     return ok({
-      error: `Failed to bulk update attributes: ${(error as Error).message}`,
+      error: true,
+      message: `Failed to bulk update attributes: ${(error as Error).message}`,
+      instance: instance_name,
     });
   }
 }

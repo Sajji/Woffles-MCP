@@ -67,29 +67,31 @@ export async function executeBulkCreateRelations(args: any): Promise<ToolResult>
       groups.set(groupKey(r), { source_asset_id: r.source_asset_id, relation_type_id: r.relation_type_id });
     }
 
-    // For each unique pair, fetch existing target IDs
+    // For each unique pair, fetch existing target IDs. `relationTypeId` is the
+    // API's type filter (`typeId` is silently ignored and returns every type).
+    // Lookup failures propagate: guessing "nothing exists" would create duplicates.
     const existingByKey = new Map<string, Set<string>>();
     await Promise.all(
       Array.from(groups.values()).map(async (g) => {
-        const params = new URLSearchParams({
+        const rels = await client.restPaginate<any>('/rest/2.0/relations', {
           sourceId: g.source_asset_id,
-          typeId: g.relation_type_id,
-          limit: '1000',
-          offset: '0',
+          relationTypeId: g.relation_type_id,
         });
-        try {
-          const resp = await client.restCall<any>(`/rest/2.0/relations?${params.toString()}`);
-          const targets = new Set<string>((resp.results || []).map((r: any) => r.target?.id).filter(Boolean));
-          existingByKey.set(`${g.source_asset_id}|${g.relation_type_id}`, targets);
-        } catch {
-          existingByKey.set(`${g.source_asset_id}|${g.relation_type_id}`, new Set());
-        }
+        const targets = new Set<string>(
+          rels.filter((r) => r.type?.id === g.relation_type_id).map((r) => r.target?.id).filter(Boolean),
+        );
+        existingByKey.set(groupKey(g), targets);
       }),
     );
 
+    // Classify; a triple repeated within the same request is created only once.
+    const seen = new Set<string>();
     const classified = relations.map((r: any) => {
       const targets = existingByKey.get(groupKey(r)) || new Set<string>();
-      return { input: r, existing: targets.has(r.target_asset_id) };
+      const triple = `${groupKey(r)}|${r.target_asset_id}`;
+      const duplicateInRequest = seen.has(triple);
+      seen.add(triple);
+      return { input: r, existing: targets.has(r.target_asset_id) || duplicateInRequest, duplicateInRequest };
     });
 
     const newOnes = classified.filter((c) => !c.existing);
@@ -105,7 +107,7 @@ export async function executeBulkCreateRelations(args: any): Promise<ToolResult>
           source_asset_id: c.input.source_asset_id,
           target_asset_id: c.input.target_asset_id,
           relation_type_id: c.input.relation_type_id,
-          action: c.existing ? 'SKIP (already exists)' : 'CREATE',
+          action: c.duplicateInRequest ? 'SKIP (duplicate in request)' : c.existing ? 'SKIP (already exists)' : 'CREATE',
         })),
         instructions: 'To apply, call again with confirm=true.',
       });

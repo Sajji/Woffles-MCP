@@ -1,5 +1,49 @@
 # Changelog
 
+## Unreleased — Write-integrity fixes (Review plan, Phase 0)
+
+### Fixed
+- **Relation writes acted on the wrong relation type.** `GET /rest/2.0/relations` ignores `typeId` and only filters on `relationTypeId`. Because of this:
+  - `edit_asset` `remove_relation` deleted the first relation of *any* type between the two assets.
+  - `add_relation`, `create_relation` and `bulk_create_relations` skipped creation whenever a relation of a different type already linked the same assets.
+
+  All four now match the exact (source, target, type) triple through the shared `findRelation` helper (`src/utils/relations.ts`).
+- **`edit_asset` `add_tag`** sent a bare array, but the API requires `{ tagNames: [...] }`.
+- **`edit_asset` `set_responsibility`** omitted the required `resourceType`, so every assignment failed with a 400.
+- **Role, user and group names are no longer guessed.** Previously a lookup with no exact match fell back to the first "contains" hit, so a responsibility could be assigned to the wrong role or person. Lookups now need an exact name and return suggestions on a miss (`src/utils/resolve.ts`). A UUID that doesn't exist is reported instead of being used blindly.
+- **Relation role labels** in `create_relation` and the `bulk_delete_relations` preview were always empty. Labels now come from the relation-type map, since relation payloads only embed the type id.
+- **Attribute updates covered only the first value.** `update_asset_attribute`, `bulk_update_asset_attributes` and `edit_asset` `update_attribute` now set the attribute to exactly the given value(s), and multi-value attributes are fully replaced. Input is coerced by kind:
+  - DATE (ISO date or epoch milliseconds → epoch milliseconds)
+  - NUMERIC
+  - BOOLEAN
+  - MULTI_VALUE_LIST (comma-separated)
+  - RICH_TEXT (Markdown → HTML)
+
+  Invalid values are rejected rather than written. This logic is shared in `src/utils/attributes.ts`.
+- **`bulk_create_assets`** now:
+  - enforces required attributes, as `create_asset` already did
+  - skips duplicate (domain, name) entries within one request
+  - validates attribute values
+  - blocks the whole batch if any entry is invalid, so nothing is half-created
+- **Required-attribute checks follow assignment scope.** `create_asset` and `bulk_create_assets` previously merged every assignment of the asset type, enforcing requirements from scopes that don't apply to the target domain. They now use the single applicable assignment, chosen by domain type and then by domain or community scope (`fetchApplicableAssignment`).
+- **Duplicate checks no longer return the wrong object as success.** `create_domain` (different type), `create_asset_type` (different parent), `create_attribute_type` (different kind) and `add_mapping` (mapped to a different resource) now return `status: "conflict"`.
+- **Lookup errors are no longer treated as "not found".** A 403 or 500 used to look like a missing object. Now only a real 404 counts:
+  - `bulk_delete_assets` / `bulk_delete_relations` stop instead of silently skipping
+  - `add_mapping` no longer POSTs blindly
+  - `assign_attribute_to_asset_type` no longer reports "not found"
+
+  `CollibraHttpError` carries the HTTP status so callers can tell these cases apart.
+- Data-contract multipart bodies use a random boundary and reject header injection. `push_data_contract_manifest` sends `force`/`active` explicitly, so `false` is honoured. Push and init now share one builder (`src/utils/multipart.ts`).
+
+### Changed
+- **`assign_attribute_to_asset_type` now previews by default.** Pass `confirm: true` to apply, matching every other write tool. `dry_run: true` still forces a preview. `maximum_occurrences: null` now means no upper limit.
+- `edit_asset` validates `asset_id` and relation ids as UUIDs and URL-encodes path segments.
+
+### Tests
+- `test/write-integrity.test.ts`: a mock Collibra server that reproduces the real API quirks and asserts the exact query parameters and bodies sent.
+- `test/multipart.test.ts`
+- Verified live on Sandbox and Production with a self-cleaning scratch community (20/20 checks on each).
+
 ## Unreleased — Platform Hygiene (Roadmap Tier A, batch 1)
 
 ### Added

@@ -2,6 +2,7 @@ import { ok, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { authFetch } from '../utils/auth.js';
+import { buildMultipartBody } from '../utils/multipart.js';
 
 export const initDataContractTool = {
   name: 'init_data_contract',
@@ -74,44 +75,6 @@ export const initDataContractTool = {
   },
 };
 
-/**
- * Build a multipart/form-data body for the data-contract init endpoint. The
- * `manifest` file part is optional (omitting it tells Collibra to auto-generate
- * the manifest from the governed port's metadata); all other values are plain
- * form fields.
- */
-function buildInitMultipartBody(
-  manifest: string | undefined,
-  fields: Record<string, string>,
-): { body: Buffer; contentType: string } {
-  const boundary = `----CollibraMCPBoundary${Date.now().toString(16)}`;
-  const parts: Buffer[] = [];
-
-  if (manifest) {
-    const fileHeader =
-      `--${boundary}\r\n` +
-      `Content-Disposition: form-data; name="manifest"; filename="contract.yaml"\r\n` +
-      `Content-Type: application/yaml\r\n\r\n`;
-    parts.push(Buffer.from(fileHeader, 'utf8'));
-    parts.push(Buffer.from(manifest, 'utf8'));
-    parts.push(Buffer.from('\r\n', 'utf8'));
-  }
-
-  for (const [name, value] of Object.entries(fields)) {
-    const fieldPart =
-      `--${boundary}\r\n` +
-      `Content-Disposition: form-data; name="${name}"\r\n\r\n` +
-      `${value}\r\n`;
-    parts.push(Buffer.from(fieldPart, 'utf8'));
-  }
-
-  parts.push(Buffer.from(`--${boundary}--\r\n`, 'utf8'));
-  return {
-    body: Buffer.concat(parts),
-    contentType: `multipart/form-data; boundary=${boundary}`,
-  };
-}
-
 export async function executeInitDataContract(args: any): Promise<ToolResult> {
   const { instance_name, governed_asset_id, manifest, manifest_id, version, name, domain_id } = args;
 
@@ -129,7 +92,11 @@ export async function executeInitDataContract(args: any): Promise<ToolResult> {
     if (name) fields['name'] = name;
     if (domain_id) fields['domainId'] = domain_id;
 
-    const { body, contentType } = buildInitMultipartBody(manifest, fields);
+    // The manifest file part is optional: omitting it lets Collibra auto-generate it.
+    const { body, contentType } = buildMultipartBody(
+      fields,
+      manifest ? { field: 'manifest', filename: 'contract.yaml', contentType: 'application/yaml', content: manifest } : undefined,
+    );
     const url = `${instance.baseUrl}/rest/dataProduct/v1/dataContracts`;
 
     const response = await authFetch(instance, url, {

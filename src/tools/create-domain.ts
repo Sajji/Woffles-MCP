@@ -65,6 +65,19 @@ export async function executeCreateDomain(args: any): Promise<ToolResult> {
     const existing = await client.restCall<any>(`/rest/2.0/domains?${checkParams.toString()}`);
     const match = (existing.results || []).find((d: any) => d.name === name);
 
+    if (match && type_id && match.type?.id && match.type.id !== type_id) {
+      // Same name, different domain type: this is NOT the requested domain.
+      return ok({
+        error: true,
+        status: 'conflict',
+        message:
+          `A domain named "${name}" already exists in this community but has type "${match.type.name}" (${match.type.id}), ` +
+          `not the requested type ${type_id}. Choose a different name or use the existing domain.`,
+        existing: { id: match.id, name: match.name, type: { id: match.type.id, name: match.type.name } },
+        instance: instance_name,
+      });
+    }
+
     if (match) {
       return okPretty({
         action: 'existing',

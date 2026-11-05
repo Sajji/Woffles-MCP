@@ -69,6 +69,19 @@ export async function executeCreateAssetType(args: any): Promise<ToolResult> {
     const existing = await client.restCall<any>(`/rest/2.0/assetTypes?${checkParams.toString()}`);
     const match = (existing.results || []).find((t: any) => t.name === name);
 
+    if (match && parent_id && match.parent?.id !== parent_id) {
+      // Asset type names are unique; an existing type under another parent is NOT the requested one.
+      return ok({
+        error: true,
+        status: 'conflict',
+        message:
+          `Asset type "${name}" already exists with parent "${match.parent?.name ?? '(none)'}" (${match.parent?.id ?? 'none'}), ` +
+          `not the requested parent ${parent_id}. Choose a different name or use the existing type.`,
+        existing: { id: match.id, name: match.name, parent: match.parent ? { id: match.parent.id, name: match.parent.name } : null },
+        instance: instance_name,
+      });
+    }
+
     if (match) {
       return okPretty({
         action: 'existing',

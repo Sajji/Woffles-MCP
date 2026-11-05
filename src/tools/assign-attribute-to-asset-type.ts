@@ -1,7 +1,7 @@
 import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
+import { CollibraClient, isNotFound } from '../utils/collibra-client.js';
 
 /**
  * Map an AssignedCharacteristicType (GET shape) to a
@@ -37,9 +37,10 @@ export const assignAttributeToAssetTypeTool = {
     'preserves all existing attributes, relations and statuses. ' +
     'This tool is idempotent: if the attribute type is already assigned to every target assignment, no ' +
     'change is made. An asset type may have multiple assignments (one per eligible domain type); by default ' +
-    'the attribute is added to all of them. Set dry_run=true to preview the merged characteristic list ' +
-    'without writing. Use create_attribute_type first to obtain attribute_type_id, and get_asset_types to ' +
-    'resolve asset_type_id.',
+    'the attribute is added to all of them. ' +
+    'Two-step safety: 1) call with confirm=false (default) to PREVIEW the merged characteristic list per assignment; ' +
+    '2) call again with confirm=true to APPLY. Use create_attribute_type first to obtain attribute_type_id, and ' +
+    'get_asset_types to resolve asset_type_id.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -66,12 +67,17 @@ export const assignAttributeToAssetTypeTool = {
         description: 'Optional: minimum occurrences for the attribute on this asset type. Default 0 (no restriction).',
       },
       maximum_occurrences: {
-        type: 'number',
-        description: 'Optional: maximum occurrences. Default 1. Omit / null for no limit.',
+        type: ['number', 'null'],
+        description: 'Optional: maximum occurrences. Default 1. Pass null for no upper limit.',
+      },
+      confirm: {
+        type: 'boolean',
+        description: 'Set to true to apply. When false (default), returns a preview without writing.',
+        default: false,
       },
       dry_run: {
         type: 'boolean',
-        description: 'Optional: if true, returns the merged characteristic list per assignment WITHOUT writing.',
+        description: 'Deprecated: use confirm. dry_run=true always previews, even when confirm=true.',
       },
     },
     required: ['instance_name', 'asset_type_id', 'attribute_type_id'],
@@ -91,17 +97,23 @@ export async function executeAssignAttributeToAssetType(args: any): Promise<Tool
     assignment_id,
     minimum_occurrences,
     maximum_occurrences,
+    confirm = false,
     dry_run,
   } = args;
+  // Preview unless explicitly confirmed (consistent with every other write tool).
+  const preview = confirm !== true || dry_run === true;
 
   try {
     const instance = getInstance(instance_name);
     const client = new CollibraClient(instance);
 
     // ── Resolve the new attribute type (validate existence + name for output) ──
-    const attr = await client
-      .restCall<any>(`/rest/2.0/attributeTypes/${attribute_type_id}`)
-      .catch(() => null);
+    let attr: any = null;
+    try {
+      attr = await client.restCall<any>(`/rest/2.0/attributeTypes/${encodeURIComponent(attribute_type_id)}`);
+    } catch (err) {
+      if (!isNotFound(err)) throw err;
+    }
     if (!attr || !attr.id) {
       return ok({
         error: true,
@@ -111,9 +123,12 @@ export async function executeAssignAttributeToAssetType(args: any): Promise<Tool
     }
 
     // ── Read assignments for the asset type ──────────────────────────────
-    const raw = await client
-      .restCall<any>(`/rest/2.0/assignments/assetType/${asset_type_id}`)
-      .catch(() => []);
+    let raw: any = [];
+    try {
+      raw = await client.restCall<any>(`/rest/2.0/assignments/assetType/${encodeURIComponent(asset_type_id)}`);
+    } catch (err) {
+      if (!isNotFound(err)) throw err;
+    }
     const assignments: any[] = Array.isArray(raw) ? raw : raw.results || [];
 
     if (!assignments.length) {
@@ -139,7 +154,9 @@ export async function executeAssignAttributeToAssetType(args: any): Promise<Tool
     }
 
     const newMin = typeof minimum_occurrences === 'number' ? minimum_occurrences : 0;
-    const newMax = typeof maximum_occurrences === 'number' ? maximum_occurrences : 1;
+    // null → no upper limit (omitted from the reference); undefined → default 1.
+    const newMax: number | undefined =
+      maximum_occurrences === null ? undefined : typeof maximum_occurrences === 'number' ? maximum_occurrences : 1;
 
     const perAssignment: any[] = [];
     let patched = 0;
@@ -163,7 +180,7 @@ export async function executeAssignAttributeToAssetType(args: any): Promise<Tool
 
       const merged = [...refs, { id: attribute_type_id, type: 'AttributeType', min: newMin, max: newMax }];
 
-      if (dry_run) {
+      if (preview) {
         perAssignment.push({
           assignmentId: a.id,
           domainTypes: (a.domainTypes || []).map((d: any) => d.name),
@@ -175,9 +192,20 @@ export async function executeAssignAttributeToAssetType(args: any): Promise<Tool
         continue;
       }
 
-      await client.restCallWithBody<any>(`/rest/2.0/assignments/${a.id}`, 'PATCH', {
-        characteristicTypes: merged,
-      });
+      try {
+        await client.restCallWithBody<any>(`/rest/2.0/assignments/${encodeURIComponent(a.id)}`, 'PATCH', {
+          characteristicTypes: merged,
+        });
+      } catch (err) {
+        // Report what was already written instead of losing it in the generic catch.
+        return ok({
+          error: true,
+          status: 'partial',
+          message: `PATCH of assignment ${a.id} failed after ${patched} assignment(s) were already patched: ${(err as Error).message}`,
+          instance: instance_name,
+          assignments: perAssignment,
+        });
+      }
       patched++;
       perAssignment.push({
         assignmentId: a.id,
@@ -189,21 +217,21 @@ export async function executeAssignAttributeToAssetType(args: any): Promise<Tool
     }
 
     const payload = {
-      action: dry_run ? 'preview' : 'assigned',
+      action: preview ? 'preview' : 'assigned',
       instance: instance_name,
       assetTypeId: asset_type_id,
       attributeType: { id: attr.id, name: attr.name, kind: attr.resourceType || attr.attributeTypeDiscriminator },
-      occurrences: { minimum: newMin, maximum: newMax },
+      occurrences: { minimum: newMin, maximum: newMax ?? null },
       assignmentsTargeted: targets.length,
       patched,
       alreadyAssigned,
       assignments: perAssignment,
-      message: dry_run
-        ? `Dry run: previewed ${targets.length} assignment(s). No changes written.`
+      message: preview
+        ? `PREVIEW — no changes made: ${targets.length} assignment(s) inspected. To apply, call again with confirm=true.`
         : `Assigned "${attr.name}" to asset type — patched ${patched}, already assigned ${alreadyAssigned}.`,
     };
 
-    if (dry_run || patched === 0) {
+    if (preview || patched === 0) {
       return okPretty(payload);
     }
 
@@ -222,7 +250,7 @@ export async function executeAssignAttributeToAssetType(args: any): Promise<Tool
         },
         {
           tool: 'update_asset_attribute',
-          args: { instance_name, asset_id: '<asset>', attribute_type_id, value: '<value>' },
+          args: { instance_name, asset_id: '<asset>', attribute_type_id, new_value: '<value>' },
           why: 'Set the attribute value on assets of this type now that it is assignable.',
         },
       ],

@@ -2,7 +2,7 @@ import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
-import { fetchAssetTypeAssignments } from '../utils/operating-model-cache.js';
+import { fetchApplicableAssignment } from '../utils/operating-model-cache.js';
 
 export const createAssetTool = {
   name: 'create_asset',
@@ -83,9 +83,10 @@ export async function executeCreateAsset(args: any): Promise<ToolResult> {
     // own assignment. If any mandatory attribute is missing from `attributes`,
     // reject before creating anything so we never leave an invalid asset.
     try {
-      const assignments = await fetchAssetTypeAssignments(instance_name, asset_type_id);
+      // Only the assignment that applies to this domain (by domain type + scope) counts.
+      const assignment = await fetchApplicableAssignment(instance_name, asset_type_id, domain_id);
       const provided = new Set(Object.keys((attributes as Record<string, string>) || {}));
-      const missingRequired = assignments.attributeTypes
+      const missingRequired = (assignment?.attributeTypes ?? [])
         .filter((a) => (a.minimumOccurrences ?? 0) >= 1 && !provided.has(a.id))
         .map((a) => ({ id: a.id, name: a.name }));
       if (missingRequired.length > 0) {

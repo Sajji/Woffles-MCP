@@ -240,10 +240,61 @@ export async function fetchAssetTypeAssignments(
   // `defaultStatusId`. There is typically one assignment per asset type but
   // we merge across all returned for safety.
   const raw = await client
-    .restCall<any>(`/rest/2.0/assignments/assetType/${assetTypeId}`)
+    .restCall<any>(`/rest/2.0/assignments/assetType/${encodeURIComponent(assetTypeId)}`)
     .catch(() => []);
   const assignments: any[] = Array.isArray(raw) ? raw : raw.results || [];
+  return parseAssignments(assignments, assetTypeId);
+}
 
+/**
+ * Resolve the single assignment that governs a NEW asset of `assetTypeId`
+ * created in `domainId`, mirroring Collibra's scoping rules:
+ *   1. only assignments whose domain types include the domain's type;
+ *   2. a scope naming the domain itself wins;
+ *   3. else the scope naming the nearest community up the hierarchy;
+ *   4. else the unscoped (global) assignment.
+ * Merging every assignment instead would enforce requirements from scopes that
+ * do not apply (e.g. a "Data Privacy" scope on an unrelated domain).
+ * Returns null when no assignment can be determined.
+ */
+export async function fetchApplicableAssignment(
+  instanceName: string,
+  assetTypeId: string,
+  domainId: string,
+): Promise<AssetTypeAssignments | null> {
+  const client = new CollibraClient(getInstance(instanceName));
+  const [raw, domain] = await Promise.all([
+    client.restCall<any>(`/rest/2.0/assignments/assetType/${encodeURIComponent(assetTypeId)}`),
+    client.restCall<any>(`/rest/2.0/domains/${encodeURIComponent(domainId)}`),
+  ]);
+  const all: any[] = Array.isArray(raw) ? raw : raw.results || [];
+  const domainTypeId = domain.type?.id;
+  const candidates = all.filter(
+    (a) => !a.domainTypes?.length || !domainTypeId || a.domainTypes.some((d: any) => d.id === domainTypeId),
+  );
+  if (!candidates.length) return null;
+
+  const inScope = (a: any, key: 'domains' | 'communities', id: string) =>
+    (a.scope?.[key] || []).some((r: any) => r.id === id);
+
+  let chosen = candidates.find((a) => inScope(a, 'domains', domainId));
+  if (!chosen) {
+    // Walk up the community hierarchy (bounded) looking for the nearest scoped match.
+    let communityId: string | undefined = domain.community?.id;
+    for (let depth = 0; communityId && depth < 20 && !chosen; depth++) {
+      const cid: string = communityId;
+      chosen = candidates.find((a) => inScope(a, 'communities', cid));
+      if (!chosen) {
+        const community = await client.restCall<any>(`/rest/2.0/communities/${encodeURIComponent(cid)}`).catch(() => null);
+        communityId = community?.parent?.id;
+      }
+    }
+  }
+  chosen ??= candidates.find((a) => !a.scope);
+  return chosen ? parseAssignments([chosen], assetTypeId) : null;
+}
+
+function parseAssignments(assignments: any[], assetTypeId: string): AssetTypeAssignments {
   const attributeTypes: AssetTypeAssignments['attributeTypes'] = [];
   const relationTypes: AssetTypeAssignments['relationTypes'] = [];
   const statusMap = new Map<string, { id: string; name: string }>();

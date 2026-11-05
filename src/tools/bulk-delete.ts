@@ -1,7 +1,8 @@
 import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
-import { CollibraClient } from '../utils/collibra-client.js';
+import { CollibraClient, isNotFound } from '../utils/collibra-client.js';
+import { relationTypeLabels } from '../utils/relations.js';
 
 export const bulkDeleteAssetsTool = {
   name: 'bulk_delete_assets',
@@ -51,7 +52,7 @@ export async function executeBulkDeleteAssets(args: any): Promise<ToolResult> {
     const lookups = await Promise.all(
       asset_ids.map(async (id: string) => {
         try {
-          const a = await client.restCall<any>(`/rest/2.0/assets/${id}`);
+          const a = await client.restCall<any>(`/rest/2.0/assets/${encodeURIComponent(id)}`);
           return {
             assetId: id,
             name: a.name || 'Unknown',
@@ -61,6 +62,9 @@ export async function executeBulkDeleteAssets(args: any): Promise<ToolResult> {
             notFound: false,
           };
         } catch (err) {
+          // Only a genuine 404 is "not found"; permission/server errors abort
+          // the whole operation rather than silently skipping the asset.
+          if (!isNotFound(err)) throw err;
           return { assetId: id, name: null, notFound: true, error: (err as Error).message };
         }
       }),
@@ -164,15 +168,17 @@ export async function executeBulkDeleteRelations(args: any): Promise<ToolResult>
     const lookups = await Promise.all(
       relation_ids.map(async (id: string) => {
         try {
-          const r = await client.restCall<any>(`/rest/2.0/relations/${id}`);
+          const r = await client.restCall<any>(`/rest/2.0/relations/${encodeURIComponent(id)}`);
           return {
             relationId: id,
             source: r.source ? { id: r.source.id, name: r.source.fullName ?? r.source.name } : null,
             target: r.target ? { id: r.target.id, name: r.target.fullName ?? r.target.name } : null,
-            type: r.type ? { id: r.type.id, role: r.type.role, corole: r.type.corole } : null,
+            // Relation payloads embed only the type id; labels come from the relation-type map.
+            type: await relationTypeLabels(client, r.type?.id),
             notFound: false,
           };
         } catch (err) {
+          if (!isNotFound(err)) throw err;
           return { relationId: id, notFound: true, error: (err as Error).message };
         }
       }),

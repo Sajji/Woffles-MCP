@@ -2,6 +2,7 @@ import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
 import type { ToolResult } from '../types.js';
 import { getInstance } from '../config.js';
 import { CollibraClient } from '../utils/collibra-client.js';
+import { findRelation, relationTypeLabels } from '../utils/relations.js';
 
 export const createRelationTool = {
   name: 'create_relation',
@@ -53,25 +54,20 @@ export async function executeCreateRelation(args: any): Promise<ToolResult> {
     const client = new CollibraClient(instance);
 
     // ── Idempotency check ─────────────────────────────────────────────
-    // Look for an existing relation of the same type from the same source
-    const checkParams = new URLSearchParams({
+    // Exact (source, target, type) triple — a relation of a different type
+    // between the same assets must NOT count as a duplicate.
+    const match = await findRelation(client, {
       sourceId: source_asset_id,
-      typeId: relation_type_id,
-      limit: '100',
-      offset: '0',
+      targetId: target_asset_id,
+      relationTypeId: relation_type_id,
     });
-
-    const existing = await client.restCall<any>(`/rest/2.0/relations?${checkParams.toString()}`);
-    const match = (existing.results || []).find(
-      (r: any) => r.target?.id === target_asset_id,
-    );
 
     if (match) {
       return okPretty({
         action: 'existing',
         relation: {
           id: match.id,
-          type: match.type ? { id: match.type.id, role: match.type.role, corole: match.type.corole } : null,
+          type: await relationTypeLabels(client, match.type?.id),
           source: { id: match.source?.id, name: match.source?.fullName ?? match.source?.name },
           target: { id: match.target?.id, name: match.target?.fullName ?? match.target?.name },
         },
@@ -92,7 +88,7 @@ export async function executeCreateRelation(args: any): Promise<ToolResult> {
       action: 'created',
       relation: {
         id: created.id,
-        type: created.type ? { id: created.type.id, role: created.type.role, corole: created.type.corole } : null,
+        type: await relationTypeLabels(client, created.type?.id ?? relation_type_id),
         source: { id: created.source?.id, name: created.source?.fullName ?? created.source?.name },
         target: { id: created.target?.id, name: created.target?.fullName ?? created.target?.name },
       },
