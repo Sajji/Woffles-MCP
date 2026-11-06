@@ -1,6 +1,6 @@
 import type { ToolResult } from '../types.js';
 import { withEnvelope } from '../utils/tool-result.js';
-import { fetchOperatingModel, loadSnapshot, saveSnapshot } from '../utils/operating-model-cache.js';
+import { fetchOperatingModel, loadSnapshot, saveSnapshot, snapshotStatus } from '../utils/operating-model-cache.js';
 
 export const refreshOperatingModelTool = {
   name: 'refresh_operating_model',
@@ -29,7 +29,9 @@ export async function executeRefreshOperatingModel(args: any): Promise<ToolResul
   const operation = 'refresh_operating_model';
   const existing = loadSnapshot(instance_name);
   let reused = false;
-  if (!force && existing) {
+  // Reuse only a young snapshot that records which server it came from
+  // (older snapshots can't be verified against the instance's baseUrl).
+  if (!force && existing?.baseUrl) {
     const ageMs = Date.now() - new Date(existing.refreshedAt).getTime();
     if (ageMs < max_age_hours * 3600_000) {
       reused = true;
@@ -43,7 +45,7 @@ export async function executeRefreshOperatingModel(args: any): Promise<ToolResul
     instance: instance_name,
     operation,
     pretty: true,
-    model: { snapshotHash: snapshot.snapshotHash, stale: false, refreshedAt: snapshot.refreshedAt },
+    model: snapshotStatus(snapshot, max_age_hours).model,
     data: {
       reusedCache: reused,
       counts: {

@@ -1,6 +1,6 @@
 import type { ToolResult } from '../types.js';
 import { withEnvelope } from '../utils/tool-result.js';
-import { loadSnapshot } from '../utils/operating-model-cache.js';
+import { ancestorIds, loadSnapshot, snapshotStatus } from '../utils/operating-model-cache.js';
 
 export const getOperatingModelSummaryTool = {
   name: 'get_operating_model_summary',
@@ -36,17 +36,24 @@ export async function executeGetOperatingModelSummary(args: any): Promise<ToolRe
     });
   }
 
-  const byParent = new Map<string, string[]>();
+  // Top-level families: types whose parent is not itself a listed type. The
+  // root "Asset" type is not returned by /assetTypes, so these are Business
+  // Asset, Data Asset, Technology Asset, ... Each comes with the number of
+  // types beneath it at any depth. (Previously this counted direct children
+  // per parent at any level.)
+  const listed = new Set(snap.assetTypes.map((t) => t.id));
+  const isTop = (t: { parentId?: string }) => !t.parentId || !listed.has(t.parentId);
+  const familySizes = new Map<string, number>();
   for (const t of snap.assetTypes) {
-    const key = t.parentName || '(root)';
-    if (!byParent.has(key)) byParent.set(key, []);
-    byParent.get(key)!.push(t.name);
+    // The family is the last listed type in the ancestry chain.
+    const chain = ancestorIds(snap, t.id).filter((x) => listed.has(x));
+    const family = chain[chain.length - 1];
+    if (family && family !== t.id) familySizes.set(family, (familySizes.get(family) ?? 0) + 1);
   }
-  // Top-level families: parent buckets sorted by size, descending.
-  // Works regardless of whether the customer model has explicit roots.
-  const topLevelAssetTypeFamilies = Array.from(byParent.entries())
-    .map(([parent, children]) => ({ parent, childCount: children.length }))
-    .sort((a, b) => b.childCount - a.childCount)
+  const topLevelAssetTypeFamilies = snap.assetTypes
+    .filter(isTop)
+    .map((t) => ({ family: t.name, descendantCount: familySizes.get(t.id) ?? 0 }))
+    .sort((a, b) => b.descendantCount - a.descendantCount)
     .slice(0, 15);
 
   const attrKindCounts: Record<string, number> = {};
@@ -58,7 +65,8 @@ export async function executeGetOperatingModelSummary(args: any): Promise<ToolRe
     instance: instance_name,
     operation,
     pretty: true,
-    model: { snapshotHash: snap.snapshotHash, refreshedAt: snap.refreshedAt, stale: false },
+    model: snapshotStatus(snap).model,
+    warnings: snapshotStatus(snap).warnings,
     data: {
       counts: {
         assetTypes: snap.assetTypes.length,

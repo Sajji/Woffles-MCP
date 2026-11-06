@@ -1,4 +1,5 @@
 import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
+import { patchSnapshot } from '../utils/operating-model-cache.js';
 import type { ToolResult } from '../types.js';
 import { clientFor } from './_context.js';
 
@@ -101,6 +102,8 @@ export async function executeCreateAssetType(args: any): Promise<ToolResult> {
   if (symbol_type) body.symbolType = symbol_type;
 
   const created = await client.restCallWithBody<any>('/rest/2.0/assetTypes', 'POST', body);
+  // Keep the cached operating-model snapshot (if any) current, so model tools see the new type now.
+  patchSnapshot(instance_name, { assetType: created });
 
   return okWithNext({
     action: 'created',

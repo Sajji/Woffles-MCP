@@ -1,6 +1,6 @@
 import type { ToolResult } from '../types.js';
 import { errorEnvelope, withEnvelope } from '../utils/tool-result.js';
-import { loadSnapshot } from '../utils/operating-model-cache.js';
+import { loadSnapshot, snapshotStatus } from '../utils/operating-model-cache.js';
 
 export const describeDomainTypeTool = {
   name: 'describe_domain_type',
@@ -68,7 +68,8 @@ export async function executeDescribeDomainType(args: any): Promise<ToolResult> 
     instance: instance_name,
     operation,
     pretty: true,
-    model: { snapshotHash: snap.snapshotHash, refreshedAt: snap.refreshedAt },
+    model: snapshotStatus(snap).model,
+    warnings: snapshotStatus(snap).warnings,
     data: {
       domainType: target,
       likelyAssetTypes,

@@ -1,6 +1,6 @@
 import type { ToolResult } from '../types.js';
 import { withEnvelope } from '../utils/tool-result.js';
-import { loadSnapshot, type ModelRelationType } from '../utils/operating-model-cache.js';
+import { ancestorIds, loadSnapshot, type ModelRelationType, snapshotStatus } from '../utils/operating-model-cache.js';
 
 export const findTraversalPathTool = {
   name: 'find_traversal_path',
@@ -102,18 +102,27 @@ export async function executeFindTraversalPath(args: any): Promise<ToolResult> {
   const dst = targets[0];
   const adj = buildAdjacency(snap.relationTypes);
 
-  // BFS yielding up to max_paths shortest-first paths.
-  const paths: Edge[][] = [];
-  const queue: { node: string; path: Edge[]; visited: Set<string> }[] = [
-    { node: src.id, path: [], visited: new Set([src.id]) },
+  // BFS yielding shortest-first paths. Relation types declared on a supertype
+  // apply to all its subtypes: a node expands with the edges of its whole
+  // ancestry, and an edge reaches the target when it lands on the target type
+  // or one of its supertypes. `generality` counts how far up the hierarchy the
+  // edges used were declared, so specific paths rank before generic ones.
+  type Found = { path: Edge[]; generality: number; supertypeSteps: Set<number> };
+  const found: Found[] = [];
+  const dstAncestry = ancestorIds(snap, dst.id);
+  const queue: { node: string; path: Edge[]; visited: Set<string>; generality: number; supertypeSteps: Set<number> }[] = [
+    { node: src.id, path: [], visited: new Set([src.id]), generality: 0, supertypeSteps: new Set() },
   ];
+  // Collect more candidates than requested, then rank.
+  const want = max_paths * 5;
   // Simple-path enumeration is exponential around hub types (Asset, Data
   // Asset): cap the work and say so rather than hang.
   const MAX_EXPANSIONS = 50_000;
   let expansions = 0;
   let truncated = false;
   let head = 0;
-  while (head < queue.length && paths.length < max_paths) {
+  let shortest = Infinity;
+  while (head < queue.length && found.length < want) {
     if (++expansions > MAX_EXPANSIONS) {
       truncated = true;
       break;
@@ -121,24 +130,35 @@ export async function executeFindTraversalPath(args: any): Promise<ToolResult> {
     const cur = queue[head++];
     // Expanding a node at depth d yields paths of length d+1, so stop at max_depth.
     if (cur.path.length >= max_depth) continue;
-    const edges = adj.get(cur.node) || [];
-    for (const e of edges) {
-      if (e.toTypeId === dst.id) {
-        paths.push([...cur.path, e]);
-        if (paths.length >= max_paths) break;
-        continue;
+    // Once enough paths are found, don't explore beyond the shortest length + 1.
+    if (found.length >= max_paths && cur.path.length >= shortest) continue;
+    const ancestry = ancestorIds(snap, cur.node);
+    const step = cur.path.length;
+    for (let level = 0; level < ancestry.length; level++) {
+      for (const e of adj.get(ancestry[level]) || []) {
+        const viaSupertype = level > 0;
+        const targetLevel = dstAncestry.indexOf(e.toTypeId);
+        const supertypeSteps = viaSupertype ? new Set([...cur.supertypeSteps, step]) : cur.supertypeSteps;
+        if (targetLevel >= 0) {
+          found.push({ path: [...cur.path, e], generality: cur.generality + level + targetLevel, supertypeSteps });
+          shortest = Math.min(shortest, cur.path.length + 1);
+          continue;
+        }
+        if (cur.visited.has(e.toTypeId)) continue;
+        if (queue.length - head >= 200_000) {
+          truncated = true;
+          break;
+        }
+        const nv = new Set(cur.visited);
+        nv.add(e.toTypeId);
+        queue.push({ node: e.toTypeId, path: [...cur.path, e], visited: nv, generality: cur.generality + level, supertypeSteps });
       }
-      if (cur.visited.has(e.toTypeId)) continue;
-      const nv = new Set(cur.visited);
-      nv.add(e.toTypeId);
-      if (queue.length - head >= 200_000) {
-        truncated = true;
-        break;
-      }
-      queue.push({ node: e.toTypeId, path: [...cur.path, e], visited: nv });
     }
   }
-  const warnings: string[] = [];
+  found.sort((a, b) => a.path.length - b.path.length || a.generality - b.generality);
+  const ranked = found.slice(0, max_paths);
+  const paths = ranked.map((f) => f.path);
+  const warnings: string[] = [...snapshotStatus(snap).warnings];
   if (paths.length === 0) warnings.push(`No path found within depth ${max_depth}.`);
   if (truncated) warnings.push('Search stopped early (too many candidate paths); results may be incomplete — reduce max_depth.');
 
@@ -146,18 +166,21 @@ export async function executeFindTraversalPath(args: any): Promise<ToolResult> {
     instance: instance_name,
     operation,
     pretty: true,
-    model: { snapshotHash: snap.snapshotHash, refreshedAt: snap.refreshedAt },
+    model: snapshotStatus(snap).model,
     data: {
       source: { id: src.id, name: src.name },
       target: { id: dst.id, name: dst.name },
-      paths: paths.map((p) => ({
-        length: p.length,
-        steps: p.map((e) => ({
+      paths: ranked.map((f) => ({
+        length: f.path.length,
+        steps: f.path.map((e, i) => ({
           relationTypeId: e.relationTypeId,
           direction: e.direction,
           label: e.direction === 'OUTGOING' ? e.role : e.corole,
+          // from/to are the types the relation type is declared on; a step
+          // marked viaSupertype applies because the current type inherits it.
           from: e.fromTypeName,
           to: e.toTypeName,
+          ...(f.supertypeSteps.has(i) ? { viaSupertype: true } : {}),
         })),
       })),
     },

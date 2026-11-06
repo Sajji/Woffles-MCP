@@ -1,6 +1,6 @@
 import type { ToolResult } from '../types.js';
 import { errorEnvelope, withEnvelope } from '../utils/tool-result.js';
-import { loadSnapshot } from '../utils/operating-model-cache.js';
+import { isSameOrSubtype, loadSnapshot, snapshotStatus } from '../utils/operating-model-cache.js';
 
 export const validateAgainstModelTool = {
   name: 'validate_against_model',
@@ -62,14 +62,16 @@ export async function executeValidateAgainstModel(args: any): Promise<ToolResult
     if (!rt) {
       violations.push(`relation_type_id "${args.relation_type_id}" not found in model.`);
     } else {
-      if (args.source_asset_type_id && rt.sourceTypeId !== args.source_asset_type_id) {
+      // Relation types are usually declared on a supertype (e.g. Data Element),
+      // so a subtype (Column) is a valid end: compare against the ancestry.
+      if (args.source_asset_type_id && !isSameOrSubtype(snap, args.source_asset_type_id, rt.sourceTypeId)) {
         violations.push(
-          `source asset type does not match relation type: expected ${rt.sourceTypeName} (${rt.sourceTypeId}), got ${args.source_asset_type_id}.`,
+          `source asset type does not match relation type: expected ${rt.sourceTypeName} (${rt.sourceTypeId}) or a subtype of it, got ${args.source_asset_type_id}.`,
         );
       }
-      if (args.target_asset_type_id && rt.targetTypeId !== args.target_asset_type_id) {
+      if (args.target_asset_type_id && !isSameOrSubtype(snap, args.target_asset_type_id, rt.targetTypeId)) {
         violations.push(
-          `target asset type does not match relation type: expected ${rt.targetTypeName} (${rt.targetTypeId}), got ${args.target_asset_type_id}.`,
+          `target asset type does not match relation type: expected ${rt.targetTypeName} (${rt.targetTypeId}) or a subtype of it, got ${args.target_asset_type_id}.`,
         );
       }
     }
@@ -85,14 +87,17 @@ export async function executeValidateAgainstModel(args: any): Promise<ToolResult
     instance: instance_name,
     operation,
     pretty: true,
-    model: { snapshotHash: snap.snapshotHash, refreshedAt: snap.refreshedAt },
+    model: snapshotStatus(snap).model,
     data: {
       proposalType: proposal_type,
       valid: violations.length === 0,
       violations,
     },
-    warnings: violations.length
-      ? ['Schema validation failed. Server may still apply additional constraints (assignments, permissions, workflow).']
-      : [],
+    warnings: [
+      ...snapshotStatus(snap).warnings,
+      ...(violations.length
+        ? ['Schema validation failed. Server may still apply additional constraints (assignments, permissions, workflow).']
+        : []),
+    ],
   });
 }

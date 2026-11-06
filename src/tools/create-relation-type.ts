@@ -1,4 +1,5 @@
 import { okPretty, okWithNext } from '../utils/tool-result.js';
+import { patchSnapshot } from '../utils/operating-model-cache.js';
 import type { ToolResult } from '../types.js';
 import { clearModelCaches } from '../utils/collibra-client.js';
 import { clientFor } from './_context.js';
@@ -97,6 +98,8 @@ export async function executeCreateRelationType(args: any): Promise<ToolResult> 
   if (description) body.description = description;
 
   const created = await client.restCallWithBody<any>('/rest/2.0/relationTypes', 'POST', body);
+  // Keep the cached operating-model snapshot (if any) current, so model tools see the new type now.
+  patchSnapshot(instance_name, { relationType: created });
   clearModelCaches(instance); // new type must be visible to cached lookups immediately
 
   return okWithNext({

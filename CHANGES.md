@@ -1,5 +1,31 @@
 # Changelog
 
+## Unreleased — Operating-model cache (Review plan, Phase 6)
+
+### Fixed
+- **Model tools now handle supertypes.** Most relation types are defined on a supertype. On Production, 13 of Column's 19 relation types come from Data Element or Data Asset rather than Column itself.
+  - **`validate_against_model`** now accepts a subtype at either end of a relation. Before, Business Term → Column through "Business Asset represents Data Asset" was reported as a violation.
+  - **`find_traversal_path`** now uses relation types defined on any supertype of the current type. A path now reaches the target when it lands on the target type or one of its supertypes, so Business Term → Column now returns the 1-step "represents" path.
+  - **Path ranking:** paths are sorted by length, then by how specific the relation types they use are. Steps that apply only through inheritance are marked `viaSupertype`.
+- **Relation direction for inherited relation types.** The direction shown in `describe_asset_type`, and anywhere else assignments are read, now comes from the assignment's `roleDirection`. It used to be guessed from the declared source type, which labelled inherited relation types the wrong way round. For example, Column's "allowed value" relation is now OUTGOING.
+- **Errors fetching assignments are no longer hidden.** A 403 or 500 used to come back as "nothing assignable"; only a 404 now does.
+- **`describe_asset_type` no longer lists every status as eligible when an assignment declares none.** It warns instead.
+- **`get_operating_model_summary`'s `topLevelAssetTypeFamilies`** now lists the actual top-level families with their total descendant counts, for example Business Asset (93) and Data Asset (82). Before, it counted direct children of each parent at any level. Collibra doesn't return the root Asset type from its API, and the summary now accounts for that.
+
+### Changed
+- **The cache is tied to a server.** Each snapshot records the `baseUrl` it was taken from, and a snapshot from a different server is ignored. `refresh_operating_model` re-crawls instead of reusing a snapshot taken before this change.
+- **Model changes made through this server update the cache immediately.** After `create_asset_type`, `create_attribute_type` or `create_relation_type`, the new type is written into the cached snapshot, so model tools see it straight away; the changes are listed in `patchedSinceRefresh`. Verified live on Sandbox with a throwaway attribute type, which was then deleted.
+- **Staleness is now real.** Every model tool reports `model.stale` and adds a warning when the snapshot is older than 24 hours, or was taken before `baseUrl` was recorded. Before, `stale: false` was hard-coded.
+- **Snapshot hash** now covers names, parents and relation endpoints, not just IDs, so a rename or re-parenting changes it.
+- **Storage:**
+  - writes are atomic (temp file, then rename)
+  - parsed snapshots are kept in memory until the file changes
+  - reads no longer create the cache directory
+  - the unused `getSnapshot` was removed
+
+### Tests
+- `test/operating-model.test.ts`: atomic save and in-memory copy, `baseUrl` scoping, staleness, subtype-aware validation and path-finding, patching after model writes, `roleDirection`, and summary families when the root type is absent.
+
 ## Unreleased — Token efficiency (Review plan, Phase 5)
 
 ### Changed

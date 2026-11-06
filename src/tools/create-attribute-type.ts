@@ -1,4 +1,5 @@
 import { ok, okPretty, okWithNext } from '../utils/tool-result.js';
+import { patchSnapshot } from '../utils/operating-model-cache.js';
 import type { ToolResult } from '../types.js';
 import { attrKindFromDiscriminator, clearModelCaches } from '../utils/collibra-client.js';
 import { clientFor } from './_context.js';
@@ -167,6 +168,8 @@ export async function executeCreateAttributeType(args: any): Promise<ToolResult>
   if (public_id) body.publicId = public_id;
 
   const created = await client.restCallWithBody<any>('/rest/2.0/attributeTypes', 'POST', body);
+  // Keep the cached operating-model snapshot (if any) current, so model tools see the new type now.
+  patchSnapshot(instance_name, { attributeType: created });
   clearModelCaches(instance); // new type must be visible to cached lookups immediately
 
   return okWithNext(

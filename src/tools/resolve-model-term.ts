@@ -1,6 +1,6 @@
 import type { ToolResult } from '../types.js';
 import { withEnvelope } from '../utils/tool-result.js';
-import { loadSnapshot } from '../utils/operating-model-cache.js';
+import { loadSnapshot, snapshotStatus } from '../utils/operating-model-cache.js';
 
 export const resolveModelTermTool = {
   name: 'resolve_model_term',
@@ -77,7 +77,8 @@ export async function executeResolveModelTerm(args: any): Promise<ToolResult> {
     instance: instance_name,
     operation,
     pretty: true,
-    model: { snapshotHash: snap.snapshotHash, refreshedAt: snap.refreshedAt },
+    model: snapshotStatus(snap).model,
+    warnings: snapshotStatus(snap).warnings,
     data,
     summary: { term },
   });

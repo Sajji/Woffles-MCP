@@ -1,6 +1,6 @@
 import type { ToolResult } from '../types.js';
 import { errorEnvelope, withEnvelope } from '../utils/tool-result.js';
-import { fetchAssetTypeAssignments, loadSnapshot } from '../utils/operating-model-cache.js';
+import { fetchAssetTypeAssignments, loadSnapshot, snapshotStatus } from '../utils/operating-model-cache.js';
 
 export const describeAssetTypeTool = {
   name: 'describe_asset_type',
@@ -73,21 +73,27 @@ export async function executeDescribeAssetType(args: any): Promise<ToolResult> {
     .filter((t) => t.parentId === target.id)
     .map((c) => ({ id: c.id, name: c.name }));
 
+  // Errors (e.g. 403) now propagate instead of looking like "nothing assignable".
   const assignments = await fetchAssetTypeAssignments(instance_name, target.id);
+  const warnings = [...snapshotStatus(snap).warnings];
+  if (!assignments.attributeTypes.length && !assignments.relationTypes.length) {
+    warnings.push(`No assignment found for "${target.name}" — it may be abstract (assign a subtype) or not yet assigned to any domain type.`);
+  }
 
   return withEnvelope({
     instance: instance_name,
     operation,
     pretty: true,
-    model: { snapshotHash: snap.snapshotHash, refreshedAt: snap.refreshedAt },
+    model: snapshotStatus(snap).model,
+    warnings,
     data: {
       assetType: target,
       children,
       assignableAttributeTypes: assignments.attributeTypes,
       assignableRelationTypes: assignments.relationTypes,
-      eligibleStatuses: assignments.eligibleStatuses.length
-        ? assignments.eligibleStatuses
-        : snap.statuses.map((s) => ({ id: s.id, name: s.name })),
+      // Only what the assignment declares — falling back to every status in the
+      // model presented ineligible statuses as valid.
+      eligibleStatuses: assignments.eligibleStatuses,
       defaultStatusId: assignments.defaultStatusId,
       eligibleDomainTypes: assignments.eligibleDomainTypes,
     },
